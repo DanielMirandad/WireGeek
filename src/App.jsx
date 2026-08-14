@@ -547,14 +547,37 @@ export default function GeekNewsWire() {
     prompt: `Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length * NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`
   })
 }
-            tools:[{type:"web_search_20250305",name:"web_search"}]}) },
+           const response = await fetchWithRetry(
+  "/api/news",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompt: `Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length * NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`,
+    }),
+  },
+  {
+    attempts: 4,
+    onRetry: (s, a, t, w) => {
+      retrying = true;
+      setTicker(
+        `SERVIDOR OCUPADO: TENTATIVA ${a}/${t - 1} EM ${Math.round(w / 1000)}S`
+      );
+      window.setTimeout(() => {
+        retrying = false;
+      }, w);
+    },
+  }
+);
         { attempts:4, onRetry:(s,a,t,w)=>{ retrying=true; setTicker(`SERVIDOR OCUPADO: TENTATIVA ${a}/${t-1} EM ${Math.round(w/1000)}S`); window.setTimeout(()=>{retrying=false;},w); }});
 
       if(!response.ok){ const b=await response.text().catch(()=>""); throw new Error(`Erro na API ${response.status}: ${b.slice(0,200)}`); }
       const data=await response.json();
       if(data.stop_reason==="max_tokens") throw new Error("Limite de tokens. Tente novamente.");
 
-      const text=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n").trim();
+      const text = String(data?.text || "").trim();
       if(!text) throw new Error("API nao retornou JSON.");
 
       const cleaned=text.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/\s*```$/i,"").trim();

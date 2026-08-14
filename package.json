@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.16.0",
     "@vitejs/plugin-react": "latest",
     "autoprefixer": "latest",
     "lucide-react": "latest",

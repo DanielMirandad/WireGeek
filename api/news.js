@@ -83,7 +83,21 @@ FONTES PRIORITARIAS:
 IGN Brasil, Omelete, Eurogamer, The Enemy, Jovem Nerd, Adrenaline, Canaltech, GameSpot, IGN, Polygon, Variety, Deadline, The Hollywood Reporter, Crunchyroll News, Anime News Network e MyAnimeList News.
 
 FORMATO DA RESPOSTA:
-Responda SOMENTE com JSON valido.
+FORMATO DA RESPOSTA:
+
+Responda SOMENTE com um objeto JSON valido.
+
+NAO escreva nenhuma explicacao antes do JSON.
+NAO escreva nenhuma explicacao depois do JSON.
+NAO use bloco Markdown.
+NAO use ```json.
+NAO use ```.
+
+A primeira coisa da resposta deve ser:
+{
+
+A ultima coisa da resposta deve ser:
+}
 
 {
   "news": [
@@ -181,14 +195,46 @@ O array news deve conter exatamente 12 itens:
      */
     let parsed;
 
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return res.status(502).json({
-        error: "A Anthropic retornou JSON invalido.",
-        text: text.slice(0, 2000),
-      });
+    let parsed;
+
+try {
+  // Primeiro tenta JSON puro
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // A Anthropic pode colocar o JSON dentro de ```json ... ```
+    const codeBlockMatch = text.match(
+      /```(?:json)?\s*([\s\S]*?)\s*```/i
+    );
+
+    if (codeBlockMatch) {
+      parsed = JSON.parse(codeBlockMatch[1]);
+    } else {
+      // Último recurso: procura o primeiro objeto JSON completo
+      const firstBrace = text.indexOf("{");
+      const lastBrace = text.lastIndexOf("}");
+
+      if (firstBrace === -1 || lastBrace === -1) {
+        throw new Error("Nenhum objeto JSON encontrado.");
+      }
+
+      const possibleJson = text.slice(
+        firstBrace,
+        lastBrace + 1
+      );
+
+      parsed = JSON.parse(possibleJson);
     }
+  }
+} catch (parseError) {
+  console.error("JSON PARSE ERROR:", parseError);
+
+  return res.status(502).json({
+    error: "A Anthropic retornou JSON invalido.",
+    details: parseError?.message || "Falha ao interpretar JSON.",
+    text: text.slice(0, 2000),
+  });
+}
 
     if (!parsed || !Array.isArray(parsed.news)) {
       return res.status(502).json({

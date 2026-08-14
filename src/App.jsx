@@ -1,2318 +1,786 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertCircle,
-  Check,
-  CheckCircle2,
-  Clock,
-  Copy,
-  Hash,
-  Newspaper,
-  Radio,
-  RefreshCw,
-  Zap,
-  ImageIcon,
-  Calendar,
-} from "lucide-react";
+import { GoogleGenAI } from "@google/genai";
 
-// ─── CONSTANTES ──────────────────────────────────────────────────────────────
+const MODEL = "gemini-3.5-flash-lite";
 
-const TEMPLATE_DESIGN_ID = "DAHSAXUcxX4";
+const CATEGORIES = ["games", "geek", "cinema", "anime"];
 
-const LOCATORS = {
-  pages: [
-    {
-      badge: "PBh0XHD7f51kGytW-LB8JLWDRlqf3zjVq",
-      subtitle: "PBh0XHD7f51kGytW-LBt1zdTS5fdVJTjx",
-      title: "PBh0XHD7f51kGytW-LBqCnTzmXzLqNWpD",
-      image: "PBh0XHD7f51kGytW-LBcrH5XySKL6yNB8",
+const NEWS_SCHEMA = {
+  type: "object",
+  properties: {
+    news: {
+      type: "array",
+      minItems: 12,
+      maxItems: 12,
+      items: {
+        type: "object",
+        properties: {
+          categoria: {
+            type: "string",
+            enum: ["games", "geek", "cinema", "anime"],
+          },
+          titulo: {
+            type: "string",
+          },
+          publicado_em: {
+            type: "string",
+          },
+          materia: {
+            type: "string",
+          },
+          highlights: {
+            type: "array",
+            minItems: 4,
+            maxItems: 4,
+            items: {
+              type: "string",
+            },
+          },
+          hashtags: {
+            type: "array",
+            minItems: 5,
+            maxItems: 5,
+            items: {
+              type: "string",
+            },
+          },
+          fontes: {
+            type: "array",
+            minItems: 1,
+            maxItems: 3,
+            items: {
+              type: "object",
+              properties: {
+                nome: {
+                  type: "string",
+                },
+                url: {
+                  type: "string",
+                },
+                publicado_em: {
+                  type: "string",
+                },
+              },
+              required: ["nome", "url", "publicado_em"],
+            },
+          },
+          image_query: {
+            type: "string",
+          },
+        },
+        required: [
+          "categoria",
+          "titulo",
+          "publicado_em",
+          "materia",
+          "highlights",
+          "hashtags",
+          "fontes",
+          "image_query",
+        ],
+      },
     },
-    {
-      badge: "PBFyZVcCQVwCb0d3-LBKvNPT8SJnDH1dH",
-      subtitle: "PBFyZVcCQVwCb0d3-LBnqhzhh7z7GZ8jz",
-      title: "PBFyZVcCQVwCb0d3-LB2MsMYr8xcXw1M1",
-      image: "PBFyZVcCQVwCb0d3-LBd2pgL8y4n6Ns3V",
-    },
-    {
-      badge: "PB4wYBY6qz0T0XRs-LBKNjYr8rfxC1y3H",
-      subtitle: "PB4wYBY6qz0T0XRs-LBv71qJNWmMm4vCy",
-      title: "PB4wYBY6qz0T0XRs-LBcrrR5z0Ynr61Zm",
-      image: "PB4wYBY6qz0T0XRs-LBhHjmVCZhs6p0bf",
-    },
-    {
-      badge: "PBVm2lDStJp1vY2K-LBSccwgKrvXSV2qc",
-      subtitle: "PBVm2lDStJp1vY2K-LBhzgt6pqVSk6mmn",
-      title: "PBVm2lDStJp1vY2K-LBr6s9x2J5KY9nBn",
-      image: "PBVm2lDStJp1vY2K-LBn5H3KPYykqy4LL",
-    },
-  ],
-  badgeOriginalText: "cinema",
+  },
+  required: ["news"],
 };
 
-const CATEGORY_LABEL = {
-  games: "GAMES",
-  geek: "GEEK",
-  cinema: "CINEMA",
-  anime: "ANIME",
-};
-
-const CATEGORY_COLOR = {
-  games: "#E8002D",
-  geek: "#7C3AED",
-  cinema: "#D97706",
-  anime: "#0EA5E9",
-};
-
-const CATEGORY_ORDER = ["games", "geek", "cinema", "anime"];
-
-const NEWS_PER_CATEGORY = 3;
-
-const RODAPE_FIXO = `___
-
-Estaremos acompanhando tudo e traremos as informacoes ate voces.
-
-SEGUE A GENTE, COMPARTILHA E COMENTA!
-
-LIVES!!
-https://www.twitch.tv/bagacacast_lives
-https://youtube.com/@bagacastudios
-
-REDES SOCIAIS:
-Instagram: @bagacastudios
-Tiktok: @bagacastudios
-Youtube: https://youtube.com/@bagacastudios
-
-SEJA VIP:
-https://linktr.ee/Bagacacast`;
-
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-function todayKey() {
-  const d = new Date();
-
-  return `wire-geek:v3:${d.getFullYear()}-${String(
-    d.getMonth() + 1
-  ).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function schedulerKey() {
-  return "wire-geek:scheduler";
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function copyViaTextarea(text) {
-  return new Promise((resolve, reject) => {
-    try {
-      const ta = document.createElement("textarea");
-
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-
-      document.body.appendChild(ta);
-      ta.select();
-
-      document.execCommand("copy")
-        ? resolve()
-        : reject(new Error("Falhou"));
-
-      document.body.removeChild(ta);
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
-function copyToClipboard(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard
-      .writeText(text)
-      .catch(() => copyViaTextarea(text));
-  }
-
-  return copyViaTextarea(text);
-}
-
-async function fetchWithRetry(
-  url,
-  options,
-  { attempts = 4, onRetry } = {}
-) {
-  let lastError;
-
-  for (let i = 0; i < attempts; i++) {
-    let response = null;
-
-    try {
-      response = await fetch(url, options);
-    } catch (e) {
-      lastError = e;
-    }
-
-    if (response?.ok) {
-      return response;
-    }
-
-    const status = response?.status ?? null;
-
-    const transient =
-      status === 429 ||
-      status === 503 ||
-      status === 529 ||
-      status === null;
-
-    if (!transient || i === attempts - 1) {
-      if (response) {
-        return response;
-      }
-
-      throw (
-        lastError ||
-        new Error("Falha de rede.")
-      );
-    }
-
-    const wait = Math.round(
-      1000 * Math.pow(2, i) +
-        Math.random() * 500
-    );
-
-    onRetry?.(
-      status,
-      i + 1,
-      attempts,
-      wait
-    );
-
-    await sleep(wait);
-  }
-
-  throw (
-    lastError ||
-    new Error(
-      "Falha apos multiplas tentativas."
-    )
-  );
-}
-
-function estimateReading(text) {
-  const words = String(text || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  return {
-    words: words.length,
-    minutes: Math.max(
-      1,
-      Math.round(words.length / 200)
-    ),
-  };
-}
-
-function removeDashes(str) {
-  return String(str || "")
+function normalizeText(value) {
+  return String(value || "")
     .replace(/[—–]/g, ",")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
-function normalizeNewsItem(item = {}) {
-  return {
-    categoria: String(
-      item.categoria || "geek"
-    ).toLowerCase(),
+function normalizeNews(news) {
+  if (!Array.isArray(news)) return [];
 
-    titulo: removeDashes(
-      item.titulo || "Sem titulo"
+  return news.map((item) => ({
+    categoria: String(item?.categoria || "geek").toLowerCase(),
+    titulo: normalizeText(item?.titulo),
+    publicado_em: normalizeText(item?.publicado_em),
+    materia: normalizeText(item?.materia),
+
+    highlights: Array.isArray(item?.highlights)
+      ? item.highlights.map(normalizeText)
+      : [],
+
+    hashtags: Array.isArray(item?.hashtags)
+      ? item.hashtags.map(normalizeText)
+      : [],
+
+    fontes: Array.isArray(item?.fontes)
+      ? item.fontes.map((source) => ({
+          nome: normalizeText(source?.nome),
+          url: String(source?.url || "").trim(),
+          publicado_em: normalizeText(source?.publicado_em),
+        }))
+      : [],
+
+    image_query: normalizeText(
+      item?.image_query || item?.titulo
     ),
-
-    publicado_em:
-      item.publicado_em || "Ultimas 24h",
-
-    materia: removeDashes(
-      item.materia || ""
-    ),
-
-    highlights: Array.isArray(
-      item.highlights
-    )
-      ? item.highlights
-          .slice(0, 4)
-          .map(removeDashes)
-      : [],
-
-    hashtags: Array.isArray(
-      item.hashtags
-    )
-      ? item.hashtags.slice(0, 5)
-      : [],
-
-    fontes: Array.isArray(item.fontes)
-      ? item.fontes.slice(0, 3)
-      : [],
-
-    image_query:
-      item.image_query ||
-      item.titulo ||
-      "",
-  };
+  }));
 }
 
-// ─── VALIDAÇÃO ───────────────────────────────────────────────────────────────
-//
-// IMPORTANTE:
-// O modo normal exige 12 noticias.
-// O modo de teste exige apenas 1 noticia.
-//
-// O bloco "for (const item of news)" pertence
-// DENTRO desta função. Isso corrige o erro:
-//
-// SyntaxError: Missing catch or finally after try
-//
-function validateEdition(
-  news,
-  isTestMode = false
-) {
-  // ──────────────────────────────────────────
-  // MODO DE TESTE
-  // ──────────────────────────────────────────
+function validateNews(news, testMode = false) {
+  if (!Array.isArray(news)) {
+    return ["news nao e um array"];
+  }
 
-  if (isTestMode) {
-    if (
-      !Array.isArray(news) ||
-      news.length !== 1
-    ) {
-      return (
-        "O modo de teste precisa retornar exatamente 1 noticia."
-      );
+  if (testMode) {
+    if (news.length !== 1) {
+      return [
+        `Modo de teste deve retornar exatamente 1 noticia. Recebidas: ${news.length}`,
+      ];
     }
 
     const item = news[0];
 
-    if (
-      !item ||
-      ![
-        "games",
-        "geek",
-        "cinema",
-        "anime",
-      ].includes(item.categoria)
-    ) {
-      return (
-        "A noticia de teste possui categoria invalida."
-      );
+    if (!item) {
+      return ["Noticia de teste inexistente."];
     }
 
-    if (!item.titulo || !item.materia) {
-      return (
-        "A noticia de teste possui campos obrigatorios ausentes."
-      );
+    if (!CATEGORIES.includes(item.categoria)) {
+      return [
+        `Categoria invalida: ${item.categoria}`,
+      ];
     }
 
-    return null;
-  }
-
-  // ──────────────────────────────────────────
-  // MODO NORMAL
-  // ──────────────────────────────────────────
-
-  const expectedTotal =
-    CATEGORY_ORDER.length *
-    NEWS_PER_CATEGORY;
-
-  if (
-    !Array.isArray(news) ||
-    news.length !== expectedTotal
-  ) {
-    return `A edicao precisa conter exatamente ${expectedTotal} noticias.`;
-  }
-
-  for (const cat of CATEGORY_ORDER) {
-    const count = news.filter(
-      (n) => n.categoria === cat
-    ).length;
-
-    if (count !== NEWS_PER_CATEGORY) {
-      return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
-    }
-  }
-
-  // ──────────────────────────────────────────
-  // VALIDAÇÃO INDIVIDUAL
-  // ──────────────────────────────────────────
-
-  for (const item of news) {
-    if (!item.titulo || !item.materia) {
-      return "Noticia sem titulo ou materia.";
+    if (!item.titulo) {
+      return ["Noticia de teste sem titulo."];
     }
 
-    if (item.materia.length < 2000) {
-      return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
+    if (!item.materia) {
+      return ["Noticia de teste sem materia."];
     }
 
-    if (item.materia.length > 2200) {
-      return `"${item.titulo}" ultrapassa 2200 caracteres. Encontrado: ${item.materia.length}.`;
+    if (item.highlights.length !== 4) {
+      return [
+        "Noticia de teste precisa ter 4 highlights.",
+      ];
     }
 
-    if (
-      !Array.isArray(item.highlights) ||
-      item.highlights.length !== 4
-    ) {
-      return `"${item.titulo}" precisa de 4 highlights.`;
-    }
-
-    if (
-      !Array.isArray(item.hashtags) ||
-      item.hashtags.length !== 5
-    ) {
-      return `"${item.titulo}" precisa de 5 hashtags.`;
+    if (item.hashtags.length !== 5) {
+      return [
+        "Noticia de teste precisa ter 5 hashtags.",
+      ];
     }
 
     if (
       !Array.isArray(item.fontes) ||
       item.fontes.length < 1
     ) {
-      return `"${item.titulo}" precisa de pelo menos 1 fonte.`;
+      return [
+        "Noticia de teste precisa ter pelo menos 1 fonte.",
+      ];
     }
+
+    return [];
   }
 
-  return null;
-}
+  const errors = [];
 
-// ─── BANNER PROMPT ───────────────────────────────────────────────────────────
-
-function buildBannerCommand(item) {
-  const cat =
-    CATEGORY_LABEL[item.categoria] ||
-    "PAUTA";
-
-  const h = item.highlights.slice(0, 4);
-
-  const imgQuery =
-    item.image_query ||
-    item.titulo;
-
-  return `@Claude gera banner no Canva para esta noticia da Bagaca Studios:
-
-TEMPLATE: ${TEMPLATE_DESIGN_ID}
-CATEGORIA: ${cat}
-PUBLICADO EM: ${item.publicado_em}
-QUERY DE IMAGEM (buscar foto real): ${imgQuery}
-
-HIGHLIGHT 1 (slide 1): ${h[0] || ""}
-HIGHLIGHT 2 (slide 2): ${h[1] || ""}
-HIGHLIGHT 3 (slide 3): ${h[2] || ""}
-HIGHLIGHT 4 (slide 4): ${h[3] || ""}
-
-LOCATOR IDs:
-Pagina 1: badge=${LOCATORS.pages[0].badge} | subtitle=${LOCATORS.pages[0].subtitle} | title=${LOCATORS.pages[0].title} | image=${LOCATORS.pages[0].image}
-Pagina 2: badge=${LOCATORS.pages[1].badge} | subtitle=${LOCATORS.pages[1].subtitle} | title=${LOCATORS.pages[1].title} | image=${LOCATORS.pages[1].image}
-Pagina 3: badge=${LOCATORS.pages[2].badge} | subtitle=${LOCATORS.pages[2].subtitle} | title=${LOCATORS.pages[2].title} | image=${LOCATORS.pages[2].image}
-Pagina 4: badge=${LOCATORS.pages[3].badge} | subtitle=${LOCATORS.pages[3].subtitle} | title=${LOCATORS.pages[3].title} | image=${LOCATORS.pages[3].image}
-
-Texto original do badge: "cinema"
-
-Passos:
-1) web_search pela query de imagem
-2) encontrar URL publica de foto real relacionada ao assunto
-3) Canva:upload-asset-from-url com a URL encontrada
-4) Canva:copy-design do template ${TEMPLATE_DESIGN_ID}
-5) Canva:read-design open_transaction=true
-6) edit-design paginas 1-4
-7) badge -> ${cat}
-8) subtitle -> ${item.publicado_em}
-9) title -> highlight correspondente
-10) update_fill image -> asset_id do upload
-11) edit-design finalize=commit`;
-}
-
-// ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
-
-function buildSystemPrompt() {
-  const total =
-    CATEGORY_ORDER.length *
-    NEWS_PER_CATEGORY;
-
-  return `Voce e o editor-chefe de uma redacao especializada em GAMES, CULTURA GEEK, CINEMA e ANIME no Brasil.
-
-Sua voz e de colunista: opinativa, engajada, moderna e com personalidade propria, mas sempre apoiada em fatos reais e verificaveis.
-
-Voce tem acesso a busca na web e DEVE usa-la antes de escrever.
-
-OBJETIVO:
-Encontrar exatamente ${total} noticias reais publicadas HOJE ou nas ULTIMAS 24 HORAS.
-
-DIVERSIDADE OBRIGATORIA:
-${NEWS_PER_CATEGORY} noticias de cada categoria:
-games, geek, cinema, anime.
-
-REGRAS CRITICAS DE ESTILO:
-
-- NUNCA use travessao.
-- Use virgulas, dois-pontos, pontos ou parenteses no lugar de travessoes.
-- Escreva com ritmo dinamico.
-- Use frases curtas e medias.
-- Nao invente fatos.
-- Nao invente datas.
-- Nao invente fontes.
-- Nao invente URLs.
-- Nao invente declaracoes.
-
-MATERIA:
-Entre 2000 e 2200 caracteres obrigatoriamente.
-
-HIGHLIGHTS:
-Exatamente 4 frases curtas.
-
-HASHTAGS:
-Exatamente 5 hashtags.
-
-FONTES:
-Entre 1 e 3 fontes reais.
-
-CATEGORIA:
-Somente:
-games
-geek
-cinema
-anime
-
-FORMATO:
-Responda SOMENTE com JSON valido.
-
-O array news deve conter exatamente ${total} itens.
-
-${NEWS_PER_CATEGORY} games.
-${NEWS_PER_CATEGORY} geek.
-${NEWS_PER_CATEGORY} cinema.
-${NEWS_PER_CATEGORY} anime.`;
-}
-
-// ─── COPY BUTTON ─────────────────────────────────────────────────────────────
-
-function CopyButton({
-  text,
-  label = "Copiar",
-}) {
-  const [status, setStatus] =
-    useState("idle");
-
-  async function handleClick() {
-    try {
-      await copyToClipboard(text || "");
-      setStatus("copied");
-    } catch {
-      setStatus("error");
-    }
-
-    window.setTimeout(
-      () => setStatus("idle"),
-      1800
+  if (news.length !== 12) {
+    errors.push(
+      `Esperadas 12 noticias, recebidas ${news.length}`
     );
   }
 
-  return (
-    <button
-      onClick={handleClick}
-      type="button"
-      className={`inline-flex items-center gap-1.5 border px-2.5 py-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
-        status === "error"
-          ? "border-[#e0452f] text-[#e0452f]"
-          : "border-[#3a4a4d] text-[#cfd8d4] hover:border-[#e0452f] hover:text-[#e0452f]"
-      }`}
-    >
-      {status === "copied" ? (
-        <Check size={12} />
-      ) : (
-        <Copy size={12} />
-      )}
-
-      {status === "copied"
-        ? "Copiado"
-        : status === "error"
-        ? "Falhou"
-        : label}
-    </button>
-  );
-}
-
-// ─── STAMP ───────────────────────────────────────────────────────────────────
-
-function Stamp({ children }) {
-  return (
-    <span className="inline-block -rotate-2 border-2 border-[#e0452f] px-2 py-0.5 font-mono text-[10px] font-black uppercase tracking-[0.15em] text-[#e0452f]">
-      {children}
-    </span>
-  );
-}
-
-// ─── ARTICLE FORMATTER ───────────────────────────────────────────────────────
-
-function FormattedArticle({ text }) {
-  if (!text) return null;
-
-  const cleaned = String(text).replace(
-    /[—–]/g,
-    ","
-  );
-
-  const lines = cleaned.split(/\n/);
-
-  const blocks = [];
-
-  let paragraph = [];
-  let list = [];
-
-  const flushP = () => {
-    if (paragraph.length) {
-      blocks.push({
-        type: "p",
-        content: paragraph.join(" "),
-      });
-
-      paragraph = [];
-    }
+  const counts = {
+    games: 0,
+    geek: 0,
+    cinema: 0,
+    anime: 0,
   };
 
-  const flushL = () => {
-    if (list.length) {
-      blocks.push({
-        type: "ul",
-        items: [...list],
-      });
-
-      list = [];
-    }
-  };
-
-  lines.forEach((raw) => {
-    const line = raw.trim();
-
-    if (!line) {
-      flushP();
-      flushL();
+  news.forEach((item, index) => {
+    if (!CATEGORIES.includes(item.categoria)) {
+      errors.push(
+        `Noticia ${index + 1}: categoria invalida`
+      );
       return;
     }
 
-    if (line.startsWith("### ")) {
-      flushP();
-      flushL();
-
-      blocks.push({
-        type: "h3",
-        content: line
-          .slice(4)
-          .trim(),
-      });
-    } else if (line.startsWith("> ")) {
-      flushP();
-      flushL();
-
-      blocks.push({
-        type: "quote",
-        content: line
-          .slice(2)
-          .trim(),
-      });
-    } else if (
-      line.startsWith("- ") ||
-      line.startsWith("* ")
-    ) {
-      flushP();
-
-      list.push(
-        line.slice(2).trim()
-      );
-    } else {
-      flushL();
-      paragraph.push(line);
-    }
-  });
-
-  flushP();
-  flushL();
-
-  const finalBlocks = [];
-
-  blocks.forEach((block) => {
-    if (block.type === "p") {
-      const sentences =
-        block.content.split(
-          /(?<=[.!?])\s+/
-        );
-
-      let group = [];
-
-      sentences.forEach((s, i) => {
-        group.push(s);
-
-        if (
-          group.length >= 2 ||
-          i === sentences.length - 1
-        ) {
-          finalBlocks.push({
-            type: "p",
-            content: group.join(" "),
-          });
-
-          group = [];
-        }
-      });
-    } else {
-      finalBlocks.push(block);
-    }
-  });
-
-  function renderInline(t, kp) {
-    return String(t || "")
-      .replace(/[—–]/g, ",")
-      .split(/(\*\*[^*]+\*\*)/g)
-      .map((part, i) =>
-        part.startsWith("**") &&
-        part.endsWith("**") ? (
-          <strong
-            key={`${kp}-b-${i}`}
-            className="font-semibold text-[#f4f0e8]"
-          >
-            {part.slice(2, -2)}
-          </strong>
-        ) : (
-          <React.Fragment
-            key={`${kp}-t-${i}`}
-          >
-            {part}
-          </React.Fragment>
-        )
-      );
-  }
-
-  return (
-    <div className="space-y-2.5">
-      {finalBlocks.map(
-        (block, i) => {
-          if (block.type === "h3") {
-            return (
-              <h4
-                key={i}
-                className="mt-4 pt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#e0452f]"
-              >
-                {block.content}
-              </h4>
-            );
-          }
-
-          if (block.type === "quote") {
-            return (
-              <blockquote
-                key={i}
-                className="border-l-2 border-[#e0452f] bg-[#1a2628] px-3 py-2.5 italic text-[#cfd8d4] text-[13px]"
-              >
-                {renderInline(
-                  block.content,
-                  `q${i}`
-                )}
-              </blockquote>
-            );
-          }
-
-          if (block.type === "ul") {
-            return (
-              <ul
-                key={i}
-                className="space-y-1 text-[#d8dfd9] pl-3"
-              >
-                {block.items.map(
-                  (item, j) => (
-                    <li
-                      key={j}
-                      className="flex gap-2"
-                    >
-                      <span className="text-[#e0452f] shrink-0 mt-1 text-[8px]">
-                        ◆
-                      </span>
-
-                      <span>
-                        {renderInline(
-                          item,
-                          `l${i}-${j}`
-                        )}
-                      </span>
-                    </li>
-                  )
-                )}
-              </ul>
-            );
-          }
-
-          const isLead = i === 0;
-
-          return (
-            <p
-              key={i}
-              className={
-                isLead
-                  ? "text-[14px] leading-relaxed text-[#f0ece4] font-medium"
-                  : "text-[14px] leading-relaxed text-[#d8dfd9]"
-              }
-            >
-              {renderInline(
-                block.content,
-                `p${i}`
-              )}
-            </p>
-          );
-        }
-      )}
-    </div>
-  );
-}
-
-// ─── BANNER SECTION ───────────────────────────────────────────────────────────
-
-function BannerSection({ item }) {
-  const [status, setStatus] =
-    useState("idle");
-
-  const [error, setError] =
-    useState("");
-
-  const [bannerUrl, setBannerUrl] =
-    useState("");
-
-  async function handleGenerate() {
-    if (status === "loading") {
-      return;
-    }
-
-    setStatus("loading");
-    setError("");
-    setBannerUrl("");
-
-    try {
-      const response = await fetch(
-        "/api/banner",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            categoria:
-              item.categoria,
-            titulo: item.titulo,
-            publicado_em:
-              item.publicado_em,
-            highlights:
-              item.highlights,
-            image_query:
-              item.image_query,
-          }),
-        }
-      );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-        throw new Error(
-          data.error ||
-            "Falha ao gerar o banner."
-        );
-      }
-
-      setBannerUrl(data.data);
-      setStatus("done");
-    } catch (error) {
-      console.error(error);
-
-      setError(
-        error?.message ||
-          "Nao foi possivel gerar o banner."
-      );
-
-      setStatus("error");
-    }
-  }
-
-  function handleDownload() {
-    if (!bannerUrl) return;
-
-    const link =
-      document.createElement("a");
-
-    link.href = bannerUrl;
-    link.download =
-      "wire-geek-banner.svg";
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-
-  return (
-    <div>
-      <p className="mb-3 font-mono text-[10px] leading-relaxed text-[#5c6f6b]">
-        Gere automaticamente um
-        banner Wire/Geek para esta
-        noticia.
-      </p>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={
-            status === "loading"
-          }
-          className="inline-flex items-center gap-2 bg-[#e0452f] px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <ImageIcon
-            size={12}
-            className={
-              status === "loading"
-                ? "animate-spin"
-                : ""
-            }
-          />
-
-          {status === "loading"
-            ? "Gerando..."
-            : "Gerar Banner"}
-        </button>
-
-        {status === "done" &&
-          bannerUrl && (
-            <button
-              type="button"
-              onClick={
-                handleDownload
-              }
-              className="inline-flex items-center gap-2 border border-[#5fbf7a]/50 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#5fbf7a] hover:bg-[#5fbf7a]/10"
-            >
-              <Check size={12} />
-              Baixar Banner
-            </button>
-          )}
-      </div>
-
-      {status === "loading" && (
-        <div className="mb-3 border border-[#3a4a4d] bg-[#1a2628] px-3 py-3 font-mono text-[10px] text-[#8fa39d]">
-          GERANDO BANNER...
-          <br />
-
-          <span className="text-[#5c6f6b]">
-            Montando layout
-            Wire/Geek.
-          </span>
-        </div>
-      )}
-
-      {status === "error" && (
-        <div className="mb-3 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-3 font-mono text-[10px] text-[#f0a89a]">
-          {error}
-        </div>
-      )}
-
-      {bannerUrl && (
-        <div className="mt-4 border border-[#243436] bg-[#0c1618] p-3">
-          <div className="mb-2 font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">
-            BANNER GERADO
-          </div>
-
-          <img
-            src={bannerUrl}
-            alt={`Banner: ${item.titulo}`}
-            className="w-full border border-[#3a4a4d]"
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── DISPATCH CARD ────────────────────────────────────────────────────────────
-
-function DispatchCard({
-  item,
-  index,
-}) {
-  const [tab, setTab] =
-    useState("materia");
-
-  const { words, minutes } =
-    estimateReading(
-      item.materia
-    );
-
-  const catColor =
-    CATEGORY_COLOR[
-      item.categoria
-    ] || "#e0452f";
-
-  const tabs = [
-    {
-      id: "materia",
-      label: "Materia",
-      icon: Newspaper,
-    },
-    {
-      id: "highlights",
-      label: "Highlights",
-      icon: Zap,
-    },
-    {
-      id: "hashtags",
-      label: "Hashtags",
-      icon: Hash,
-    },
-    {
-      id: "banner",
-      label: "Banner",
-      icon: ImageIcon,
-    },
-  ];
-
-  return (
-    <article className="relative border border-[#3a4a4d] bg-[#0f1a1c]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#3a4a4d] bg-[#132025] px-4 py-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="font-mono text-[10px] text-[#7a8f8a]">
-            DESPACHO{" "}
-            {String(index + 1).padStart(
-              2,
-              "0"
-            )}
-          </span>
-
-          <span
-            className="border px-1.5 py-0.5 font-mono text-[10px] tracking-[0.2em]"
-            style={{
-              borderColor:
-                catColor + "80",
-              color: catColor,
-            }}
-          >
-            {CATEGORY_LABEL[
-              item.categoria
-            ] || "PAUTA"}
-          </span>
-
-          {item.publicado_em && (
-            <span className="border border-[#5fbf7a]/40 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-              {item.publicado_em}
-            </span>
-          )}
-        </div>
-
-        <span className="font-mono text-[10px] text-[#5c6f6b]">
-          {new Date().toLocaleDateString(
-            "pt-BR"
-          )}
-        </span>
-      </div>
-
-      <div className="px-4 pt-4 pb-2">
-        <h3
-          className="text-xl font-black leading-tight text-[#f4f0e8] sm:text-2xl"
-          style={{
-            fontFamily:
-              "'Archivo Black', sans-serif",
-          }}
-        >
-          {item.titulo}
-        </h3>
-      </div>
-
-      <div className="flex gap-1 overflow-x-auto border-b border-[#243436] px-4">
-        {tabs.map(
-          ({
-            id,
-            label,
-            icon: Icon,
-          }) => {
-            const active =
-              tab === id;
-
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() =>
-                  setTab(id)
-                }
-                className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[10px] font-mono uppercase tracking-wider transition-colors ${
-                  active
-                    ? "border-[#e0452f] text-[#f4f0e8]"
-                    : "border-transparent text-[#7a8f8a] hover:text-[#cfd8d4]"
-                }`}
-              >
-                <Icon size={12} />
-                {label}
-              </button>
-            );
-          }
-        )}
-      </div>
-
-      <div className="p-4">
-        {tab === "materia" && (
-          <div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#5c6f6b]">
-                <Clock size={11} />
-
-                {minutes} min ·{" "}
-                {words} palavras ·{" "}
-                {item.materia.length} chars
-              </span>
-
-              <CopyButton
-                text={`${item.titulo}\n\n${item.materia}\n\n${RODAPE_FIXO}`}
-                label="Copiar materia"
-              />
-            </div>
-
-            <div
-              className="mb-4 border-l-2 pl-3"
-              style={{
-                borderColor:
-                  catColor,
-              }}
-            >
-              <h5
-                className="text-[15px] font-black leading-snug text-[#f4f0e8]"
-                style={{
-                  fontFamily:
-                    "'Archivo Black', sans-serif",
-                }}
-              >
-                {item.titulo}
-              </h5>
-            </div>
-
-            <div
-              style={{
-                fontFamily:
-                  "'Source Serif 4', Georgia, serif",
-              }}
-            >
-              <FormattedArticle
-                text={
-                  item.materia
-                }
-              />
-            </div>
-
-            {item.fontes.length >
-              0 && (
-              <div className="mt-5 border-t border-[#243436] pt-3">
-                <span className="mb-2 block font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">
-                  FONTES DA APURACAO
-                </span>
-
-                <ul className="space-y-1">
-                  {item.fontes.map(
-                    (
-                      source,
-                      i
-                    ) => (
-                      <li
-                        key={i}
-                        className="font-mono text-[10px] text-[#7a8f8a]"
-                      >
-                        {source.url ? (
-                          <a
-                            href={
-                              source.url
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline decoration-[#3a4a4d] underline-offset-2 hover:text-[#e0452f]"
-                          >
-                            {source.nome ||
-                              source.url}
-                          </a>
-                        ) : (
-                          source.nome
-                        )}
-
-                        {source.publicado_em
-                          ? ` · ${source.publicado_em}`
-                          : ""}
-                      </li>
-                    )
-                  )}
-                </ul>
-              </div>
-            )}
-
-            <div className="mt-4 border-t border-[#243436] pt-3">
-              <pre className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-[#8fa39d]">
-                {RODAPE_FIXO}
-              </pre>
-            </div>
-          </div>
-        )}
-
-        {tab === "highlights" && (
-          <div className="space-y-3">
-            <div className="mb-1 flex items-center justify-between">
-              <Stamp>
-                Sensacionalista
-              </Stamp>
-
-              <CopyButton
-                text={item.highlights.join(
-                  "\n"
-                )}
-                label="Copiar"
-              />
-            </div>
-
-            <ul className="space-y-2">
-              {item.highlights.map(
-                (h, i) => (
-                  <li
-                    key={i}
-                    className="flex gap-3 border-l-2 border-[#e0452f] bg-[#1a2628] px-3 py-2.5"
-                  >
-                    <span className="shrink-0 font-mono text-[10px] text-[#e0452f] mt-0.5">
-                      {i + 1}
-                    </span>
-
-                    <span className="font-mono text-[12px] leading-snug text-[#f4f0e8]">
-                      {h}
-                    </span>
-                  </li>
-                )
-              )}
-            </ul>
-          </div>
-        )}
-
-        {tab === "hashtags" && (
-          <div>
-            <div className="mb-3 flex justify-end">
-              <CopyButton
-                text={item.hashtags.join(
-                  " "
-                )}
-                label="Copiar hashtags"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {item.hashtags.map(
-                (tag, i) => (
-                  <span
-                    key={i}
-                    className="border border-[#e0452f]/40 px-2 py-1 font-mono text-[11px] text-[#e0452f]"
-                  >
-                    {tag}
-                  </span>
-                )
-              )}
-            </div>
-          </div>
-        )}
-
-        {tab === "banner" && (
-          <BannerSection
-            item={item}
-          />
-        )}
-      </div>
-
-      <div className="border-t border-[#243436] bg-[#0c1618] px-4 py-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">
-            RODAPE FIXO
-          </span>
-
-          <CopyButton
-            text={RODAPE_FIXO}
-            label="Copiar rodape"
-          />
-        </div>
-
-        <pre className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-[#8fa39d]">
-          {RODAPE_FIXO}
-        </pre>
-      </div>
-    </article>
-  );
-}
-
-// ─── SCHEDULER ───────────────────────────────────────────────────────────────
-
-function SchedulerBadge({
-  nextRun,
-  isEnabled,
-}) {
-  if (!isEnabled) {
-    return (
-      <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#5c6f6b]">
-        <Calendar size={11} />
-        AUTO 7H · INATIVO
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-      <Calendar size={11} />
-      AUTO 7H ·{" "}
-      {nextRun || "..."}
-    </span>
-  );
-}
-
-// ─── APP ──────────────────────────────────────────────────────────────────────
-
-export default function GeekNewsWire() {
-  const [status, setStatus] =
-    useState("idle");
-
-  const [errorMsg, setErrorMsg] =
-    useState("");
-
-  const [edition, setEdition] =
-    useState(null);
-
-  const [ticker, setTicker] =
-    useState(
-      "PREPARANDO TRANSMISSAO"
-    );
-
-  const [
-    schedulerEnabled,
-    setSchedulerEnabled,
-  ] = useState(false);
-
-  const [nextRun, setNextRun] =
-    useState("");
-
-  const [
-    activeFilter,
-    setActiveFilter,
-  ] = useState("all");
-
-  const [
-    testMode,
-    setTestMode,
-  ] = useState(false);
-
-  const schedulerRef =
-    useRef(null);
-
-  function computeNextRun() {
-    const n = new Date();
-    const d = new Date();
-
-    d.setHours(7, 0, 0, 0);
-
-    if (n >= d) {
-      d.setDate(
-        d.getDate() + 1
+    counts[item.categoria]++;
+
+    if (!item.titulo) {
+      errors.push(
+        `Noticia ${index + 1}: titulo ausente`
       );
     }
 
-    return d;
-  }
-
-  function formatNextRun(date) {
-    return date
-      .toLocaleString(
-        "pt-BR",
-        {
-          weekday: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        }
-      )
-      .toUpperCase();
-  }
-
-  function startScheduler() {
-    if (schedulerRef.current) {
-      clearInterval(
-        schedulerRef.current
+    if (!item.materia) {
+      errors.push(
+        `Noticia ${index + 1}: materia ausente`
       );
     }
 
-    setSchedulerEnabled(true);
+    const length = item.materia.length;
 
-    setNextRun(
-      formatNextRun(
-        computeNextRun()
-      )
-    );
-
-    schedulerRef.current =
-      setInterval(() => {
-        const now = new Date();
-
-        if (
-          now.getHours() === 7 &&
-          now.getMinutes() === 0
-        ) {
-          window.storage
-            ?.get(todayKey())
-            .then((saved) => {
-              if (!saved?.value) {
-                generate(false);
-              }
-            })
-            .catch(() =>
-              generate(false)
-            );
-        }
-
-        setNextRun(
-          formatNextRun(
-            computeNextRun()
-          )
-        );
-      }, 30000);
-  }
-
-  function stopScheduler() {
-    if (schedulerRef.current) {
-      clearInterval(
-        schedulerRef.current
+    if (length < 2000 || length > 2200) {
+      errors.push(
+        `Noticia ${index + 1} "${item.titulo}": ${length} caracteres`
       );
     }
 
-    schedulerRef.current = null;
-
-    setSchedulerEnabled(false);
-    setNextRun("");
-  }
-
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!window.storage?.get) {
-          return;
-        }
-
-        const saved =
-          await window.storage.get(
-            todayKey()
-          );
-
-        if (saved?.value) {
-          const p =
-            JSON.parse(
-              saved.value
-            );
-
-          setEdition({
-            ...p,
-            news: (
-              p.news || []
-            ).map(
-              normalizeNewsItem
-            ),
-          });
-
-          setStatus("done");
-        }
-
-        const sched =
-          await window.storage.get(
-            schedulerKey()
-          );
-
-        if (
-          sched?.value ===
-          "enabled"
-        ) {
-          startScheduler();
-        }
-      } catch {}
-    })();
-
-    return () => {
-      if (schedulerRef.current) {
-        clearInterval(
-          schedulerRef.current
-        );
-      }
-    };
-  }, []);
-
-  async function toggleScheduler() {
-    if (schedulerEnabled) {
-      stopScheduler();
-
-      try {
-        await window.storage?.set(
-          schedulerKey(),
-          "disabled"
-        );
-      } catch {}
-    } else {
-      startScheduler();
-
-      try {
-        await window.storage?.set(
-          schedulerKey(),
-          "enabled"
-        );
-      } catch {}
-    }
-  }
-
-  const summary = useMemo(() => {
-    const news =
-      edition?.news || [];
-
-    const byCategory = {};
-
-    for (
-      const cat of CATEGORY_ORDER
-    ) {
-      byCategory[cat] =
-        news.filter(
-          (n) =>
-            n.categoria === cat
-        ).length;
+    if (item.highlights.length !== 4) {
+      errors.push(
+        `Noticia ${index + 1}: highlights != 4`
+      );
     }
 
-    return {
-      total: news.length,
-      byCategory,
-    };
-  }, [edition]);
-
-  const filteredNews = useMemo(() => {
-    if (!edition?.news) {
-      return [];
+    if (item.hashtags.length !== 5) {
+      errors.push(
+        `Noticia ${index + 1}: hashtags != 5`
+      );
     }
 
     if (
-      activeFilter === "all"
+      !Array.isArray(item.fontes) ||
+      item.fontes.length < 1 ||
+      item.fontes.length > 3
     ) {
-      return edition.news;
-    }
-
-    return edition.news.filter(
-      (n) =>
-        n.categoria ===
-        activeFilter
-    );
-  }, [
-    edition,
-    activeFilter,
-  ]);
-
-  // ──────────────────────────────────────────
-  // GERAÇÃO
-  // ──────────────────────────────────────────
-
-  async function generate(
-    requestedTestMode = testMode
-  ) {
-    if (status === "loading") {
-      return;
-    }
-
-    const isTestMode =
-      Boolean(
-        requestedTestMode
+      errors.push(
+        `Noticia ${index + 1}: fontes invalidas`
       );
+    }
+  });
 
-    setStatus("loading");
-    setErrorMsg("");
+  for (const category of CATEGORIES) {
+    if (counts[category] !== 3) {
+      errors.push(
+        `${category}: esperadas 3, recebidas ${counts[category]}`
+      );
+    }
+  }
 
-    const phases = isTestMode
-      ? [
-          "MODO DE TESTE GRATUITO",
-          "TESTANDO CONEXAO COM O BACKEND",
-          "VALIDANDO RESPOSTA",
-          "PROCESSANDO NOTICIA DE TESTE",
-        ]
-      : [
-          "CONECTANDO AO FIO INTERNACIONAL",
-          "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
-          "FILTRANDO PUBLICACOES DAS ULTIMAS 24H",
-          "VALIDANDO DATA E FONTE",
-          "APURANDO OS FATOS",
-          "REDIGINDO COM VOZ PROPRIA",
-          "LAPIDANDO CHAMADAS",
-          "FORMATANDO PARA REDES SOCIAIS",
-        ];
+  return errors;
+}
 
-    let phaseIndex = 0;
+/*
+ * ============================================================
+ * MODO DE TESTE GRATUITO
+ * ============================================================
+ *
+ * Esta noticia e criada localmente.
+ *
+ * NAO chama Gemini.
+ * NAO usa GEMINI_API_KEY.
+ * NAO consome quota.
+ * NAO depende de billing.
+ *
+ * O objetivo e testar:
+ *
+ * - frontend
+ * - endpoint /api/news
+ * - JSON
+ * - validacao
+ * - armazenamento
+ * - cards
+ * - filtros
+ * - interface
+ */
+function createTestEdition() {
+  const news = [
+    {
+      categoria: "geek",
 
-    const interval =
-      setInterval(() => {
-        phaseIndex =
-          (phaseIndex + 1) %
-          phases.length;
+      titulo:
+        "WIRE/GEEK EM MODO DE TESTE GRATUITO",
 
-        setTicker(
-          phases[phaseIndex]
-        );
-      }, 1800);
+      publicado_em:
+        "Modo de teste",
 
-    setTicker(phases[0]);
+      materia:
+        "Esta e uma noticia de teste do sistema Wire/Geek. O objetivo deste conteudo e verificar se a comunicacao entre a interface React e o backend esta funcionando corretamente sem depender do Gemini ou de qualquer credito de API. Neste modo, o servidor cria uma noticia localmente e devolve o mesmo formato de dados utilizado pela edicao completa. Isso permite testar a renderizacao dos cards, os filtros por categoria, a exibicao da materia, os highlights, as hashtags, as fontes e a integracao visual dos banners. O modo de teste tambem serve para confirmar que o endpoint /api/news esta acessivel na Vercel e que a aplicacao consegue interpretar corretamente a resposta JSON. Nenhuma chamada externa de inteligencia artificial e realizada durante este processo. Portanto, este teste nao deve consumir a quota do Gemini nem depender de uma conta de faturamento ativa. Quando o teste estiver funcionando, o sistema pode voltar ao modo editorial normal, no qual o backend consulta o modelo configurado e produz a edicao completa com doze noticias divididas entre games, geek, cinema e anime. Enquanto isso, esta resposta permite identificar problemas de integracao antes de gastar qualquer credito. Se esta noticia aparecer corretamente na tela, significa que o caminho principal entre o navegador, a funcao serverless e o processamento do JSON esta operacional. O proximo passo sera conectar novamente a geracao real de noticias, mantendo este modo de teste como uma alternativa segura para diagnostico.",
 
-    try {
-      const total =
-        CATEGORY_ORDER.length *
-        NEWS_PER_CATEGORY;
+      highlights: [
+        "Wire/Geek esta funcionando em modo de teste gratuito.",
+        "Nenhuma chamada ao Gemini foi realizada.",
+        "O backend respondeu com uma noticia local.",
+        "O sistema esta pronto para o proximo teste.",
+      ],
 
-      const prompt =
-        isTestMode
-          ? `
-MODO DE TESTE.
+      hashtags: [
+        "#WireGeek",
+        "#BagacaStudios",
+        "#Geek",
+        "#News",
+        "#Teste",
+      ],
 
-Gere EXATAMENTE 1 noticia real.
+      fontes: [
+        {
+          nome: "Wire/Geek Teste Local",
+          url: "https://github.com/DanielMirandad/WireGeek",
+          publicado_em: "Modo de teste",
+        },
+      ],
 
-Escolha UMA das categorias:
-games, geek, cinema ou anime.
+      image_query:
+        "geek technology newsroom gaming entertainment",
+    },
+  ];
+
+  return {
+    news,
+  };
+}
+
+async function generateNews(ai, prompt) {
+  const response = await ai.models.generateContent({
+    model: MODEL,
+
+    contents: `
+${prompt || "Gere a edicao de hoje com exatamente 12 noticias reais."}
+
+IMPORTANTE:
 
 Pesquise a web antes de escrever.
 
-A noticia deve conter:
-categoria
-titulo
-publicado_em
-materia
-highlights
-hashtags
-fontes
-image_query
+A edicao precisa conter:
 
-No modo de teste, a materia pode ser curta.
+3 games
+3 geek
+3 cinema
+3 anime
 
-Nao invente fatos.
+Cada materia deve ter entre 2000 e 2200 caracteres.
+
+Nao use travessao.
+
+Nao invente fatos, datas, fontes ou URLs.
+
+Retorne somente o objeto JSON solicitado.
+`,
+
+    config: {
+      tools: [
+        {
+          googleSearch: {},
+        },
+      ],
+
+      responseMimeType: "application/json",
+
+      responseSchema: NEWS_SCHEMA,
+
+      temperature: 0.4,
+
+      maxOutputTokens: 30000,
+    },
+  });
+
+  if (!response.text) {
+    throw new Error(
+      "Gemini nao retornou texto."
+    );
+  }
+
+  return JSON.parse(response.text);
+}
+
+async function expandShortNews(ai, news) {
+  const shortItems = news
+    .map((item, index) => ({
+      index,
+      titulo: item.titulo,
+      materia: item.materia,
+    }))
+    .filter(
+      (item) =>
+        item.materia.length < 2000
+    );
+
+  if (shortItems.length === 0) {
+    return news;
+  }
+
+  const correctionSchema = {
+    type: "object",
+
+    properties: {
+      items: {
+        type: "array",
+
+        items: {
+          type: "object",
+
+          properties: {
+            index: {
+              type: "integer",
+            },
+
+            materia: {
+              type: "string",
+            },
+          },
+
+          required: [
+            "index",
+            "materia",
+          ],
+        },
+      },
+    },
+
+    required: ["items"],
+  };
+
+  const response =
+    await ai.models.generateContent({
+      model: MODEL,
+
+      contents: `
+Expanda as materias abaixo.
+
+Cada materia FINAL precisa ter obrigatoriamente entre 2000 e 2200 caracteres.
+
+Nao altere o sentido dos fatos.
+
+Nao invente informacoes.
+
+Nao invente datas.
+
+Nao invente declaracoes.
+
 Nao invente fontes.
-Nao invente URLs.
+
+Acrescente contexto, impacto, repercussao e analise jornalistica quando necessario.
+
 Nao use travessao.
 
 Retorne somente JSON.
 
-Formato:
+MATERIAS:
 
-{
-  "news": [
-    {
-      "categoria": "games",
-      "titulo": "Titulo de teste",
-      "publicado_em": "Hoje",
-      "materia": "Materia",
-      "highlights": [
-        "Highlight 1",
-        "Highlight 2",
-        "Highlight 3",
-        "Highlight 4"
-      ],
-      "hashtags": [
-        "#Games",
-        "#Gaming",
-        "#WireGeek",
-        "#BagacaStudios",
-        "#Noticias"
-      ],
-      "fontes": [
-        {
-          "nome": "Fonte",
-          "url": "https://exemplo.com",
-          "publicado_em": "Hoje"
-        }
-      ],
-      "image_query": "real gaming news photo"
-    }
-  ]
-}
+${shortItems
+  .map(
+    (item) => `
+INDEX: ${item.index}
+
+TITULO:
+${item.titulo}
+
+MATERIA:
+${item.materia}
 `
-          : `
-Gere a edicao de hoje com exatamente ${total} noticias reais.
+  )
+  .join("\n")}
+`,
 
-${NEWS_PER_CATEGORY} de cada categoria:
-games
-geek
-cinema
-anime
+      config: {
+        responseMimeType: "application/json",
 
-Todas publicadas nas ultimas 24 horas.
+        responseSchema:
+          correctionSchema,
 
-Busque na web antes de escrever.
+        temperature: 0.3,
 
-Cada materia deve obrigatoriamente ter entre 2000 e 2200 caracteres.
+        maxOutputTokens: 18000,
+      },
+    });
 
-Nunca entregue materia com menos de 2000 caracteres.
+  if (!response.text) {
+    throw new Error(
+      "Gemini nao retornou a expansao."
+    );
+  }
 
-Nunca use travessao.
+  const correction =
+    JSON.parse(response.text);
 
-Nunca invente fatos, datas, fontes ou URLs.
+  if (!Array.isArray(correction.items)) {
+    throw new Error(
+      "Formato de expansao invalido."
+    );
+  }
 
-Responda somente com o JSON solicitado.
-`;
+  for (const item of correction.items) {
+    const index = Number(item.index);
 
-      const response =
-        await fetchWithRetry(
-          "/api/news",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body: JSON.stringify({
-              prompt,
-              testMode:
-                isTestMode,
-            }),
-          },
-          {
-            attempts: 4,
-
-            onRetry: (
-              s,
-              a,
-              t,
-              w
-            ) => {
-              setTicker(
-                `SERVIDOR OCUPADO: TENTATIVA ${a}/${t - 1} EM ${Math.round(
-                  w / 1000
-                )}S`
-              );
-            },
-          }
-        );
-
-      if (!response.ok) {
-        const body =
-          await response
-            .text()
-            .catch(
-              () => ""
-            );
-
-        throw new Error(
-          `Erro no backend ${response.status}: ${body.slice(
-            0,
-            500
-          )}`
-        );
-      }
-
-      const data =
-        await response.json();
-
-      const text = String(
-        data?.text || ""
-      ).trim();
-
-      if (!text) {
-        throw new Error(
-          "Backend nao retornou JSON."
-        );
-      }
-
-      const cleaned = text
-        .replace(
-          /^```json\s*/i,
-          ""
-        )
-        .replace(
-          /^```\s*/i,
-          ""
-        )
-        .replace(
-          /\s*```$/i,
-          ""
-        )
-        .trim();
-
-      let parsed;
-
-      try {
-        parsed =
-          JSON.parse(cleaned);
-      } catch {
-        const start =
-          cleaned.indexOf(
-            "{"
-          );
-
-        const end =
-          cleaned.lastIndexOf(
-            "}"
-          );
-
-        if (
-          start < 0 ||
-          end <= start
-        ) {
-          throw new Error(
-            "JSON invalido retornado pelo backend."
-          );
-        }
-
-        parsed = JSON.parse(
-          cleaned.slice(
-            start,
-            end + 1
-          )
-        );
-      }
-
-      const news = (
-        parsed.news || []
-      ).map(
-        normalizeNewsItem
-      );
-
-      const validationError =
-        validateEdition(
-          news,
-          isTestMode
-        );
-
-      if (validationError) {
-        throw new Error(
-          validationError
-        );
-      }
-
-      const newEdition = {
-        generatedAt:
-          new Date().toISOString(),
-
-        news,
-
-        testMode:
-          isTestMode,
-      };
-
-      setEdition(
-        newEdition
-      );
-
-      setStatus("done");
-
-      setTicker(
-        isTestMode
-          ? "MODO DE TESTE CONCLUIDO · 1 NOTICIA"
-          : `APURACAO CONCLUIDA · ${news.length} DESPACHOS`
-      );
-
-      setActiveFilter("all");
-
-      try {
-        if (
-          window.storage?.set
-        ) {
-          await window.storage.set(
-            todayKey(),
-            JSON.stringify(
-              newEdition
-            )
-          );
-        }
-      } catch {}
-    } catch (err) {
-      console.error(
-        "WIRE/GEEK FRONTEND ERROR:",
-        err
-      );
-
-      setErrorMsg(
-        err?.message ||
-          "Falha desconhecida."
-      );
-
-      setStatus("error");
-
-      setTicker(
-        "FALHA NA APURACAO"
-      );
-    } finally {
-      clearInterval(interval);
+    if (
+      Number.isInteger(index) &&
+      news[index]
+    ) {
+      news[index].materia =
+        normalizeText(item.materia);
     }
   }
 
-  // ──────────────────────────────────────────
-  // RENDER
-  // ──────────────────────────────────────────
+  return news;
+}
 
-  return (
-    <div
-      className="min-h-screen bg-[#0a1315] text-[#d8dfd9]"
-      style={{
-        fontFamily:
-          "'IBM Plex Mono', monospace",
-      }}
-    >
-      <link
-        rel="preconnect"
-        href="https://fonts.googleapis.com"
-      />
+export default async function handler(
+  req,
+  res
+) {
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      error: "Metodo nao permitido.",
+    });
+  }
 
-      <link
-        rel="preconnect"
-        href="https://fonts.gstatic.com"
-        crossOrigin=""
-      />
+  /*
+   * ==========================================================
+   * DETECCAO DO MODO DE TESTE
+   * ==========================================================
+   *
+   * O frontend envia:
+   *
+   * {
+   *   testMode: true
+   * }
+   *
+   * Se testMode for true, retornamos imediatamente.
+   *
+   * O Gemini NAO e inicializado.
+   * A API KEY NAO e lida.
+   * Nenhuma chamada externa acontece.
+   */
 
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap');
-      `}</style>
+  const testMode =
+    req.body?.testMode === true;
 
-      {/* TICKER */}
+  if (testMode) {
+    console.log(
+      "WIRE/GEEK: TEST MODE ATIVO"
+    );
 
-      <div className="overflow-hidden whitespace-nowrap border-b border-[#3a4a4d] bg-[#132025]">
-        <div className="flex items-center gap-2 px-4 py-2">
-          <Radio
-            size={13}
-            className="shrink-0 text-[#e0452f]"
-          />
+    try {
+      const data =
+        createTestEdition();
 
-          <span className="shrink-0 font-mono text-[10px] font-bold tracking-[0.2em] text-[#e0452f]">
-            AO VIVO
-          </span>
+      const news =
+        normalizeNews(data.news);
 
-          <span className="text-[#5c6f6b]">
-            /
-          </span>
+      const validationErrors =
+        validateNews(news, true);
 
-          <span className="truncate font-mono text-[10px] tracking-[0.15em] text-[#8fa39d]">
-            {ticker}
-          </span>
-        </div>
-      </div>
+      if (validationErrors.length > 0) {
+        console.error(
+          "TEST MODE VALIDATION ERROR:",
+          validationErrors
+        );
 
-      {/* HEADER */}
+        return res.status(500).json({
+          error:
+            "Edicao de teste invalida.",
+          details:
+            validationErrors,
+        });
+      }
 
-      <header className="mx-auto max-w-3xl border-b border-[#243436] px-4 pb-6 pt-8 sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1
-              className="text-3xl font-black tracking-tight text-[#f4f0e8] sm:text-4xl"
-              style={{
-                fontFamily:
-                  "'Archivo Black', sans-serif",
-              }}
-            >
-              WIRE
-              <span className="text-[#e0452f]">
-                /
-              </span>
-              GEEK
-            </h1>
+      console.log(
+        "WIRE/GEEK: TEST MODE OK"
+      );
 
-            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">
-              BAGACA STUDIOS ·
-              NEWSROOM 3.0
-            </div>
-          </div>
+      return res.status(200).json({
+        testMode: true,
 
-          <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">
-            GAMES · GEEK · CINEMA ·
-            ANIME
-          </span>
-        </div>
+        text: JSON.stringify({
+          news,
+        }),
 
-        <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
-          Central editorial para
-          apuracao diaria. 4
-          categorias, 3 noticias
-          cada, banners no Canva
-          com imagens reais.
-        </p>
+        news,
+      });
+    } catch (error) {
+      console.error(
+        "WIRE/GEEK TEST MODE ERROR:",
+        error
+      );
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-            <CheckCircle2
-              size={11}
-            />
-            ULTIMAS 24H
-          </span>
+      return res.status(500).json({
+        error:
+          "Erro no modo de teste.",
+        details:
+          error?.message ||
+          String(error),
+      });
+    }
+  }
 
-          {CATEGORY_ORDER.map(
-            (cat) => (
-              <span
-                key={cat}
-                className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider"
-                style={{
-                  color:
-                    CATEGORY_COLOR[
-                      cat
-                    ],
-                }}
-              >
-                {NEWS_PER_CATEGORY}x{" "}
-                {
-                  CATEGORY_LABEL[
-                    cat
-                  ]
-                }
-              </span>
-            )
-          )}
+  /*
+   * ==========================================================
+   * MODO NORMAL
+   * ==========================================================
+   *
+   * Somente aqui o Gemini sera utilizado.
+   */
 
-          <SchedulerBadge
-            nextRun={nextRun}
-            isEnabled={
-              schedulerEnabled
-            }
-          />
-        </div>
-      </header>
+  try {
+    const apiKey =
+      process.env.GOOGLE_GEMINI_API_KEY ||
+      process.env.GEMINI_API_KEY;
 
-      {/* MAIN */}
+    console.log(
+      "GEMINI ENV CHECK:",
+      {
+        google: Boolean(
+          process.env
+            .GOOGLE_GEMINI_API_KEY
+        ),
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {/* APURAR NORMAL */}
+        gemini: Boolean(
+          process.env.GEMINI_API_KEY
+        ),
 
-            <button
-              type="button"
-              onClick={() =>
-                generate(false)
-              }
-              disabled={
-                status ===
-                "loading"
-              }
-              className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RefreshCw
-                size={14}
-                className={
-                  status ===
-                  "loading"
-                    ? "animate-spin"
-                    : ""
-                }
-              />
+        length:
+          apiKey?.length || 0,
+      }
+    );
 
-              {status ===
-              "loading"
-                ? "Apurando..."
-                : "Apurar Noticias"}
-            </button>
+    if (!apiKey) {
+      return res.status(500).json({
+        error:
+          "GOOGLE_GEMINI_API_KEY nao configurada na Vercel.",
+      });
+    }
 
-            {/* TESTE GRATUITO */}
+    const ai =
+      new GoogleGenAI({
+        apiKey,
+      });
 
-            <button
-              type="button"
-              onClick={() =>
-                generate(true)
-              }
-              disabled={
-                status ===
-                "loading"
-              }
-              className="inline-flex items-center gap-2 border border-[#7C3AED]/60 px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#a78bfa] transition-colors hover:bg-[#7C3AED]/10 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Zap
-                size={14}
-                className={
-                  status ===
-                  "loading"
-                    ? "animate-pulse"
-                    : ""
-                }
-              />
+    const {
+      prompt,
+    } = req.body || {};
 
-              Teste gratuito
-            </button>
+    let data;
 
-            {/* SCHEDULER */}
+    try {
+      data = await generateNews(
+        ai,
+        prompt
+      );
+    } catch (error) {
+      console.error(
+        "GEMINI GENERATION ERROR:",
+        {
+          message:
+            error?.message ||
+            String(error),
 
-            <button
-              type="button"
-              onClick={
-                toggleScheduler
-              }
-              className={`inline-flex items-center gap-2 border px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
-                schedulerEnabled
-                  ? "border-[#5fbf7a]/50 text-[#5fbf7a] hover:bg-[#5fbf7a]/10"
-                  : "border-[#3a4a4d] text-[#7a8f8a] hover:border-[#5fbf7a]/50 hover:text-[#5fbf7a]"
-              }`}
-            >
-              <Calendar
-                size={14}
-              />
+          status:
+            error?.status,
 
-              {schedulerEnabled
-                ? "Auto 7H · Ativo"
-                : "Ativar Auto 7H"}
-            </button>
-          </div>
+          code:
+            error?.code,
 
-          {edition && (
-            <div className="text-right">
-              <div className="font-mono text-[10px] text-[#5c6f6b]">
-                ULTIMA APURACAO
-              </div>
+          details:
+            error?.details,
+        }
+      );
 
-              <div className="font-mono text-[11px] text-[#8fa39d]">
-                {new Date(
-                  edition.generatedAt
-                ).toLocaleTimeString(
-                  "pt-BR"
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+      const status =
+        error?.status === 429
+          ? 429
+          : 502;
 
-        {/* TEST MODE STATUS */}
+      return res.status(status).json({
+        error:
+          "Erro ao gerar noticias com Gemini.",
 
-        {edition?.testMode && (
-          <div className="mb-5 border border-[#7C3AED]/40 bg-[#171221] px-3 py-2.5 font-mono text-[10px] text-[#c4b5fd]">
-            MODO DE TESTE ATIVO ·
-            FOI GERADA 1 NOTICIA
-            PARA VALIDAR O BACKEND
-            SEM EXIGIR A EDICAO
-            COMPLETA DE 12 NOTICIAS.
-          </div>
-        )}
+        details:
+          error?.message ||
+          String(error),
+      });
+    }
 
-        {/* STATUS GRID */}
+    if (
+      !data ||
+      !Array.isArray(data.news)
+    ) {
+      return res.status(502).json({
+        error:
+          "Gemini retornou formato de noticias invalido.",
+      });
+    }
 
-        {edition && (
-          <div className="mb-5 grid grid-cols-4 border border-[#243436] bg-[#0c1618]">
-            {CATEGORY_ORDER.map(
-              (cat) => {
-                const count =
-                  summary
-                    .byCategory[
-                    cat
-                  ] || 0;
+    let news =
+      normalizeNews(data.news);
 
-                const ok =
-                  edition.testMode
-                    ? true
-                    : count ===
-                      NEWS_PER_CATEGORY;
+    /*
+     * Expansao das materias curtas.
+     */
 
-                const color =
-                  CATEGORY_COLOR[
-                    cat
-                  ];
+    const shortNews =
+      news.filter(
+        (item) =>
+          item.materia.length < 2000
+      );
 
-                return (
-                  <div
-                    key={cat}
-                    className="border-r border-[#243436] px-3 py-2 last:border-r-0"
-                  >
-                    <div
-                      className="font-mono text-[9px] tracking-[0.2em]"
-                      style={{
-                        color,
-                      }}
-                    >
-                      {cat}
-                    </div>
+    if (shortNews.length > 0) {
+      try {
+        news =
+          await expandShortNews(
+            ai,
+            news
+          );
+      } catch (error) {
+        console.error(
+          "GEMINI EXPANSION ERROR:",
+          error
+        );
 
-                    <div
-                      className={`mt-0.5 font-mono text-[10px] ${
-                        ok
-                          ? "text-[#5fbf7a]"
-                          : "text-[#e0452f]"
-                      }`}
-                    >
-                      {edition.testMode
-                        ? cat ===
-                          edition
-                            .news[0]
-                            ?.categoria
-                          ? "TESTE ✓"
-                          : "-"
-                        : ok
-                        ? `${count}/${NEWS_PER_CATEGORY} ✓`
-                        : `${count}/${NEWS_PER_CATEGORY}`}
-                    </div>
-                  </div>
-                );
-              }
-            )}
-          </div>
-        )}
+        return res.status(502).json({
+          error:
+            "Erro ao expandir noticias com Gemini.",
 
-        {/* ERROR */}
+          details:
+            error?.message ||
+            String(error),
+        });
+      }
+    }
 
-        {status ===
-          "error" && (
-          <div className="mb-6 flex items-start gap-2 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[13px] text-[#f0a89a]">
-            <AlertCircle
-              size={16}
-              className="mt-0.5 shrink-0"
-            />
+    news =
+      normalizeNews(news);
 
-            <span>
-              {errorMsg}
-            </span>
-          </div>
-        )}
+    const validationErrors =
+      validateNews(news, false);
 
-        {/* IDLE */}
+    if (
+      validationErrors.length > 0
+    ) {
+      return res.status(422).json({
+        error:
+          "A edicao nao passou na validacao.",
 
-        {status ===
-          "idle" &&
-          !edition && (
-            <div className="border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#5c6f6b]">
-              <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">
-                REDACAO EM ESPERA
-              </div>
+        details:
+          validationErrors,
 
-              Nenhuma edicao
-              gerada hoje. Inicie
-              a apuracao ou use
-              o modo de teste
-              gratuito.
-            </div>
-          )}
+        news:
+          news.map(
+            (item) => ({
+              titulo:
+                item.titulo,
 
-        {/* LOADING */}
+              caracteres:
+                item.materia.length,
+            })
+          ),
+      });
+    }
 
-        {status ===
-          "loading" &&
-          !edition && (
-            <div className="animate-pulse border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#8fa39d]">
-              {ticker}...
-            </div>
-          )}
+    return res.status(200).json({
+      testMode: false,
 
-        {/* FILTROS + CARDS */}
+      text: JSON.stringify({
+        news,
+      }),
 
-        {edition && (
-          <>
-            <div className="mb-4 flex flex-wrap gap-1 border-b border-[#243436] pb-4">
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveFilter(
-                    "all"
-                  )
-                }
-                className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${
-                  activeFilter ===
-                  "all"
-                    ? "bg-[#e0452f] text-[#0a1315]"
-                    : "border border-[#3a4a4d] text-[#7a8f8a] hover:border-[#e0452f] hover:text-[#e0452f]"
-                }`}
-              >
-                Todos (
-                {
-                  edition.news
-                    .length
-                }
-                )
-              </button>
+      news,
+    });
+  } catch (error) {
+    console.error(
+      "WIRE/GEEK GEMINI ERROR:",
+      error
+    );
 
-              {CATEGORY_ORDER.map(
-                (cat) => {
-                  const count =
-                    summary
-                      .byCategory[
-                      cat
-                    ] || 0;
-
-                  const active =
-                    activeFilter ===
-                    cat;
-
-                  const color =
-                    CATEGORY_COLOR[
-                      cat
-                    ];
-
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() =>
-                        setActiveFilter(
-                          cat
-                        )
-                      }
-                      className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors border"
-                      style={{
-                        borderColor:
-                          active
-                            ? color
-                            : color +
-                              "40",
-
-                        color: active
-                          ? "#0a1315"
-                          : color,
-
-                        backgroundColor:
-                          active
-                            ? color
-                            : "transparent",
-                      }}
-                    >
-                      {
-                        CATEGORY_LABEL[
-                          cat
-                        ]
-                      }{" "}
-                      ({count})
-                    </button>
-                  );
-                }
-              )}
-            </div>
-
-            <div className="space-y-5">
-              {filteredNews.map(
-                (
-                  item,
-                  index
-                ) => (
-                  <DispatchCard
-                    key={`${item.categoria}-${index}`}
-                    item={item}
-                    index={edition.news.indexOf(
-                      item
-                    )}
-                  />
-                )
-              )}
-            </div>
-          </>
-        )}
-      </main>
-
-      {/* FOOTER */}
-
-      <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
-        <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
-          <span>
-            WIRE/GEEK 3.0 · BAGACA
-            STUDIOS
-          </span>
-
-          <span>
-            EDICOES SALVAS · AUTO
-            7H · BANNERS COM
-            IMAGENS REAIS
-          </span>
-        </div>
-      </footer>
-    </div>
-  );
+    return res.status(500).json({
+      error:
+        error?.message ||
+        "Erro interno do servidor.",
+    });
+  }
 }

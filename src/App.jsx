@@ -1,3 +1,4 @@
+```javascript
 import { GoogleGenAI } from "@google/genai";
 
 const MODEL = "gemini-3.5-flash-lite";
@@ -16,7 +17,7 @@ const NEWS_SCHEMA = {
         properties: {
           categoria: {
             type: "string",
-            enum: ["games", "geek", "cinema", "anime"],
+            enum: CATEGORIES,
           },
           titulo: {
             type: "string",
@@ -60,7 +61,11 @@ const NEWS_SCHEMA = {
                   type: "string",
                 },
               },
-              required: ["nome", "url", "publicado_em"],
+              required: [
+                "nome",
+                "url",
+                "publicado_em",
+              ],
             },
           },
           image_query: {
@@ -91,40 +96,93 @@ function normalizeText(value) {
 }
 
 function normalizeNews(news) {
-  if (!Array.isArray(news)) return [];
+  if (!Array.isArray(news)) {
+    return [];
+  }
 
   return news.map((item) => ({
-    categoria: String(item?.categoria || "geek").toLowerCase(),
-    titulo: normalizeText(item?.titulo),
-    publicado_em: normalizeText(item?.publicado_em),
-    materia: normalizeText(item?.materia),
+    categoria: String(
+      item?.categoria || "geek"
+    ).toLowerCase(),
 
-    highlights: Array.isArray(item?.highlights)
-      ? item.highlights.map(normalizeText)
-      : [],
+    titulo: normalizeText(
+      item?.titulo
+    ),
 
-    hashtags: Array.isArray(item?.hashtags)
-      ? item.hashtags.map(normalizeText)
-      : [],
+    publicado_em: normalizeText(
+      item?.publicado_em
+    ),
 
-    fontes: Array.isArray(item?.fontes)
-      ? item.fontes.map((source) => ({
-          nome: normalizeText(source?.nome),
-          url: String(source?.url || "").trim(),
-          publicado_em: normalizeText(source?.publicado_em),
-        }))
-      : [],
+    materia: normalizeText(
+      item?.materia
+    ),
+
+    highlights:
+      Array.isArray(item?.highlights)
+        ? item.highlights
+            .map(normalizeText)
+            .slice(0, 4)
+        : [],
+
+    hashtags:
+      Array.isArray(item?.hashtags)
+        ? item.hashtags
+            .map(normalizeText)
+            .slice(0, 5)
+        : [],
+
+    fontes:
+      Array.isArray(item?.fontes)
+        ? item.fontes
+            .slice(0, 3)
+            .map((source) => ({
+              nome: normalizeText(
+                source?.nome
+              ),
+              url: String(
+                source?.url || ""
+              ).trim(),
+              publicado_em:
+                normalizeText(
+                  source?.publicado_em
+                ),
+            }))
+        : [],
 
     image_query: normalizeText(
-      item?.image_query || item?.titulo
+      item?.image_query ||
+        item?.titulo
     ),
   }));
 }
 
-function validateNews(news, testMode = false) {
+/*
+ * ============================================================
+ * VALIDACAO
+ * ============================================================
+ */
+
+function validateNews(
+  news,
+  testMode = false
+) {
+  const errors = [];
+
   if (!Array.isArray(news)) {
     return ["news nao e um array"];
   }
+
+  /*
+   * ----------------------------------------------------------
+   * MODO DE TESTE
+   * ----------------------------------------------------------
+   *
+   * O teste propositalmente aceita apenas UMA noticia.
+   *
+   * Nao exige 2000 caracteres.
+   * Nao exige 12 noticias.
+   * Nao exige 3 noticias por categoria.
+   */
 
   if (testMode) {
     if (news.length !== 1) {
@@ -136,30 +194,50 @@ function validateNews(news, testMode = false) {
     const item = news[0];
 
     if (!item) {
-      return ["Noticia de teste inexistente."];
+      return [
+        "Noticia de teste inexistente.",
+      ];
     }
 
-    if (!CATEGORIES.includes(item.categoria)) {
+    if (
+      !CATEGORIES.includes(
+        item.categoria
+      )
+    ) {
       return [
         `Categoria invalida: ${item.categoria}`,
       ];
     }
 
     if (!item.titulo) {
-      return ["Noticia de teste sem titulo."];
+      return [
+        "Noticia de teste sem titulo.",
+      ];
     }
 
     if (!item.materia) {
-      return ["Noticia de teste sem materia."];
+      return [
+        "Noticia de teste sem materia.",
+      ];
     }
 
-    if (item.highlights.length !== 4) {
+    if (
+      !Array.isArray(
+        item.highlights
+      ) ||
+      item.highlights.length !== 4
+    ) {
       return [
         "Noticia de teste precisa ter 4 highlights.",
       ];
     }
 
-    if (item.hashtags.length !== 5) {
+    if (
+      !Array.isArray(
+        item.hashtags
+      ) ||
+      item.hashtags.length !== 5
+    ) {
       return [
         "Noticia de teste precisa ter 5 hashtags.",
       ];
@@ -177,7 +255,11 @@ function validateNews(news, testMode = false) {
     return [];
   }
 
-  const errors = [];
+  /*
+   * ----------------------------------------------------------
+   * MODO NORMAL
+   * ----------------------------------------------------------
+   */
 
   if (news.length !== 12) {
     errors.push(
@@ -192,58 +274,93 @@ function validateNews(news, testMode = false) {
     anime: 0,
   };
 
-  news.forEach((item, index) => {
-    if (!CATEGORIES.includes(item.categoria)) {
-      errors.push(
-        `Noticia ${index + 1}: categoria invalida`
-      );
-      return;
+  news.forEach(
+    (item, index) => {
+      if (
+        !CATEGORIES.includes(
+          item.categoria
+        )
+      ) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          }: categoria invalida`
+        );
+
+        return;
+      }
+
+      counts[item.categoria]++;
+
+      if (!item.titulo) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          }: titulo ausente`
+        );
+      }
+
+      if (!item.materia) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          }: materia ausente`
+        );
+      }
+
+      const length =
+        item.materia.length;
+
+      if (
+        length < 2000 ||
+        length > 2200
+      ) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          } "${item.titulo}": ${length} caracteres`
+        );
+      }
+
+      if (
+        !Array.isArray(
+          item.highlights
+        ) ||
+        item.highlights.length !== 4
+      ) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          }: highlights != 4`
+        );
+      }
+
+      if (
+        !Array.isArray(
+          item.hashtags
+        ) ||
+        item.hashtags.length !== 5
+      ) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          }: hashtags != 5`
+        );
+      }
+
+      if (
+        !Array.isArray(item.fontes) ||
+        item.fontes.length < 1 ||
+        item.fontes.length > 3
+      ) {
+        errors.push(
+          `Noticia ${
+            index + 1
+          }: fontes invalidas`
+        );
+      }
     }
-
-    counts[item.categoria]++;
-
-    if (!item.titulo) {
-      errors.push(
-        `Noticia ${index + 1}: titulo ausente`
-      );
-    }
-
-    if (!item.materia) {
-      errors.push(
-        `Noticia ${index + 1}: materia ausente`
-      );
-    }
-
-    const length = item.materia.length;
-
-    if (length < 2000 || length > 2200) {
-      errors.push(
-        `Noticia ${index + 1} "${item.titulo}": ${length} caracteres`
-      );
-    }
-
-    if (item.highlights.length !== 4) {
-      errors.push(
-        `Noticia ${index + 1}: highlights != 4`
-      );
-    }
-
-    if (item.hashtags.length !== 5) {
-      errors.push(
-        `Noticia ${index + 1}: hashtags != 5`
-      );
-    }
-
-    if (
-      !Array.isArray(item.fontes) ||
-      item.fontes.length < 1 ||
-      item.fontes.length > 3
-    ) {
-      errors.push(
-        `Noticia ${index + 1}: fontes invalidas`
-      );
-    }
-  });
+  );
 
   for (const category of CATEGORIES) {
     if (counts[category] !== 3) {
@@ -258,27 +375,17 @@ function validateNews(news, testMode = false) {
 
 /*
  * ============================================================
- * MODO DE TESTE GRATUITO
+ * NOTICIA LOCAL DE TESTE
  * ============================================================
  *
- * Esta noticia e criada localmente.
+ * IMPORTANTE:
  *
- * NAO chama Gemini.
- * NAO usa GEMINI_API_KEY.
- * NAO consome quota.
- * NAO depende de billing.
- *
- * O objetivo e testar:
- *
- * - frontend
- * - endpoint /api/news
- * - JSON
- * - validacao
- * - armazenamento
- * - cards
- * - filtros
- * - interface
+ * Esta funcao NAO chama Gemini.
+ * Esta funcao NAO acessa API KEY.
+ * Esta funcao NAO consulta Google.
+ * Esta funcao NAO consome quota.
  */
+
 function createTestEdition() {
   const news = [
     {
@@ -310,9 +417,14 @@ function createTestEdition() {
 
       fontes: [
         {
-          nome: "Wire/Geek Teste Local",
-          url: "https://github.com/DanielMirandad/WireGeek",
-          publicado_em: "Modo de teste",
+          nome:
+            "Wire/Geek Teste Local",
+
+          url:
+            "https://github.com/DanielMirandad/WireGeek",
+
+          publicado_em:
+            "Modo de teste",
         },
       ],
 
@@ -326,12 +438,25 @@ function createTestEdition() {
   };
 }
 
-async function generateNews(ai, prompt) {
-  const response = await ai.models.generateContent({
-    model: MODEL,
+/*
+ * ============================================================
+ * GEMINI
+ * ============================================================
+ */
 
-    contents: `
-${prompt || "Gere a edicao de hoje com exatamente 12 noticias reais."}
+async function generateNews(
+  ai,
+  prompt
+) {
+  const response =
+    await ai.models.generateContent({
+      model: MODEL,
+
+      contents: `
+${
+  prompt ||
+  "Gere a edicao de hoje com exatamente 12 noticias reais."
+}
 
 IMPORTANTE:
 
@@ -353,22 +478,24 @@ Nao invente fatos, datas, fontes ou URLs.
 Retorne somente o objeto JSON solicitado.
 `,
 
-    config: {
-      tools: [
-        {
-          googleSearch: {},
-        },
-      ],
+      config: {
+        tools: [
+          {
+            googleSearch: {},
+          },
+        ],
 
-      responseMimeType: "application/json",
+        responseMimeType:
+          "application/json",
 
-      responseSchema: NEWS_SCHEMA,
+        responseSchema:
+          NEWS_SCHEMA,
 
-      temperature: 0.4,
+        temperature: 0.4,
 
-      maxOutputTokens: 30000,
-    },
-  });
+        maxOutputTokens: 30000,
+      },
+    });
 
   if (!response.text) {
     throw new Error(
@@ -376,22 +503,38 @@ Retorne somente o objeto JSON solicitado.
     );
   }
 
-  return JSON.parse(response.text);
+  return JSON.parse(
+    response.text
+  );
 }
 
-async function expandShortNews(ai, news) {
-  const shortItems = news
-    .map((item, index) => ({
-      index,
-      titulo: item.titulo,
-      materia: item.materia,
-    }))
-    .filter(
-      (item) =>
-        item.materia.length < 2000
-    );
+/*
+ * ============================================================
+ * EXPANSAO
+ * ============================================================
+ */
 
-  if (shortItems.length === 0) {
+async function expandShortNews(
+  ai,
+  news
+) {
+  const shortItems =
+    news
+      .map(
+        (item, index) => ({
+          index,
+          titulo: item.titulo,
+          materia: item.materia,
+        })
+      )
+      .filter(
+        (item) =>
+          item.materia.length < 2000
+      );
+
+  if (
+    shortItems.length === 0
+  ) {
     return news;
   }
 
@@ -469,7 +612,8 @@ ${item.materia}
 `,
 
       config: {
-        responseMimeType: "application/json",
+        responseMimeType:
+          "application/json",
 
         responseSchema:
           correctionSchema,
@@ -487,59 +631,88 @@ ${item.materia}
   }
 
   const correction =
-    JSON.parse(response.text);
+    JSON.parse(
+      response.text
+    );
 
-  if (!Array.isArray(correction.items)) {
+  if (
+    !Array.isArray(
+      correction.items
+    )
+  ) {
     throw new Error(
       "Formato de expansao invalido."
     );
   }
 
-  for (const item of correction.items) {
-    const index = Number(item.index);
+  for (
+    const item of correction.items
+  ) {
+    const index =
+      Number(item.index);
 
     if (
       Number.isInteger(index) &&
       news[index]
     ) {
       news[index].materia =
-        normalizeText(item.materia);
+        normalizeText(
+          item.materia
+        );
     }
   }
 
   return news;
 }
 
+/*
+ * ============================================================
+ * API HANDLER
+ * ============================================================
+ */
+
 export default async function handler(
   req,
   res
 ) {
+  /*
+   * Apenas POST
+   */
+
   if (req.method !== "POST") {
     return res.status(405).json({
-      error: "Metodo nao permitido.",
+      error:
+        "Metodo nao permitido.",
     });
   }
 
   /*
    * ==========================================================
-   * DETECCAO DO MODO DE TESTE
+   * TEST MODE
    * ==========================================================
    *
-   * O frontend envia:
+   * ATENCAO:
    *
-   * {
-   *   testMode: true
-   * }
+   * Este bloco vem ANTES de qualquer acesso ao Gemini.
    *
-   * Se testMode for true, retornamos imediatamente.
+   * Portanto:
    *
-   * O Gemini NAO e inicializado.
-   * A API KEY NAO e lida.
-   * Nenhuma chamada externa acontece.
+   * testMode=true
+   *       |
+   *       +--> cria noticia local
+   *       |
+   *       +--> valida
+   *       |
+   *       +--> responde
+   *
+   * Gemini nao participa.
    */
 
+  const body =
+    req.body || {};
+
   const testMode =
-    req.body?.testMode === true;
+    body.testMode === true;
 
   if (testMode) {
     console.log(
@@ -551,51 +724,70 @@ export default async function handler(
         createTestEdition();
 
       const news =
-        normalizeNews(data.news);
+        normalizeNews(
+          data.news
+        );
 
       const validationErrors =
-        validateNews(news, true);
+        validateNews(
+          news,
+          true
+        );
 
-      if (validationErrors.length > 0) {
+      if (
+        validationErrors.length > 0
+      ) {
         console.error(
           "TEST MODE VALIDATION ERROR:",
           validationErrors
         );
 
-        return res.status(500).json({
-          error:
-            "Edicao de teste invalida.",
-          details:
-            validationErrors,
-        });
+        return res
+          .status(500)
+          .json({
+            testMode: true,
+
+            error:
+              "Edicao de teste invalida.",
+
+            details:
+              validationErrors,
+          });
       }
 
       console.log(
         "WIRE/GEEK: TEST MODE OK"
       );
 
-      return res.status(200).json({
-        testMode: true,
+      return res
+        .status(200)
+        .json({
+          testMode: true,
 
-        text: JSON.stringify({
+          text: JSON.stringify({
+            news,
+          }),
+
           news,
-        }),
-
-        news,
-      });
+        });
     } catch (error) {
       console.error(
         "WIRE/GEEK TEST MODE ERROR:",
         error
       );
 
-      return res.status(500).json({
-        error:
-          "Erro no modo de teste.",
-        details:
-          error?.message ||
-          String(error),
-      });
+      return res
+        .status(500)
+        .json({
+          testMode: true,
+
+          error:
+            "Erro no modo de teste.",
+
+          details:
+            error?.message ||
+            String(error),
+        });
     }
   }
 
@@ -604,25 +796,30 @@ export default async function handler(
    * MODO NORMAL
    * ==========================================================
    *
-   * Somente aqui o Gemini sera utilizado.
+   * Somente daqui para baixo o Gemini pode ser utilizado.
    */
 
   try {
     const apiKey =
-      process.env.GOOGLE_GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY;
+      process.env
+        .GOOGLE_GEMINI_API_KEY ||
+      process.env
+        .GEMINI_API_KEY;
 
     console.log(
       "GEMINI ENV CHECK:",
       {
-        google: Boolean(
-          process.env
-            .GOOGLE_GEMINI_API_KEY
-        ),
+        google:
+          Boolean(
+            process.env
+              .GOOGLE_GEMINI_API_KEY
+          ),
 
-        gemini: Boolean(
-          process.env.GEMINI_API_KEY
-        ),
+        gemini:
+          Boolean(
+            process.env
+              .GEMINI_API_KEY
+          ),
 
         length:
           apiKey?.length || 0,
@@ -630,10 +827,12 @@ export default async function handler(
     );
 
     if (!apiKey) {
-      return res.status(500).json({
-        error:
-          "GOOGLE_GEMINI_API_KEY nao configurada na Vercel.",
-      });
+      return res
+        .status(500)
+        .json({
+          error:
+            "GEMINI_API_KEY nao configurada na Vercel.",
+        });
     }
 
     const ai =
@@ -643,15 +842,20 @@ export default async function handler(
 
     const {
       prompt,
-    } = req.body || {};
+    } = body;
 
     let data;
 
+    /*
+     * Geracao principal
+     */
+
     try {
-      data = await generateNews(
-        ai,
-        prompt
-      );
+      data =
+        await generateNews(
+          ai,
+          prompt
+        );
     } catch (error) {
       console.error(
         "GEMINI GENERATION ERROR:",
@@ -671,45 +875,77 @@ export default async function handler(
         }
       );
 
-      const status =
+      /*
+       * 429 = quota/rate limit
+       */
+
+      if (
         error?.status === 429
-          ? 429
-          : 502;
+      ) {
+        return res
+          .status(429)
+          .json({
+            error:
+              "Limite ou quota do Gemini atingido.",
 
-      return res.status(status).json({
-        error:
-          "Erro ao gerar noticias com Gemini.",
+            details:
+              error?.message ||
+              String(error),
 
-        details:
-          error?.message ||
-          String(error),
-      });
+            testModeAvailable:
+              true,
+          });
+      }
+
+      return res
+        .status(502)
+        .json({
+          error:
+            "Erro ao gerar noticias com Gemini.",
+
+          details:
+            error?.message ||
+            String(error),
+        });
     }
+
+    /*
+     * Verificacao da resposta
+     */
 
     if (
       !data ||
-      !Array.isArray(data.news)
+      !Array.isArray(
+        data.news
+      )
     ) {
-      return res.status(502).json({
-        error:
-          "Gemini retornou formato de noticias invalido.",
-      });
+      return res
+        .status(502)
+        .json({
+          error:
+            "Gemini retornou formato de noticias invalido.",
+        });
     }
 
     let news =
-      normalizeNews(data.news);
+      normalizeNews(
+        data.news
+      );
 
     /*
-     * Expansao das materias curtas.
+     * Expansao das materias curtas
      */
 
     const shortNews =
       news.filter(
         (item) =>
-          item.materia.length < 2000
+          item.materia.length <
+          2000
       );
 
-    if (shortNews.length > 0) {
+    if (
+      shortNews.length > 0
+    ) {
       try {
         news =
           await expandShortNews(
@@ -722,65 +958,97 @@ export default async function handler(
           error
         );
 
-        return res.status(502).json({
-          error:
-            "Erro ao expandir noticias com Gemini.",
+        return res
+          .status(502)
+          .json({
+            error:
+              "Erro ao expandir noticias com Gemini.",
 
-          details:
-            error?.message ||
-            String(error),
-        });
+            details:
+              error?.message ||
+              String(error),
+          });
       }
     }
 
+    /*
+     * Normalizacao final
+     */
+
     news =
-      normalizeNews(news);
+      normalizeNews(
+        news
+      );
+
+    /*
+     * Validacao final
+     */
 
     const validationErrors =
-      validateNews(news, false);
+      validateNews(
+        news,
+        false
+      );
 
     if (
       validationErrors.length > 0
     ) {
-      return res.status(422).json({
-        error:
-          "A edicao nao passou na validacao.",
+      return res
+        .status(422)
+        .json({
+          error:
+            "A edicao nao passou na validacao.",
 
-        details:
-          validationErrors,
+          details:
+            validationErrors,
 
-        news:
-          news.map(
-            (item) => ({
-              titulo:
-                item.titulo,
+          news:
+            news.map(
+              (item) => ({
+                titulo:
+                  item.titulo,
 
-              caracteres:
-                item.materia.length,
-            })
-          ),
-      });
+                categoria:
+                  item.categoria,
+
+                caracteres:
+                  item.materia.length,
+              })
+            ),
+        });
     }
 
-    return res.status(200).json({
-      testMode: false,
+    /*
+     * Sucesso
+     */
 
-      text: JSON.stringify({
+    return res
+      .status(200)
+      .json({
+        testMode: false,
+
+        text: JSON.stringify({
+          news,
+        }),
+
         news,
-      }),
-
-      news,
-    });
+      });
   } catch (error) {
     console.error(
       "WIRE/GEEK GEMINI ERROR:",
       error
     );
 
-    return res.status(500).json({
-      error:
-        error?.message ||
-        "Erro interno do servidor.",
-    });
+    return res
+      .status(500)
+      .json({
+        error:
+          error?.message ||
+          "Erro interno do servidor.",
+
+        details:
+          error?.stack || undefined,
+      });
   }
 }
+```

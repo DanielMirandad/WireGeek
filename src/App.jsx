@@ -1,4 +1,4 @@
-```javascript
+javascript
 import { GoogleGenAI } from "@google/genai";
 
 const MODEL = "gemini-3.5-flash-lite";
@@ -162,215 +162,101 @@ function normalizeNews(news) {
  * ============================================================
  */
 
-function validateNews(
-  news,
-  testMode = false
-) {
-  const errors = [];
-
+function validateEdition(news, isTestMode = false) {
   if (!Array.isArray(news)) {
-    return ["news nao e um array"];
+    return "Noticias invalidas.";
   }
 
-  /*
-   * ----------------------------------------------------------
-   * MODO DE TESTE
-   * ----------------------------------------------------------
-   *
-   * O teste propositalmente aceita apenas UMA noticia.
-   *
-   * Nao exige 2000 caracteres.
-   * Nao exige 12 noticias.
-   * Nao exige 3 noticias por categoria.
-   */
-
-  if (testMode) {
+  // MODO DE TESTE
+  if (isTestMode) {
     if (news.length !== 1) {
-      return [
-        `Modo de teste deve retornar exatamente 1 noticia. Recebidas: ${news.length}`,
-      ];
+      return "O modo de teste precisa retornar exatamente 1 noticia.";
     }
 
     const item = news[0];
 
     if (!item) {
-      return [
-        "Noticia de teste inexistente.",
-      ];
+      return "Noticia de teste inexistente.";
+    }
+
+    if (!CATEGORY_ORDER.includes(item.categoria)) {
+      return `Categoria invalida: ${item.categoria}.`;
+    }
+
+    if (!item.titulo || !item.materia) {
+      return "Noticia de teste sem titulo ou materia.";
+    }
+
+    if (!Array.isArray(item.highlights) || item.highlights.length !== 4) {
+      return "A noticia de teste precisa ter exatamente 4 highlights.";
+    }
+
+    if (!Array.isArray(item.hashtags) || item.hashtags.length !== 5) {
+      return "A noticia de teste precisa ter exatamente 5 hashtags.";
+    }
+
+    if (!Array.isArray(item.fontes) || item.fontes.length < 1) {
+      return "A noticia de teste precisa ter pelo menos 1 fonte.";
+    }
+
+    return null;
+  }
+
+  // MODO NORMAL
+  const expectedTotal =
+    CATEGORY_ORDER.length * NEWS_PER_CATEGORY;
+
+  if (news.length !== expectedTotal) {
+    return `A edicao precisa conter exatamente ${expectedTotal} noticias.`;
+  }
+
+  for (const cat of CATEGORY_ORDER) {
+    const count = news.filter(
+      (item) => item.categoria === cat
+    ).length;
+
+    if (count !== NEWS_PER_CATEGORY) {
+      return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
+    }
+  }
+
+  for (const item of news) {
+    if (!item.titulo || !item.materia) {
+      return "Noticia sem titulo ou materia.";
+    }
+
+    if (item.materia.length < 2000) {
+      return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
+    }
+
+    if (item.materia.length > 2200) {
+      return `"${item.titulo}" ultrapassa o limite de 2200 caracteres. Encontrado: ${item.materia.length}.`;
     }
 
     if (
-      !CATEGORIES.includes(
-        item.categoria
-      )
-    ) {
-      return [
-        `Categoria invalida: ${item.categoria}`,
-      ];
-    }
-
-    if (!item.titulo) {
-      return [
-        "Noticia de teste sem titulo.",
-      ];
-    }
-
-    if (!item.materia) {
-      return [
-        "Noticia de teste sem materia.",
-      ];
-    }
-
-    if (
-      !Array.isArray(
-        item.highlights
-      ) ||
+      !Array.isArray(item.highlights) ||
       item.highlights.length !== 4
     ) {
-      return [
-        "Noticia de teste precisa ter 4 highlights.",
-      ];
+      return `"${item.titulo}" precisa de 4 highlights.`;
     }
 
     if (
-      !Array.isArray(
-        item.hashtags
-      ) ||
+      !Array.isArray(item.hashtags) ||
       item.hashtags.length !== 5
     ) {
-      return [
-        "Noticia de teste precisa ter 5 hashtags.",
-      ];
+      return `"${item.titulo}" precisa de 5 hashtags.`;
     }
 
     if (
       !Array.isArray(item.fontes) ||
-      item.fontes.length < 1
+      item.fontes.length < 1 ||
+      item.fontes.length > 3
     ) {
-      return [
-        "Noticia de teste precisa ter pelo menos 1 fonte.",
-      ];
-    }
-
-    return [];
-  }
-
-  /*
-   * ----------------------------------------------------------
-   * MODO NORMAL
-   * ----------------------------------------------------------
-   */
-
-  if (news.length !== 12) {
-    errors.push(
-      `Esperadas 12 noticias, recebidas ${news.length}`
-    );
-  }
-
-  const counts = {
-    games: 0,
-    geek: 0,
-    cinema: 0,
-    anime: 0,
-  };
-
-  news.forEach(
-    (item, index) => {
-      if (
-        !CATEGORIES.includes(
-          item.categoria
-        )
-      ) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          }: categoria invalida`
-        );
-
-        return;
-      }
-
-      counts[item.categoria]++;
-
-      if (!item.titulo) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          }: titulo ausente`
-        );
-      }
-
-      if (!item.materia) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          }: materia ausente`
-        );
-      }
-
-      const length =
-        item.materia.length;
-
-      if (
-        length < 2000 ||
-        length > 2200
-      ) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          } "${item.titulo}": ${length} caracteres`
-        );
-      }
-
-      if (
-        !Array.isArray(
-          item.highlights
-        ) ||
-        item.highlights.length !== 4
-      ) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          }: highlights != 4`
-        );
-      }
-
-      if (
-        !Array.isArray(
-          item.hashtags
-        ) ||
-        item.hashtags.length !== 5
-      ) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          }: hashtags != 5`
-        );
-      }
-
-      if (
-        !Array.isArray(item.fontes) ||
-        item.fontes.length < 1 ||
-        item.fontes.length > 3
-      ) {
-        errors.push(
-          `Noticia ${
-            index + 1
-          }: fontes invalidas`
-        );
-      }
-    }
-  );
-
-  for (const category of CATEGORIES) {
-    if (counts[category] !== 3) {
-      errors.push(
-        `${category}: esperadas 3, recebidas ${counts[category]}`
-      );
+      return `"${item.titulo}" precisa ter entre 1 e 3 fontes.`;
     }
   }
 
-  return errors;
+  return null;
 }
 
 /*

@@ -191,15 +191,16 @@ async function generateNews(ai, prompt) {
 ${prompt || "Gere a edicao de hoje com exatamente 12 noticias reais."}
 
 IMPORTANTE:
+
 Pesquise a web antes de escrever.
 
-A edicao precisa conter:
+A edicao precisa conter exatamente:
 3 games
 3 geek
 3 cinema
 3 anime
 
-Cada materia deve ter entre 2000 e 2200 caracteres.
+Cada materia deve ter obrigatoriamente entre 2000 e 2200 caracteres.
 
 Nao use travessao.
 
@@ -235,8 +236,7 @@ async function expandShortNews(ai, news) {
       materia: item.materia,
     }))
     .filter(
-      (item) =>
-        item.materia.length < 2000
+      (item) => item.materia.length < 2000
     );
 
   if (shortItems.length === 0) {
@@ -348,20 +348,20 @@ export default async function handler(req, res) {
 
   try {
     const apiKey =
-  process.env.GOOGLE_GEMINI_API_KEY ||
-  process.env.GEMINI_API_KEY;
+      process.env.GOOGLE_GEMINI_API_KEY ||
+      process.env.GEMINI_API_KEY;
 
-console.log("GEMINI ENV CHECK:", {
-  google: Boolean(process.env.GOOGLE_GEMINI_API_KEY),
-  gemini: Boolean(process.env.GEMINI_API_KEY),
-  length: apiKey?.length || 0,
-});
+    console.log("GEMINI ENV CHECK:", {
+      google: Boolean(process.env.GOOGLE_GEMINI_API_KEY),
+      gemini: Boolean(process.env.GEMINI_API_KEY),
+      length: apiKey?.length || 0,
+    });
 
-if (!apiKey) {
-  return res.status(500).json({
-    error: "GOOGLE_GEMINI_API_KEY nao configurada na Vercel.",
-  });
-}
+    if (!apiKey) {
+      return res.status(500).json({
+        error: "GEMINI_API_KEY nao configurada na Vercel.",
+      });
+    }
 
     const ai = new GoogleGenAI({
       apiKey,
@@ -371,17 +371,25 @@ if (!apiKey) {
 
     let data;
 
+    // Primeira chamada ao Gemini
     try {
       data = await generateNews(
         ai,
         prompt
       );
-console.error("GEMINI ERROR:", {
-  message: error?.message,
-  status: error?.status,
-  code: error?.code,
-  details: error?.details,
-});
+    } catch (error) {
+      console.error(
+        "GEMINI GENERATION ERROR:",
+        error?.message || String(error)
+      );
+
+      return res.status(502).json({
+        error: "Erro ao gerar noticias com Gemini.",
+        details:
+          error?.message ||
+          String(error),
+      });
+    }
 
     if (!data || !Array.isArray(data.news)) {
       return res.status(502).json({
@@ -408,12 +416,18 @@ console.error("GEMINI ERROR:", {
           news
         );
       } catch (error) {
-   console.error("GEMINI GENERATION ERROR:", error?.message || String(error));
+        console.error(
+          "GEMINI EXPANSION ERROR:",
+          error?.message || String(error)
+        );
 
         return res.status(502).json({
-  error: "Erro ao gerar noticias com Gemini.",
-  details: error?.message || String(error),
-});
+          error:
+            "Erro ao expandir noticias com Gemini.",
+          details:
+            error?.message ||
+            String(error),
+        });
       }
     }
 

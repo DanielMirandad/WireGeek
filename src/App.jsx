@@ -537,10 +537,16 @@ export default function GeekNewsWire() {
     const interval=setInterval(()=>{ if(!retrying){phaseIndex=(phaseIndex+1)%phases.length;setTicker(phases[phaseIndex]);} },1800);
     setTicker(phases[0]);
     try {
-      const response = await fetchWithRetry("https://api.anthropic.com/v1/messages",
-        { method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:16000,system:buildSystemPrompt(),
-            messages:[{role:"user",content:`Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`}],
+      const response = await fetchWithRetry("/api/news",
+        {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    prompt: `Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length * NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`
+  })
+}
             tools:[{type:"web_search_20250305",name:"web_search"}]}) },
         { attempts:4, onRetry:(s,a,t,w)=>{ retrying=true; setTicker(`SERVIDOR OCUPADO: TENTATIVA ${a}/${t-1} EM ${Math.round(w/1000)}S`); window.setTimeout(()=>{retrying=false;},w); }});
 

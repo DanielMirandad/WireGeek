@@ -104,7 +104,8 @@ function validateEdition(news) {
     if (count!==NEWS_PER_CATEGORY) return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
   }
   for (const item of news) {
-    if (!item.titulo||!item.materia) return "Noticia sem titulo ou materia.";
+    if (item.materia.length < 2000)
+  return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
     if (item.highlights.length!==4) return `"${item.titulo}" precisa de 4 highlights.`;
     if (item.hashtags.length!==5)   return `"${item.titulo}" precisa de 5 hashtags.`;
   }
@@ -162,7 +163,9 @@ REGRAS CRITICAS DE ESTILO:
 - Escreva com ritmo dinamico: frases curtas e medias intercaladas, variando o comprimento para criar urgencia.
 - Inicie paragrafos de formas diferentes: com o sujeito, com um adverbio, com um verbo no imperativo, com uma pergunta retorica.
 - Use recursos como: numeros concretos, citacoes diretas (sem inventar), analogias, perguntas retorias.
-- Materia com no maximo 2200 caracteres.
+
+Materia com aproximadamente 2200 caracteres, preferencialmente entre 2000 e 2200 caracteres.
+Nunca ultrapasse 2200 caracteres.
 
 CINEMA: filmes, lancamentos, trailers, franquias, atores, atrizes, diretores, producoes, bilheterias, adaptacoes, remakes, sequencias, super-herois.
 
@@ -173,7 +176,11 @@ FONTES: IGN Brasil, Omelete, Eurogamer, The Enemy, Jovem Nerd, Adrenaline, Canal
 REGRAS DE APURACAO: Nao invente fatos, datas, fontes, URLs ou declaracoes. Nao use noticias com mais de 24 horas. URLs reais.
 
 PARA CADA NOTICIA:
-- materia: coluna de opiniao dinamica. Max 2200 chars. Sem travessoes.
+- materia: coluna de opiniao dinamica com aproximadamente 2200 caracteres.
+- A materia deve ter entre 2000 e 2200 caracteres, sempre que houver informacao suficiente.
+- Nunca ultrapasse 2200 caracteres.
+- Nao encurte artificialmente a materia apenas para atingir o limite.
+- Sem travessoes.
 - highlights: exatamente 4 frases curtas, estilo sensacionalista, max 250 chars cada, sem travessoes.
 - hashtags: exatamente 5 hashtags.
 - categoria: somente "games", "geek", "cinema" ou "anime".

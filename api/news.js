@@ -408,28 +408,12 @@ console.error("GEMINI ERROR:", {
           news
         );
       } catch (error) {
-       console.error(
-  "GEMINI GENERATION ERROR FULL:",
-  JSON.stringify(
-    {
-      message: error?.message,
-      status: error?.status,
-      code: error?.code,
-      error: error?.error,
-      details: error?.details,
-    },
-    null,
-    2
-  )
-);
+   console.error("GEMINI GENERATION ERROR:", error?.message || String(error));
 
         return res.status(502).json({
-          error:
-            "Erro ao expandir materias.",
-          details:
-            error?.message ||
-            "Erro desconhecido",
-        });
+  error: "Erro ao gerar noticias com Gemini.",
+  details: error?.message || String(error),
+});
       }
     }
 

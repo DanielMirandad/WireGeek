@@ -530,68 +530,127 @@ export default function GeekNewsWire() {
   },[edition,activeFilter]);
 
   async function generate() {
-    if(status==="loading") return;
-    setStatus("loading"); setErrorMsg("");
-    const phases=["CONECTANDO AO FIO INTERNACIONAL","VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME","FILTRANDO PUBLICACOES DAS ULTIMAS 24H","VALIDANDO DATA E FONTE","APURANDO OS FATOS","REDIGINDO COM VOZ PROPRIA","LAPIDANDO CHAMADAS","FORMATANDO PARA REDES SOCIAIS"];
-    let phaseIndex=0,retrying=false;
-    const interval=setInterval(()=>{ if(!retrying){phaseIndex=(phaseIndex+1)%phases.length;setTicker(phases[phaseIndex]);} },1800);
-    setTicker(phases[0]);
-    try {
-      const response = await fetchWithRetry("/api/news",
-        {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    prompt: `Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length * NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`
-  })
-}
-           const response = await fetchWithRetry(
-  "/api/news",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      prompt: `Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length * NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`,
-    }),
-  },
-  {
-    attempts: 4,
-    onRetry: (s, a, t, w) => {
-      retrying = true;
-      setTicker(
-        `SERVIDOR OCUPADO: TENTATIVA ${a}/${t - 1} EM ${Math.round(w / 1000)}S`
+  if (status === "loading") return;
+
+  setStatus("loading");
+  setErrorMsg("");
+
+  const phases = [
+    "CONECTANDO AO FIO INTERNACIONAL",
+    "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
+    "FILTRANDO PUBLICACOES DAS ULTIMAS 24H",
+    "VALIDANDO DATA E FONTE",
+    "APURANDO OS FATOS",
+    "REDIGINDO COM VOZ PROPRIA",
+    "LAPIDANDO CHAMADAS",
+    "FORMATANDO PARA REDES SOCIAIS",
+  ];
+
+  let phaseIndex = 0;
+
+  const interval = setInterval(() => {
+    phaseIndex = (phaseIndex + 1) % phases.length;
+    setTicker(phases[phaseIndex]);
+  }, 1800);
+
+  setTicker(phases[0]);
+
+  try {
+    const response = await fetchWithRetry(
+      "/api/news",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: `Gere a edicao de hoje com exatamente ${
+            CATEGORY_ORDER.length * NEWS_PER_CATEGORY
+          } noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`,
+        }),
+      },
+      {
+        attempts: 4,
+        onRetry: (s, a, t, w) => {
+          setTicker(
+            `SERVIDOR OCUPADO: TENTATIVA ${a}/${t - 1} EM ${Math.round(
+              w / 1000
+            )}S`
+          );
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Erro no backend ${response.status}: ${body.slice(0, 300)}`
       );
-      window.setTimeout(() => {
-        retrying = false;
-      }, w);
-    },
+    }
+
+    const data = await response.json();
+
+    const text = String(data?.text || "").trim();
+
+    if (!text) {
+      throw new Error("Backend nao retornou JSON.");
+    }
+
+    const cleaned = text
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    let parsed;
+
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      const start = cleaned.indexOf("{");
+      const end = cleaned.lastIndexOf("}");
+
+      if (start < 0 || end <= start) {
+        throw new Error("JSON invalido retornado pelo backend.");
+      }
+
+      parsed = JSON.parse(cleaned.slice(start, end + 1));
+    }
+
+    const news = (parsed.news || []).map(normalizeNewsItem);
+
+    const validationError = validateEdition(news);
+
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
+    const newEdition = {
+      generatedAt: new Date().toISOString(),
+      news,
+    };
+
+    setEdition(newEdition);
+    setStatus("done");
+    setTicker(`APURACAO CONCLUIDA · ${news.length} DESPACHOS`);
+    setActiveFilter("all");
+
+    try {
+      if (window.storage?.set) {
+        await window.storage.set(
+          todayKey(),
+          JSON.stringify(newEdition)
+        );
+      }
+    } catch {}
+  } catch (err) {
+    setErrorMsg(err?.message || "Falha desconhecida.");
+    setStatus("error");
+    setTicker("FALHA NA APURACAO");
+  } finally {
+    clearInterval(interval);
   }
-);
-        { attempts:4, onRetry:(s,a,t,w)=>{ retrying=true; setTicker(`SERVIDOR OCUPADO: TENTATIVA ${a}/${t-1} EM ${Math.round(w/1000)}S`); window.setTimeout(()=>{retrying=false;},w); }});
-
-      if(!response.ok){ const b=await response.text().catch(()=>""); throw new Error(`Erro na API ${response.status}: ${b.slice(0,200)}`); }
-      const data=await response.json();
-      if(data.stop_reason==="max_tokens") throw new Error("Limite de tokens. Tente novamente.");
-
-      const text = String(data?.text || "").trim();
-      if(!text) throw new Error("API nao retornou JSON.");
-
-      const cleaned=text.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/\s*```$/i,"").trim();
-      let parsed; try{parsed=JSON.parse(cleaned);}catch{const s=cleaned.indexOf("{"),e=cleaned.lastIndexOf("}");if(s<0||e<=s)throw new Error("JSON invalido.");parsed=JSON.parse(cleaned.slice(s,e+1));}
-
-      const news=(parsed.news||[]).map(normalizeNewsItem);
-      const ve=validateEdition(news); if(ve) throw new Error(ve);
-
-      const newEdition={generatedAt:new Date().toISOString(),news};
-      setEdition(newEdition); setStatus("done"); setTicker(`APURACAO CONCLUIDA · ${news.length} DESPACHOS`); setActiveFilter("all");
-      try{ if(window.storage?.set) await window.storage.set(todayKey(),JSON.stringify(newEdition)); }catch{}
-    } catch(err){ setErrorMsg(err?.message||"Falha desconhecida."); setStatus("error"); setTicker("FALHA NA APURACAO"); }
-    finally{ clearInterval(interval); }
-  }
+}
 
   return (
     <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9]" style={{fontFamily:"'IBM Plex Mono', monospace"}}>

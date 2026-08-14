@@ -96,13 +96,52 @@ function normalizeNewsItem(item={}) {
     image_query:  item.image_query||item.titulo||"",
   };
 }
-function validateEdition(news) {
-  if (!Array.isArray(news)||news.length!==CATEGORY_ORDER.length*NEWS_PER_CATEGORY)
-    return `A edicao precisa conter exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} noticias.`;
-  for (const cat of CATEGORY_ORDER) {
-    const count = news.filter(n=>n.categoria===cat).length;
-    if (count!==NEWS_PER_CATEGORY) return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
+function validateEdition(news, isTestMode = false) {
+  if (isTestMode) {
+    if (!Array.isArray(news) || news.length !== 1) {
+      return "O modo de teste precisa retornar exatamente 1 noticia.";
+    }
+
+    const item = news[0];
+
+    if (
+      !item ||
+      !["games", "geek", "cinema", "anime"].includes(
+        item.categoria
+      )
+    ) {
+      return "A noticia de teste possui categoria invalida.";
+    }
+
+    if (!item.titulo || !item.materia) {
+      return "A noticia de teste possui campos obrigatorios ausentes.";
+    }
+
+    return null;
   }
+
+  if (
+    !Array.isArray(news) ||
+    news.length !==
+      CATEGORY_ORDER.length * NEWS_PER_CATEGORY
+  ) {
+    return `A edicao precisa conter exatamente ${
+      CATEGORY_ORDER.length * NEWS_PER_CATEGORY
+    } noticias.`;
+  }
+
+  for (const cat of CATEGORY_ORDER) {
+    const count = news.filter(
+      (n) => n.categoria === cat
+    ).length;
+
+    if (count !== NEWS_PER_CATEGORY) {
+      return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
+    }
+  }
+
+  return null;
+}
   for (const item of news) {
     if (!item.titulo || !item.materia) {
   return "Noticia sem titulo ou materia.";

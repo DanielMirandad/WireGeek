@@ -348,18 +348,20 @@ export default async function handler(req, res) {
 
   try {
     const apiKey =
-      console.log("GEMINI ENV CHECK:", {
-  exists: Boolean(process.env.GEMINI_API_KEY),
-  length: process.env.GEMINI_API_KEY?.length || 0,
+  process.env.GOOGLE_GEMINI_API_KEY ||
+  process.env.GEMINI_API_KEY;
+
+console.log("GEMINI ENV CHECK:", {
+  google: Boolean(process.env.GOOGLE_GEMINI_API_KEY),
+  gemini: Boolean(process.env.GEMINI_API_KEY),
+  length: apiKey?.length || 0,
 });
-    
-      process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({
-        error:
-          "GEMINI_API_KEY nao configurada na Vercel.",
-      });
-    }
+
+if (!apiKey) {
+  return res.status(500).json({
+    error: "GOOGLE_GEMINI_API_KEY nao configurada na Vercel.",
+  });
+}
 
     const ai = new GoogleGenAI({
       apiKey,

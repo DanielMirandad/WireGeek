@@ -348,8 +348,12 @@ export default async function handler(req, res) {
 
   try {
     const apiKey =
+      console.log("GEMINI ENV CHECK:", {
+  exists: Boolean(process.env.GEMINI_API_KEY),
+  length: process.env.GEMINI_API_KEY?.length || 0,
+});
+    
       process.env.GEMINI_API_KEY;
-
     if (!apiKey) {
       return res.status(500).json({
         error:

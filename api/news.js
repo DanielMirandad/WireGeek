@@ -38,7 +38,10 @@ REGRAS CRITICAS:
 - Nao invente fontes.
 - Nao invente URLs.
 - Nao use noticias com mais de 24 horas.
-- Materia com no maximo 2200 caracteres.
+- A materia deve ter entre 2000 e 2200 caracteres.
+- Conte os caracteres antes de responder.
+- Se estiver abaixo de 2000 caracteres, desenvolva a analise.
+- Se estiver acima de 2200 caracteres, reduza o texto.
 - Highlights exatamente 4 por noticia.
 - Hashtags exatamente 5 por noticia.
 - Fontes entre 1 e 3 por noticia.
@@ -65,22 +68,22 @@ PARA CADA NOTICIA:
 CATEGORIAS:
 
 GAMES:
-jogos, consoles, PC, Xbox, PlayStation, Nintendo, Steam, trailers, lançamentos, atualizações, indústria e esports.
+jogos, consoles, PC, Xbox, PlayStation, Nintendo, Steam, trailers, lancamentos, atualizacoes, industria e esports.
 
 GEEK:
-quadrinhos, tecnologia geek, cultura pop, colecionáveis, eventos, ficção científica, fantasia e cultura nerd.
+quadrinhos, tecnologia geek, cultura pop, colecionaveis, eventos, ficcao cientifica, fantasia e cultura nerd.
 
 CINEMA:
-filmes, lançamentos, trailers, franquias, atores, atrizes, diretores, produções, bilheterias, adaptações, remakes e sequências.
+filmes, lancamentos, trailers, franquias, atores, atrizes, diretores, producoes, bilheterias, adaptacoes, remakes e sequencias.
 
 ANIME:
-animes, mangás, light novels, episódios, temporadas, adaptações, dublagem, filmes, streaming, Crunchyroll e declarações de criadores.
+animes, mangas, light novels, episodios, temporadas, adaptacoes, dublagem, filmes, streaming, Crunchyroll e declaracoes de criadores.
 
 FONTES PRIORITARIAS:
 IGN Brasil, Omelete, Eurogamer, The Enemy, Jovem Nerd, Adrenaline, Canaltech, GameSpot, IGN, Polygon, Variety, Deadline, The Hollywood Reporter, Crunchyroll News, Anime News Network e MyAnimeList News.
 
 FORMATO DA RESPOSTA:
-Responda SOMENTE com JSON válido.
+Responda SOMENTE com JSON valido.
 
 {
   "news": [
@@ -173,8 +176,146 @@ O array news deve conter exatamente 12 itens:
       });
     }
 
+    /*
+     * Tenta interpretar o JSON produzido pelo modelo.
+     */
+    let parsed;
+
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return res.status(502).json({
+        error: "A Anthropic retornou JSON invalido.",
+        text: text.slice(0, 2000),
+      });
+    }
+
+    if (!parsed || !Array.isArray(parsed.news)) {
+      return res.status(502).json({
+        error: "Formato de noticias invalido.",
+      });
+    }
+
+    /*
+     * Expande automaticamente materias abaixo de 2000 caracteres.
+     */
+    async function expandMateria(item) {
+      const materiaAtual = String(item.materia || "").trim();
+
+      if (materiaAtual.length >= 2000) {
+        return materiaAtual;
+      }
+
+      const expandResponse = await fetch(
+        "https://api.anthropic.com/v1/messages",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 5000,
+            system: `
+Voce e um editor de noticias do Wire/Geek.
+
+Sua tarefa e expandir uma materia jornalistica existente.
+
+REGRAS OBRIGATORIAS:
+- O resultado deve ter entre 2000 e 2200 caracteres.
+- Nunca ultrapasse 2200 caracteres.
+- Nunca fique abaixo de 2000 caracteres.
+- Preserve os fatos existentes.
+- Nao invente fatos.
+- Nao invente numeros.
+- Nao invente datas.
+- Nao invente declaracoes.
+- Nao invente fontes.
+- Desenvolva contexto, impacto, repercussao e analise.
+- Mantenha o tom jornalistico e opinativo.
+- NUNCA use travessao.
+- Use virgulas, pontos, dois-pontos ou parenteses.
+- Retorne SOMENTE o texto final da materia.
+`,
+            messages: [
+              {
+                role: "user",
+                content: `
+TITULO:
+${item.titulo}
+
+MATERIA ATUAL:
+${materiaAtual}
+
+A materia possui atualmente ${materiaAtual.length} caracteres.
+
+Expanda a materia ate atingir obrigatoriamente entre 2000 e 2200 caracteres.
+`,
+              },
+            ],
+          }),
+        }
+      );
+
+      if (!expandResponse.ok) {
+        throw new Error(
+          `Falha ao expandir "${item.titulo}": HTTP ${expandResponse.status}`
+        );
+      }
+
+      const expandRaw = await expandResponse.json();
+
+      const expandedText = (expandRaw.content || [])
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("\n")
+        .replace(/[—–]/g, ",")
+        .trim();
+
+      if (!expandedText) {
+        throw new Error(
+          `A expansao de "${item.titulo}" nao retornou texto.`
+        );
+      }
+
+      return expandedText;
+    }
+
+    /*
+     * Processa somente as noticias que ficaram abaixo do minimo.
+     */
+    for (const item of parsed.news) {
+      const materia = String(item.materia || "").trim();
+
+      if (materia.length < 2000) {
+        item.materia = await expandMateria(item);
+      }
+    }
+
+    /*
+     * Validacao final.
+     */
+    for (const item of parsed.news) {
+      const materia = String(item.materia || "").trim();
+
+      item.materia = materia
+        .replace(/[—–]/g, ",")
+        .trim();
+
+      const length = item.materia.length;
+
+      if (length < 2000 || length > 2200) {
+        return res.status(422).json({
+          error: `"${item.titulo}" precisa ter entre 2000 e 2200 caracteres.`,
+          encontrados: length,
+        });
+      }
+    }
+
     return res.status(200).json({
-      text,
+      text: JSON.stringify(parsed),
     });
   } catch (error) {
     console.error("WIRE/GEEK API ERROR:", error);

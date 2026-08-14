@@ -98,14 +98,19 @@ function normalizeNewsItem(item={}) {
 }
 function validateEdition(news) {
   if (!Array.isArray(news)||news.length!==CATEGORY_ORDER.length*NEWS_PER_CATEGORY)
-    return `Aedicao precisa conter exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} noticias.`;
+    return `A edicao precisa conter exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} noticias.`;
   for (const cat of CATEGORY_ORDER) {
     const count = news.filter(n=>n.categoria===cat).length;
     if (count!==NEWS_PER_CATEGORY) return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
   }
   for (const item of news) {
-    if (item.materia.length < 2000)
+    if (!item.titulo || !item.materia) {
+  return "Noticia sem titulo ou materia.";
+}
+
+if (item.materia.length < 2000) {
   return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
+}
     if (item.highlights.length!==4) return `"${item.titulo}" precisa de 4 highlights.`;
     if (item.hashtags.length!==5)   return `"${item.titulo}" precisa de 5 hashtags.`;
   }
@@ -164,8 +169,8 @@ REGRAS CRITICAS DE ESTILO:
 - Inicie paragrafos de formas diferentes: com o sujeito, com um adverbio, com um verbo no imperativo, com uma pergunta retorica.
 - Use recursos como: numeros concretos, citacoes diretas (sem inventar), analogias, perguntas retorias.
 
-Materia com aproximadamente 2200 caracteres, preferencialmente entre 2000 e 2200 caracteres.
-Nunca ultrapasse 2200 caracteres.
+- materia: coluna de opiniao dinamica. Entre 2000 e 2200 caracteres obrigatoriamente. Sem travessoes.
+Materia com no minimo 2000 e no maximo 2200 caracteres. Nunca entregue materia abaixo de 2000 caracteres.
 
 CINEMA: filmes, lancamentos, trailers, franquias, atores, atrizes, diretores, producoes, bilheterias, adaptacoes, remakes, sequencias, super-herois.
 
@@ -300,6 +305,7 @@ function FormattedArticle({ text }) {
 }
 
 // ─── BANNER SECTION ───────────────────────────────────────────────────────────
+
 function BannerSection({ item }) {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -668,9 +674,7 @@ export default function GeekNewsWire() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: `Gere a edicao de hoje com exatamente ${
-            CATEGORY_ORDER.length * NEWS_PER_CATEGORY
-          } noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`,
+          prompt: `Gere a edicao de hoje com exatamente ${CATEGORY_ORDER.length * NEWS_PER_CATEGORY} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Cada materia deve obrigatoriamente ter entre 2000 e 2200 caracteres. Nunca entregue materia com menos de 2000 caracteres. Nunca use travessao. Responda somente com o JSON solicitado.`
         }),
       },
       {

@@ -2,17 +2,18 @@ import { GoogleGenAI } from "@google/genai";
 
 const MODEL = "gemini-3.5-flash-lite";
 
-git add api/news.js
-git commit -m "Restore paid Gemini editorial mode"
-git push origin main
+const CATEGORIES = ["games", "geek", "cinema", "anime"];
 
-const TEST_SCHEMA = {
+const NEWS_PER_CATEGORY = 3;
+const TOTAL_NEWS = 12;
+
+const NEWS_SCHEMA = {
   type: "object",
   properties: {
     news: {
       type: "array",
-      minItems: 1,
-      maxItems: 1,
+      minItems: 12,
+      maxItems: 12,
       items: {
         type: "object",
         properties: {
@@ -48,7 +49,7 @@ const TEST_SCHEMA = {
           fontes: {
             type: "array",
             minItems: 1,
-            maxItems: 1,
+            maxItems: 3,
             items: {
               type: "object",
               properties: {

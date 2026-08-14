@@ -301,33 +301,130 @@ function FormattedArticle({ text }) {
 
 // ─── BANNER SECTION ───────────────────────────────────────────────────────────
 function BannerSection({ item }) {
-  const [copied, setCopied] = useState(false);
-  const cmd = buildBannerCommand(item);
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
 
-  async function handleCopy() {
-    try { await copyToClipboard(cmd); setCopied(true); window.setTimeout(()=>setCopied(false),2500); } catch {}
+  async function handleGenerate() {
+    if (status === "loading") return;
+
+    setStatus("loading");
+    setError("");
+    setBannerUrl("");
+
+    try {
+      const response = await fetch("/api/banner", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          categoria: item.categoria,
+          titulo: item.titulo,
+          publicado_em: item.publicado_em,
+          highlights: item.highlights,
+          image_query: item.image_query,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error || "Falha ao gerar o banner."
+        );
+      }
+
+      setBannerUrl(data.data);
+      setStatus("done");
+    } catch (error) {
+      console.error(error);
+      setError(
+        error?.message || "Nao foi possivel gerar o banner."
+      );
+      setStatus("error");
+    }
+  }
+
+  function handleDownload() {
+    if (!bannerUrl) return;
+
+    const link = document.createElement("a");
+    link.href = bannerUrl;
+    link.download = "wire-geek-banner.svg";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   return (
     <div>
       <p className="mb-3 font-mono text-[10px] leading-relaxed text-[#5c6f6b]">
-        Copie o comando e cole nesta conversa com a Claude. Ela vai buscar uma foto real do assunto, fazer upload e gerar o banner no Canva automaticamente.
+        Gere automaticamente um banner Wire/Geek para esta noticia.
       </p>
-      <div className="mb-2 flex flex-wrap gap-2">
-        <button type="button" onClick={handleCopy}
-          className="inline-flex items-center gap-2 bg-[#e0452f] px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42]">
-          <ImageIcon size={12}/>
-          {copied ? "Copiado! Cole na conversa" : "Copiar Comando do Banner"}
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={status === "loading"}
+          className="inline-flex items-center gap-2 bg-[#e0452f] px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <ImageIcon
+            size={12}
+            className={
+              status === "loading"
+                ? "animate-spin"
+                : ""
+            }
+          />
+
+          {status === "loading"
+            ? "Gerando..."
+            : "Gerar Banner"}
         </button>
+
+        {status === "done" && bannerUrl && (
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="inline-flex items-center gap-2 border border-[#5fbf7a]/50 px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#5fbf7a] hover:bg-[#5fbf7a]/10"
+          >
+            <Check size={12} />
+            Baixar Banner
+          </button>
+        )}
       </div>
-      {copied && (
-        <div className="mb-3 border border-[#5fbf7a]/40 bg-[#1a2628] px-3 py-2 font-mono text-[10px] text-[#5fbf7a]">
-          Cole na caixa de mensagem e envie. A Claude busca a imagem real e gera o banner no Canva.
+
+      {status === "loading" && (
+        <div className="mb-3 border border-[#3a4a4d] bg-[#1a2628] px-3 py-3 font-mono text-[10px] text-[#8fa39d]">
+          GERANDO BANNER...
+          <br />
+          <span className="text-[#5c6f6b]">
+            Montando layout Wire/Geek.
+          </span>
         </div>
       )}
-      <pre className="overflow-auto whitespace-pre-wrap border border-[#243436] bg-[#1a2628] p-3 font-mono text-[10px] leading-relaxed text-[#cfd8d4]">
-        {cmd}
-      </pre>
+
+      {status === "error" && (
+        <div className="mb-3 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-3 font-mono text-[10px] text-[#f0a89a]">
+          {error}
+        </div>
+      )}
+
+      {bannerUrl && (
+        <div className="mt-4 border border-[#243436] bg-[#0c1618] p-3">
+          <div className="mb-2 font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">
+            BANNER GERADO
+          </div>
+
+          <img
+            src={bannerUrl}
+            alt={`Banner: ${item.titulo}`}
+            className="w-full border border-[#3a4a4d]"
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -6,7 +6,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
       return res.status(500).json({
         error: "ANTHROPIC_API_KEY nao configurada na Vercel.",
       });
@@ -15,54 +17,54 @@ export default async function handler(req, res) {
     const { prompt } = req.body || {};
 
     const system = `
-Voce e o editor-chefe de uma redacao especializada em GAMES, CULTURA GEEK, CINEMA e ANIME no Brasil.
-
-Sua voz e de colunista: opinativa, engajada, moderna e com personalidade propria, mas sempre apoiada em fatos reais e verificaveis.
-
-Voce tem acesso a busca na web e DEVE usa-la antes de escrever.
+Voce e o editor-chefe do Wire/Geek, uma redacao especializada em GAMES, CULTURA GEEK, CINEMA e ANIME no Brasil.
 
 OBJETIVO:
 Encontrar exatamente 12 noticias reais publicadas HOJE ou nas ULTIMAS 24 HORAS.
 
-DIVERSIDADE OBRIGATORIA:
+DIVERSIDADE:
 3 noticias de games.
 3 noticias de geek.
 3 noticias de cinema.
 3 noticias de anime.
 
-REGRAS CRITICAS:
-- NUNCA use travessao em nenhum campo.
-- Use virgulas, dois-pontos, pontos ou parenteses.
+REGRAS:
+- NUNCA use travessao.
 - Nao invente fatos.
 - Nao invente datas.
 - Nao invente fontes.
 - Nao invente URLs.
-- Nao use noticias com mais de 24 horas.
+- Use somente informacoes verificaveis.
 - A materia deve ter entre 2000 e 2200 caracteres.
-- Conte os caracteres antes de responder.
-- Se estiver abaixo de 2000 caracteres, desenvolva a analise.
-- Se estiver acima de 2200 caracteres, reduza o texto.
 - Highlights exatamente 4 por noticia.
 - Hashtags exatamente 5 por noticia.
 - Fontes entre 1 e 3 por noticia.
+- Use tom jornalistico, opinativo e envolvente.
+- Responda SOMENTE com JSON.
+- NAO use Markdown.
+- NAO escreva explicacoes antes ou depois do JSON.
 
-PARA CADA NOTICIA:
+ESTRUTURA:
 
 {
-  "categoria": "games|geek|cinema|anime",
-  "titulo": "",
-  "publicado_em": "",
-  "materia": "",
-  "highlights": ["", "", "", ""],
-  "hashtags": ["", "", "", "", ""],
-  "fontes": [
+  "news": [
     {
-      "nome": "",
-      "url": "",
-      "publicado_em": ""
+      "categoria": "games|geek|cinema|anime",
+      "titulo": "",
+      "publicado_em": "",
+      "materia": "",
+      "highlights": ["", "", "", ""],
+      "hashtags": ["", "", "", "", ""],
+      "fontes": [
+        {
+          "nome": "",
+          "url": "",
+          "publicado_em": ""
+        }
+      ],
+      "image_query": ""
     }
-  ],
-  "image_query": ""
+  ]
 }
 
 CATEGORIAS:
@@ -82,44 +84,6 @@ animes, mangas, light novels, episodios, temporadas, adaptacoes, dublagem, filme
 FONTES PRIORITARIAS:
 IGN Brasil, Omelete, Eurogamer, The Enemy, Jovem Nerd, Adrenaline, Canaltech, GameSpot, IGN, Polygon, Variety, Deadline, The Hollywood Reporter, Crunchyroll News, Anime News Network e MyAnimeList News.
 
-FORMATO DA RESPOSTA:
-FORMATO DA RESPOSTA:
-
-Responda SOMENTE com um objeto JSON valido.
-
-NAO escreva nenhuma explicacao antes do JSON.
-NAO escreva nenhuma explicacao depois do JSON.
-NAO use bloco Markdown.
-NAO use ```json.
-NAO use ```.
-
-A primeira coisa da resposta deve ser:
-{
-
-A ultima coisa da resposta deve ser:
-}
-
-{
-  "news": [
-    {
-      "categoria": "",
-      "titulo": "",
-      "publicado_em": "",
-      "materia": "",
-      "highlights": ["", "", "", ""],
-      "hashtags": ["", "", "", "", ""],
-      "fontes": [
-        {
-          "nome": "",
-          "url": "",
-          "publicado_em": ""
-        }
-      ],
-      "image_query": ""
-    }
-  ]
-}
-
 O array news deve conter exatamente 12 itens:
 3 games,
 3 geek,
@@ -127,13 +91,16 @@ O array news deve conter exatamente 12 itens:
 3 anime.
 `;
 
+    /*
+     * PRIMEIRA CHAMADA
+     */
     const anthropicResponse = await fetch(
       "https://api.anthropic.com/v1/messages",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
@@ -164,7 +131,7 @@ O array news deve conter exatamente 12 itens:
     if (!anthropicResponse.ok) {
       return res.status(anthropicResponse.status).json({
         error: "Erro retornado pela Anthropic.",
-        details: raw.slice(0, 1000),
+        details: raw.slice(0, 1500),
       });
     }
 
@@ -172,9 +139,10 @@ O array news deve conter exatamente 12 itens:
 
     try {
       data = JSON.parse(raw);
-    } catch {
+    } catch (error) {
       return res.status(502).json({
         error: "Resposta invalida da Anthropic.",
+        details: error.message,
       });
     }
 
@@ -191,50 +159,50 @@ O array news deve conter exatamente 12 itens:
     }
 
     /*
-     * Tenta interpretar o JSON produzido pelo modelo.
+     * PARSER ROBUSTO
      */
-    let parsed;
+    function parseJsonFromText(value) {
+      const clean = String(value || "").trim();
 
-    let parsed;
+      try {
+        return JSON.parse(clean);
+      } catch {}
 
-try {
-  // Primeiro tenta JSON puro
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    // A Anthropic pode colocar o JSON dentro de ```json ... ```
-    const codeBlockMatch = text.match(
-      /```(?:json)?\s*([\s\S]*?)\s*```/i
-    );
-
-    if (codeBlockMatch) {
-      parsed = JSON.parse(codeBlockMatch[1]);
-    } else {
-      // Último recurso: procura o primeiro objeto JSON completo
-      const firstBrace = text.indexOf("{");
-      const lastBrace = text.lastIndexOf("}");
-
-      if (firstBrace === -1 || lastBrace === -1) {
-        throw new Error("Nenhum objeto JSON encontrado.");
-      }
-
-      const possibleJson = text.slice(
-        firstBrace,
-        lastBrace + 1
+      const codeBlock = clean.match(
+        /```(?:json)?\s*([\s\S]*?)\s*```/i
       );
 
-      parsed = JSON.parse(possibleJson);
-    }
-  }
-} catch (parseError) {
-  console.error("JSON PARSE ERROR:", parseError);
+      if (codeBlock) {
+        try {
+          return JSON.parse(codeBlock[1].trim());
+        } catch {}
+      }
 
-  return res.status(502).json({
-    error: "A Anthropic retornou JSON invalido.",
-    details: parseError?.message || "Falha ao interpretar JSON.",
-    text: text.slice(0, 2000),
-  });
-}
+      const firstBrace = clean.indexOf("{");
+      const lastBrace = clean.lastIndexOf("}");
+
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        return JSON.parse(
+          clean.slice(firstBrace, lastBrace + 1)
+        );
+      }
+
+      throw new Error("Nenhum JSON valido encontrado.");
+    }
+
+    let parsed;
+
+    try {
+      parsed = parseJsonFromText(text);
+    } catch (error) {
+      console.error("WIRE/GEEK JSON ERROR:", error);
+
+      return res.status(502).json({
+        error: "A Anthropic retornou JSON invalido.",
+        details: error.message,
+        text: text.slice(0, 2000),
+      });
+    }
 
     if (!parsed || !Array.isArray(parsed.news)) {
       return res.status(502).json({
@@ -243,143 +211,166 @@ try {
     }
 
     /*
-     * Expande automaticamente materias abaixo de 2000 caracteres.
+     * NORMALIZA TEXTO
      */
-    async function expandMateria(item) {
-      const materiaAtual = String(item.materia || "").trim();
+    function normalizeMateria(value) {
+      return String(value || "")
+        .replace(/[—–]/g, ",")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+    }
 
-      if (materiaAtual.length >= 2000) {
-        return materiaAtual;
-      }
+    /*
+     * IDENTIFICA MATERIAS CURTAS
+     */
+    const shortNews = parsed.news
+      .map((item, index) => ({
+        index,
+        titulo: item.titulo,
+        materia: normalizeMateria(item.materia),
+      }))
+      .filter((item) => item.materia.length < 2000);
 
-      const expandResponse = await fetch(
-        "https://api.anthropic.com/v1/messages",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": process.env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 5000,
-            system: `
-Voce e um editor de noticias do Wire/Geek.
+    /*
+     * UMA UNICA CHAMADA PARA EXPANDIR TODAS
+     */
+    if (shortNews.length > 0) {
+      const correctionPrompt = `
+Algumas materias do Wire/Geek ficaram abaixo de 2000 caracteres.
 
-Sua tarefa e expandir uma materia jornalistica existente.
+Expanda SOMENTE as materias listadas abaixo.
 
 REGRAS OBRIGATORIAS:
-- O resultado deve ter entre 2000 e 2200 caracteres.
+- Cada materia final deve ter entre 2000 e 2200 caracteres.
 - Nunca ultrapasse 2200 caracteres.
 - Nunca fique abaixo de 2000 caracteres.
-- Preserve os fatos existentes.
+- Preserve todos os fatos existentes.
 - Nao invente fatos.
 - Nao invente numeros.
 - Nao invente datas.
 - Nao invente declaracoes.
 - Nao invente fontes.
 - Desenvolva contexto, impacto, repercussao e analise.
-- Mantenha o tom jornalistico e opinativo.
-- NUNCA use travessao.
+- Nao use travessao.
 - Use virgulas, pontos, dois-pontos ou parenteses.
-- Retorne SOMENTE o texto final da materia.
-`,
+- Retorne SOMENTE JSON valido.
+- Nao use Markdown.
+
+FORMATO:
+
+{
+  "items": [
+    {
+      "index": 0,
+      "materia": "texto entre 2000 e 2200 caracteres"
+    }
+  ]
+}
+
+MATERIAS:
+
+${shortNews
+  .map(
+    (item) => `
+INDEX: ${item.index}
+TITULO: ${item.titulo}
+CARACTERES ATUAIS: ${item.materia.length}
+
+MATERIA:
+${item.materia}
+`
+  )
+  .join("\n")}
+`;
+
+      const correctionResponse = await fetch(
+        "https://api.anthropic.com/v1/messages",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 12000,
             messages: [
               {
                 role: "user",
-                content: `
-TITULO:
-${item.titulo}
-
-MATERIA ATUAL:
-${materiaAtual}
-
-A materia possui atualmente ${materiaAtual.length} caracteres.
-
-Expanda a materia ate atingir obrigatoriamente entre 2000 e 2200 caracteres.
-`,
+                content: correctionPrompt,
               },
             ],
           }),
         }
       );
 
-     const expandResponseText = await expandResponse.text();
+      const correctionRaw =
+        await correctionResponse.text();
 
-if (!expandResponse.ok) {
-  throw new Error(
-    `Anthropic retornou HTTP ${expandResponse.status}: ${expandResponseText.slice(0, 1000)}`
-  );
-}
+      if (!correctionResponse.ok) {
+        return res.status(502).json({
+          error: "Falha ao expandir materias.",
+          details: correctionRaw.slice(0, 1500),
+        });
+      }
 
-let expandRaw;
+      let correctionData;
 
-try {
-  expandRaw = JSON.parse(expandResponseText);
-} catch {
-  throw new Error(
-    `Resposta invalida da Anthropic durante expansao: ${expandResponseText.slice(0, 1000)}`
-  );
-}
+      try {
+        correctionData = JSON.parse(correctionRaw);
+      } catch (error) {
+        return res.status(502).json({
+          error: "Resposta invalida durante expansao.",
+          details: error.message,
+        });
+      }
 
-      const expandedText = (expandRaw.content || [])
+      const correctionText = (correctionData.content || [])
         .filter((block) => block.type === "text")
         .map((block) => block.text)
         .join("\n")
-        .replace(/[—–]/g, ",")
         .trim();
 
-      if (!expandedText) {
-        throw new Error(
-          `A expansao de "${item.titulo}" nao retornou texto.`
-        );
+      let corrections;
+
+      try {
+        corrections = parseJsonFromText(correctionText);
+      } catch (error) {
+        return res.status(502).json({
+          error: "JSON invalido durante expansao.",
+          details: error.message,
+          text: correctionText.slice(0, 2000),
+        });
       }
 
-      return expandedText;
+      if (!corrections || !Array.isArray(corrections.items)) {
+        return res.status(502).json({
+          error: "Formato de expansao invalido.",
+        });
+      }
+
+      /*
+       * APLICA AS EXPANSOES
+       */
+      for (const correction of corrections.items) {
+        const index = Number(correction.index);
+
+        if (
+          Number.isInteger(index) &&
+          parsed.news[index]
+        ) {
+          parsed.news[index].materia =
+            normalizeMateria(correction.materia);
+        }
+      }
     }
 
     /*
-     * Processa somente as noticias que ficaram abaixo do minimo.
+     * VALIDACAO FINAL
      */
     for (const item of parsed.news) {
-  const materia = String(item.materia || "").trim();
-
-  if (materia.length < 2000) {
-    try {
-      console.log(
-        `WIRE/GEEK: expandindo "${item.titulo}" (${materia.length} caracteres)`
-      );
-
-      item.materia = await expandMateria(item);
-
-      console.log(
-        `WIRE/GEEK: "${item.titulo}" expandida para ${item.materia.length} caracteres`
-      );
-    } catch (error) {
-      console.error(
-        `WIRE/GEEK: falha ao expandir "${item.titulo}"`,
-        error
-      );
-
-      return res.status(502).json({
-        error: "Falha ao expandir materia.",
-        titulo: item.titulo,
-        detalhes: error?.message || "Erro desconhecido",
-      });
-    }
-  }
-}
-
-    /*
-     * Validacao final.
-     */
-    for (const item of parsed.news) {
-      const materia = String(item.materia || "").trim();
-
-      item.materia = materia
-        .replace(/[—–]/g, ",")
-        .trim();
+      item.materia = normalizeMateria(item.materia);
 
       const length = item.materia.length;
 
@@ -389,6 +380,16 @@ try {
           encontrados: length,
         });
       }
+    }
+
+    /*
+     * VALIDACAO DA QUANTIDADE
+     */
+    if (parsed.news.length !== 12) {
+      return res.status(422).json({
+        error: "A edicao precisa conter exatamente 12 noticias.",
+        encontrados: parsed.news.length,
+      });
     }
 
     return res.status(200).json({

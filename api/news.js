@@ -1,3 +1,344 @@
+import { GoogleGenAI } from "@google/genai";
+
+const MODEL = "gemini-2.5-flash-lite";
+
+const CATEGORIES = ["games", "geek", "cinema", "anime"];
+
+const NEWS_SCHEMA = {
+  type: "object",
+  properties: {
+    news: {
+      type: "array",
+      minItems: 12,
+      maxItems: 12,
+      items: {
+        type: "object",
+        properties: {
+          categoria: {
+            type: "string",
+            enum: ["games", "geek", "cinema", "anime"],
+          },
+          titulo: {
+            type: "string",
+          },
+          publicado_em: {
+            type: "string",
+          },
+          materia: {
+            type: "string",
+          },
+          highlights: {
+            type: "array",
+            minItems: 4,
+            maxItems: 4,
+            items: {
+              type: "string",
+            },
+          },
+          hashtags: {
+            type: "array",
+            minItems: 5,
+            maxItems: 5,
+            items: {
+              type: "string",
+            },
+          },
+          fontes: {
+            type: "array",
+            minItems: 1,
+            maxItems: 3,
+            items: {
+              type: "object",
+              properties: {
+                nome: {
+                  type: "string",
+                },
+                url: {
+                  type: "string",
+                },
+                publicado_em: {
+                  type: "string",
+                },
+              },
+              required: ["nome", "url", "publicado_em"],
+            },
+          },
+          image_query: {
+            type: "string",
+          },
+        },
+        required: [
+          "categoria",
+          "titulo",
+          "publicado_em",
+          "materia",
+          "highlights",
+          "hashtags",
+          "fontes",
+          "image_query",
+        ],
+      },
+    },
+  },
+  required: ["news"],
+};
+
+function normalizeText(value) {
+  return String(value || "")
+    .replace(/[—–]/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function normalizeNews(news) {
+  return news.map((item) => ({
+    ...item,
+    titulo: normalizeText(item.titulo),
+    publicado_em: normalizeText(item.publicado_em),
+    materia: normalizeText(item.materia),
+    highlights: Array.isArray(item.highlights)
+      ? item.highlights.map(normalizeText)
+      : [],
+    hashtags: Array.isArray(item.hashtags)
+      ? item.hashtags.map(normalizeText)
+      : [],
+    fontes: Array.isArray(item.fontes)
+      ? item.fontes.map((source) => ({
+          nome: normalizeText(source.nome),
+          url: String(source.url || "").trim(),
+          publicado_em: normalizeText(source.publicado_em),
+        }))
+      : [],
+    image_query: normalizeText(item.image_query),
+  }));
+}
+
+function validateNews(news) {
+  const errors = [];
+
+  if (!Array.isArray(news)) {
+    return ["news nao e um array"];
+  }
+
+  if (news.length !== 12) {
+    errors.push(`Esperadas 12 noticias, recebidas ${news.length}`);
+  }
+
+  const counts = {
+    games: 0,
+    geek: 0,
+    cinema: 0,
+    anime: 0,
+  };
+
+  news.forEach((item, index) => {
+    const category = item.categoria;
+
+    if (counts[category] !== undefined) {
+      counts[category]++;
+    } else {
+      errors.push(
+        `Noticia ${index + 1}: categoria invalida`
+      );
+    }
+
+    const length = item.materia.length;
+
+    if (length < 2000 || length > 2200) {
+      errors.push(
+        `Noticia ${index + 1} "${item.titulo}": ${length} caracteres`
+      );
+    }
+
+    if (item.highlights.length !== 4) {
+      errors.push(
+        `Noticia ${index + 1}: highlights != 4`
+      );
+    }
+
+    if (item.hashtags.length !== 5) {
+      errors.push(
+        `Noticia ${index + 1}: hashtags != 5`
+      );
+    }
+
+    if (
+      !Array.isArray(item.fontes) ||
+      item.fontes.length < 1 ||
+      item.fontes.length > 3
+    ) {
+      errors.push(
+        `Noticia ${index + 1}: fontes invalidas`
+      );
+    }
+  });
+
+  for (const category of CATEGORIES) {
+    if (counts[category] !== 3) {
+      errors.push(
+        `${category}: esperadas 3, recebidas ${counts[category]}`
+      );
+    }
+  }
+
+  return errors;
+}
+
+async function generateNews(ai, prompt) {
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: `
+${prompt || "Gere a edicao de hoje com exatamente 12 noticias reais."}
+
+IMPORTANTE:
+Pesquise a web antes de escrever.
+
+A edicao precisa conter:
+3 games
+3 geek
+3 cinema
+3 anime
+
+Cada materia deve ter entre 2000 e 2200 caracteres.
+
+Nao use travessao.
+
+Nao invente fatos, datas, fontes ou URLs.
+
+Retorne somente o objeto JSON solicitado.
+`,
+    config: {
+      tools: [
+        {
+          googleSearch: {},
+        },
+      ],
+      responseMimeType: "application/json",
+      responseSchema: NEWS_SCHEMA,
+      temperature: 0.4,
+      maxOutputTokens: 30000,
+    },
+  });
+
+  if (!response.text) {
+    throw new Error("Gemini nao retornou texto.");
+  }
+
+  return JSON.parse(response.text);
+}
+
+async function expandShortNews(ai, news) {
+  const shortItems = news
+    .map((item, index) => ({
+      index,
+      titulo: item.titulo,
+      materia: item.materia,
+    }))
+    .filter(
+      (item) =>
+        item.materia.length < 2000
+    );
+
+  if (shortItems.length === 0) {
+    return news;
+  }
+
+  const correctionSchema = {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            index: {
+              type: "integer",
+            },
+            materia: {
+              type: "string",
+            },
+          },
+          required: ["index", "materia"],
+        },
+      },
+    },
+    required: ["items"],
+  };
+
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: `
+Expanda as materias abaixo.
+
+Cada materia FINAL precisa ter obrigatoriamente entre 2000 e 2200 caracteres.
+
+Nao altere o sentido dos fatos.
+
+Nao invente informacoes.
+
+Nao invente datas.
+
+Nao invente declaracoes.
+
+Nao invente fontes.
+
+Acrescente contexto, impacto, repercussao e analise jornalistica quando necessario.
+
+Nao use travessao.
+
+Retorne somente JSON.
+
+MATERIAS:
+
+${shortItems
+  .map(
+    (item) => `
+INDEX: ${item.index}
+TITULO: ${item.titulo}
+
+MATERIA:
+${item.materia}
+`
+  )
+  .join("\n")}
+`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: correctionSchema,
+      temperature: 0.3,
+      maxOutputTokens: 18000,
+    },
+  });
+
+  if (!response.text) {
+    throw new Error(
+      "Gemini nao retornou a expansao."
+    );
+  }
+
+  const correction = JSON.parse(response.text);
+
+  if (!Array.isArray(correction.items)) {
+    throw new Error(
+      "Formato de expansao invalido."
+    );
+  }
+
+  for (const item of correction.items) {
+    const index = Number(item.index);
+
+    if (
+      Number.isInteger(index) &&
+      news[index]
+    ) {
+      news[index].materia =
+        normalizeText(item.materia);
+    }
+  }
+
+  return news;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -6,400 +347,117 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey =
+      process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({
-        error: "ANTHROPIC_API_KEY nao configurada na Vercel.",
+        error:
+          "GEMINI_API_KEY nao configurada na Vercel.",
       });
     }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+    });
 
     const { prompt } = req.body || {};
-
-    const system = `
-Voce e o editor-chefe do Wire/Geek, uma redacao especializada em GAMES, CULTURA GEEK, CINEMA e ANIME no Brasil.
-
-OBJETIVO:
-Encontrar exatamente 12 noticias reais publicadas HOJE ou nas ULTIMAS 24 HORAS.
-
-DIVERSIDADE:
-3 noticias de games.
-3 noticias de geek.
-3 noticias de cinema.
-3 noticias de anime.
-
-REGRAS:
-- NUNCA use travessao.
-- Nao invente fatos.
-- Nao invente datas.
-- Nao invente fontes.
-- Nao invente URLs.
-- Use somente informacoes verificaveis.
-- A materia deve ter entre 2000 e 2200 caracteres.
-- Highlights exatamente 4 por noticia.
-- Hashtags exatamente 5 por noticia.
-- Fontes entre 1 e 3 por noticia.
-- Use tom jornalistico, opinativo e envolvente.
-- Responda SOMENTE com JSON.
-- NAO use Markdown.
-- NAO escreva explicacoes antes ou depois do JSON.
-
-ESTRUTURA:
-
-{
-  "news": [
-    {
-      "categoria": "games|geek|cinema|anime",
-      "titulo": "",
-      "publicado_em": "",
-      "materia": "",
-      "highlights": ["", "", "", ""],
-      "hashtags": ["", "", "", "", ""],
-      "fontes": [
-        {
-          "nome": "",
-          "url": "",
-          "publicado_em": ""
-        }
-      ],
-      "image_query": ""
-    }
-  ]
-}
-
-CATEGORIAS:
-
-GAMES:
-jogos, consoles, PC, Xbox, PlayStation, Nintendo, Steam, trailers, lancamentos, atualizacoes, industria e esports.
-
-GEEK:
-quadrinhos, tecnologia geek, cultura pop, colecionaveis, eventos, ficcao cientifica, fantasia e cultura nerd.
-
-CINEMA:
-filmes, lancamentos, trailers, franquias, atores, atrizes, diretores, producoes, bilheterias, adaptacoes, remakes e sequencias.
-
-ANIME:
-animes, mangas, light novels, episodios, temporadas, adaptacoes, dublagem, filmes, streaming, Crunchyroll e declaracoes de criadores.
-
-FONTES PRIORITARIAS:
-IGN Brasil, Omelete, Eurogamer, The Enemy, Jovem Nerd, Adrenaline, Canaltech, GameSpot, IGN, Polygon, Variety, Deadline, The Hollywood Reporter, Crunchyroll News, Anime News Network e MyAnimeList News.
-
-O array news deve conter exatamente 12 itens:
-3 games,
-3 geek,
-3 cinema,
-3 anime.
-`;
-
-    /*
-     * PRIMEIRA CHAMADA
-     */
-    const anthropicResponse = await fetch(
-      "https://api.anthropic.com/v1/messages",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 16000,
-          system,
-          messages: [
-            {
-              role: "user",
-              content:
-                prompt ||
-                "Gere a edicao de hoje com exatamente 12 noticias reais das ultimas 24 horas.",
-            },
-          ],
-          tools: [
-            {
-              type: "web_search_20250305",
-              name: "web_search",
-              max_uses: 10,
-            },
-          ],
-        }),
-      }
-    );
-
-    const raw = await anthropicResponse.text();
-
-    if (!anthropicResponse.ok) {
-      return res.status(anthropicResponse.status).json({
-        error: "Erro retornado pela Anthropic.",
-        details: raw.slice(0, 1500),
-      });
-    }
 
     let data;
 
     try {
-      data = JSON.parse(raw);
+      data = await generateNews(
+        ai,
+        prompt
+      );
     } catch (error) {
-      return res.status(502).json({
-        error: "Resposta invalida da Anthropic.",
-        details: error.message,
-      });
-    }
-
-    const text = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-
-    if (!text) {
-      return res.status(502).json({
-        error: "A Anthropic nao retornou texto.",
-      });
-    }
-
-    /*
-     * PARSER ROBUSTO
-     */
-    function parseJsonFromText(value) {
-      const clean = String(value || "").trim();
-
-      try {
-        return JSON.parse(clean);
-      } catch {}
-
-      const codeBlock = clean.match(
-        /```(?:json)?\s*([\s\S]*?)\s*```/i
+      console.error(
+        "GEMINI GENERATION ERROR:",
+        error
       );
 
-      if (codeBlock) {
-        try {
-          return JSON.parse(codeBlock[1].trim());
-        } catch {}
-      }
-
-      const firstBrace = clean.indexOf("{");
-      const lastBrace = clean.lastIndexOf("}");
-
-      if (firstBrace >= 0 && lastBrace > firstBrace) {
-        return JSON.parse(
-          clean.slice(firstBrace, lastBrace + 1)
-        );
-      }
-
-      throw new Error("Nenhum JSON valido encontrado.");
-    }
-
-    let parsed;
-
-    try {
-      parsed = parseJsonFromText(text);
-    } catch (error) {
-      console.error("WIRE/GEEK JSON ERROR:", error);
-
       return res.status(502).json({
-        error: "A Anthropic retornou JSON invalido.",
-        details: error.message,
-        text: text.slice(0, 2000),
+        error:
+          "Erro ao gerar noticias com Gemini.",
+        details:
+          error?.message ||
+          "Erro desconhecido",
       });
     }
 
-    if (!parsed || !Array.isArray(parsed.news)) {
+    if (!data || !Array.isArray(data.news)) {
       return res.status(502).json({
-        error: "Formato de noticias invalido.",
+        error:
+          "Gemini retornou formato de noticias invalido.",
       });
     }
 
-    /*
-     * NORMALIZA TEXTO
-     */
-    function normalizeMateria(value) {
-      return String(value || "")
-        .replace(/[—–]/g, ",")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
+    let news = normalizeNews(data.news);
 
     /*
-     * IDENTIFICA MATERIAS CURTAS
+     * Expande todas as materias curtas
+     * em uma unica chamada adicional.
      */
-    const shortNews = parsed.news
-      .map((item, index) => ({
-        index,
-        titulo: item.titulo,
-        materia: normalizeMateria(item.materia),
-      }))
-      .filter((item) => item.materia.length < 2000);
+    const shortNews = news.filter(
+      (item) =>
+        item.materia.length < 2000
+    );
 
-    /*
-     * UMA UNICA CHAMADA PARA EXPANDIR TODAS
-     */
     if (shortNews.length > 0) {
-      const correctionPrompt = `
-Algumas materias do Wire/Geek ficaram abaixo de 2000 caracteres.
-
-Expanda SOMENTE as materias listadas abaixo.
-
-REGRAS OBRIGATORIAS:
-- Cada materia final deve ter entre 2000 e 2200 caracteres.
-- Nunca ultrapasse 2200 caracteres.
-- Nunca fique abaixo de 2000 caracteres.
-- Preserve todos os fatos existentes.
-- Nao invente fatos.
-- Nao invente numeros.
-- Nao invente datas.
-- Nao invente declaracoes.
-- Nao invente fontes.
-- Desenvolva contexto, impacto, repercussao e analise.
-- Nao use travessao.
-- Use virgulas, pontos, dois-pontos ou parenteses.
-- Retorne SOMENTE JSON valido.
-- Nao use Markdown.
-
-FORMATO:
-
-{
-  "items": [
-    {
-      "index": 0,
-      "materia": "texto entre 2000 e 2200 caracteres"
-    }
-  ]
-}
-
-MATERIAS:
-
-${shortNews
-  .map(
-    (item) => `
-INDEX: ${item.index}
-TITULO: ${item.titulo}
-CARACTERES ATUAIS: ${item.materia.length}
-
-MATERIA:
-${item.materia}
-`
-  )
-  .join("\n")}
-`;
-
-      const correctionResponse = await fetch(
-        "https://api.anthropic.com/v1/messages",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 12000,
-            messages: [
-              {
-                role: "user",
-                content: correctionPrompt,
-              },
-            ],
-          }),
-        }
-      );
-
-      const correctionRaw =
-        await correctionResponse.text();
-
-      if (!correctionResponse.ok) {
-        return res.status(502).json({
-          error: "Falha ao expandir materias.",
-          details: correctionRaw.slice(0, 1500),
-        });
-      }
-
-      let correctionData;
-
       try {
-        correctionData = JSON.parse(correctionRaw);
+        news = await expandShortNews(
+          ai,
+          news
+        );
       } catch (error) {
+        console.error(
+          "GEMINI EXPANSION ERROR:",
+          error
+        );
+
         return res.status(502).json({
-          error: "Resposta invalida durante expansao.",
-          details: error.message,
-        });
-      }
-
-      const correctionText = (correctionData.content || [])
-        .filter((block) => block.type === "text")
-        .map((block) => block.text)
-        .join("\n")
-        .trim();
-
-      let corrections;
-
-      try {
-        corrections = parseJsonFromText(correctionText);
-      } catch (error) {
-        return res.status(502).json({
-          error: "JSON invalido durante expansao.",
-          details: error.message,
-          text: correctionText.slice(0, 2000),
-        });
-      }
-
-      if (!corrections || !Array.isArray(corrections.items)) {
-        return res.status(502).json({
-          error: "Formato de expansao invalido.",
-        });
-      }
-
-      /*
-       * APLICA AS EXPANSOES
-       */
-      for (const correction of corrections.items) {
-        const index = Number(correction.index);
-
-        if (
-          Number.isInteger(index) &&
-          parsed.news[index]
-        ) {
-          parsed.news[index].materia =
-            normalizeMateria(correction.materia);
-        }
-      }
-    }
-
-    /*
-     * VALIDACAO FINAL
-     */
-    for (const item of parsed.news) {
-      item.materia = normalizeMateria(item.materia);
-
-      const length = item.materia.length;
-
-      if (length < 2000 || length > 2200) {
-        return res.status(422).json({
-          error: `"${item.titulo}" precisa ter entre 2000 e 2200 caracteres.`,
-          encontrados: length,
+          error:
+            "Erro ao expandir materias.",
+          details:
+            error?.message ||
+            "Erro desconhecido",
         });
       }
     }
 
-    /*
-     * VALIDACAO DA QUANTIDADE
-     */
-    if (parsed.news.length !== 12) {
+    news = normalizeNews(news);
+
+    const validationErrors =
+      validateNews(news);
+
+    if (validationErrors.length > 0) {
       return res.status(422).json({
-        error: "A edicao precisa conter exatamente 12 noticias.",
-        encontrados: parsed.news.length,
+        error:
+          "A edicao nao passou na validacao.",
+        details: validationErrors,
+        news: news.map((item) => ({
+          titulo: item.titulo,
+          caracteres:
+            item.materia.length,
+        })),
       });
     }
 
     return res.status(200).json({
-      text: JSON.stringify(parsed),
+      text: JSON.stringify({
+        news,
+      }),
     });
   } catch (error) {
-    console.error("WIRE/GEEK API ERROR:", error);
+    console.error(
+      "WIRE/GEEK GEMINI ERROR:",
+      error
+    );
 
     return res.status(500).json({
-      error: error?.message || "Erro interno do servidor.",
+      error:
+        error?.message ||
+        "Erro interno do servidor.",
     });
   }
 }

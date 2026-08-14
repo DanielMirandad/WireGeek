@@ -12,6 +12,7 @@ import {
   Zap,
   ImageIcon,
   Calendar,
+  FlaskConical,
 } from "lucide-react";
 
 // ─── CONSTANTES ──────────────────────────────────────────────────────────────
@@ -62,14 +63,9 @@ const CATEGORY_COLOR = {
   anime: "#0EA5E9",
 };
 
-const CATEGORY_ORDER = [
-  "games",
-  "geek",
-  "cinema",
-  "anime",
-];
-
+const CATEGORY_ORDER = ["games", "geek", "cinema", "anime"];
 const NEWS_PER_CATEGORY = 3;
+const TOTAL_NEWS = CATEGORY_ORDER.length * NEWS_PER_CATEGORY;
 
 const RODAPE_FIXO = `___
 
@@ -125,8 +121,8 @@ function copyViaTextarea(text) {
         : reject(new Error("Falhou"));
 
       document.body.removeChild(ta);
-    } catch (e) {
-      reject(e);
+    } catch (error) {
+      reject(error);
     }
   });
 }
@@ -156,8 +152,8 @@ async function fetchWithRetry(
 
     try {
       response = await fetch(url, options);
-    } catch (e) {
-      lastError = e;
+    } catch (error) {
+      lastError = error;
     }
 
     if (response?.ok) {
@@ -200,7 +196,9 @@ async function fetchWithRetry(
 
   throw (
     lastError ||
-    new Error("Falha apos multiplas tentativas.")
+    new Error(
+      "Falha apos multiplas tentativas."
+    )
   );
 }
 
@@ -256,9 +254,7 @@ function normalizeNewsItem(item = {}) {
     )
       ? item.hashtags
           .slice(0, 5)
-          .map((tag) =>
-            removeDashes(tag)
-          )
+          .map(String)
       : [],
 
     fontes: Array.isArray(item.fontes)
@@ -278,18 +274,9 @@ function validateEdition(
   news,
   isTestMode = false
 ) {
-  /*
-   * MODO DE TESTE
-   *
-   * O teste serve apenas para confirmar:
-   * 1. frontend consegue chamar /api/news
-   * 2. Vercel consegue executar a function
-   * 3. GEMINI_API_KEY está disponível
-   * 4. Gemini consegue devolver uma noticia
-   *
-   * Por isso NÃO exigimos 12 noticias
-   * e NÃO exigimos 2000 caracteres.
-   */
+  // ============================================================
+  // MODO TESTE
+  // ============================================================
 
   if (isTestMode) {
     if (
@@ -331,7 +318,7 @@ function validateEdition(
       item.highlights.length !== 4
     ) {
       return (
-        "A noticia de teste precisa ter 4 highlights."
+        "A noticia de teste precisa de 4 highlights."
       );
     }
 
@@ -340,24 +327,22 @@ function validateEdition(
       item.hashtags.length !== 5
     ) {
       return (
-        "A noticia de teste precisa ter 5 hashtags."
+        "A noticia de teste precisa de 5 hashtags."
       );
     }
 
     return null;
   }
 
-  // ─── EDICAO NORMAL ────────────────────────────────────────────────────────
-
-  const expectedTotal =
-    CATEGORY_ORDER.length *
-    NEWS_PER_CATEGORY;
+  // ============================================================
+  // MODO NORMAL
+  // ============================================================
 
   if (
     !Array.isArray(news) ||
-    news.length !== expectedTotal
+    news.length !== TOTAL_NEWS
   ) {
-    return `A edicao precisa conter exatamente ${expectedTotal} noticias.`;
+    return `A edicao precisa conter exatamente ${TOTAL_NEWS} noticias.`;
   }
 
   for (const cat of CATEGORY_ORDER) {
@@ -365,7 +350,9 @@ function validateEdition(
       (n) => n.categoria === cat
     ).length;
 
-    if (count !== NEWS_PER_CATEGORY) {
+    if (
+      count !== NEWS_PER_CATEGORY
+    ) {
       return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
     }
   }
@@ -382,35 +369,89 @@ function validateEdition(
       return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
     }
 
-    if (
-      item.materia.length > 2200
-    ) {
-      return `"${item.titulo}" ultrapassa 2200 caracteres. Encontrado: ${item.materia.length}.`;
+    if (item.materia.length > 2200) {
+      return `"${item.titulo}" ultrapassou 2200 caracteres. Encontrado: ${item.materia.length}.`;
     }
 
     if (
-      !Array.isArray(item.highlights) ||
+      !Array.isArray(
+        item.highlights
+      ) ||
       item.highlights.length !== 4
     ) {
       return `"${item.titulo}" precisa de 4 highlights.`;
     }
 
     if (
-      !Array.isArray(item.hashtags) ||
+      !Array.isArray(
+        item.hashtags
+      ) ||
       item.hashtags.length !== 5
     ) {
       return `"${item.titulo}" precisa de 5 hashtags.`;
     }
-
-    if (
-      !Array.isArray(item.fontes) ||
-      item.fontes.length < 1
-    ) {
-      return `"${item.titulo}" precisa ter pelo menos 1 fonte.`;
-    }
   }
 
   return null;
+}
+
+// ─── NOTICIA LOCAL DE TESTE ──────────────────────────────────────────────────
+
+function createTestNews() {
+  return [
+    normalizeNewsItem({
+      categoria: "geek",
+
+      titulo:
+        "WIRE/GEEK TESTE: sistema editorial funcionando sem Gemini",
+
+      publicado_em:
+        "MODO TESTE GRATUITO",
+
+      materia: `Esta e uma materia de demonstracao do Wire/Geek. O objetivo deste modo e permitir que toda a interface seja testada sem realizar nenhuma chamada ao Gemini e sem consumir qualquer credito da API. Aqui voce pode verificar o funcionamento dos cards, filtros, contador de noticias, sistema de highlights, hashtags, fontes, copia de texto, rodape e integracao visual do newsroom.
+
+O modo de teste nao representa uma noticia real e nao deve ser publicado como conteudo jornalistico. Ele serve exclusivamente para validar a aplicacao enquanto a API do Gemini estiver sem quota ou enquanto a configuracao do backend estiver sendo ajustada.
+
+A arquitetura foi preparada para separar claramente a experiencia editorial da geracao por inteligencia artificial. Quando o usuario utilizar o botao normal de apuracao, a aplicacao continuara chamando /api/news. Quando utilizar o modo de teste, nenhuma requisicao sera enviada ao Gemini.
+
+Isso significa que voce consegue verificar se a aplicacao esta funcionando, navegar pelas categorias, abrir uma materia, copiar os textos e testar a experiencia de usuario mesmo quando a API estiver retornando erro 429 por falta de quota.
+
+Este conteudo e propositalmente ficticio. Nenhuma informacao apresentada aqui deve ser considerada uma noticia, fonte jornalistica ou declaracao real.
+
+O Wire/Geek continua preparado para receber a edicao real assim que o backend estiver conectado a uma chave Gemini com quota disponivel. O modo de teste existe justamente para evitar que problemas de billing ou quota impeçam a validacao do restante da aplicacao.
+
+Em producao, a expectativa continua sendo gerar doze noticias, distribuindo tres entre games, geek, cinema e anime, com apuracao na web, fontes reais, highlights, hashtags e consultas de imagem. Este modo reduz a quantidade para uma unica noticia local e nao utiliza inteligencia artificial.
+
+Teste concluido: frontend carregado, validacao executada, card renderizado e nenhum credito de API consumido.`,
+
+      highlights: [
+        "MODO TESTE GRATUITO ATIVADO",
+        "NENHUMA CHAMADA AO GEMINI FOI REALIZADA",
+        "FRONTEND E VALIDACAO ESTAO FUNCIONANDO",
+        "API REAL CONTINUA DISPONIVEL NO MODO NORMAL",
+      ],
+
+      hashtags: [
+        "#WireGeek",
+        "#Teste",
+        "#BagacaStudios",
+        "#Geek",
+        "#Newsroom",
+      ],
+
+      fontes: [
+        {
+          nome: "Wire/Geek Test Mode",
+          url: "",
+          publicado_em:
+            "Ambiente de teste",
+        },
+      ],
+
+      image_query:
+        "geek newsroom technology editorial studio",
+    }),
+  ];
 }
 
 // ─── BANNER PROMPT ────────────────────────────────────────────────────────────
@@ -423,8 +464,7 @@ function buildBannerCommand(item) {
   const h = item.highlights.slice(0, 4);
 
   const imgQuery =
-    item.image_query ||
-    item.titulo;
+    item.image_query || item.titulo;
 
   return `@Claude gera banner no Canva para esta noticia da Bagaca Studios:
 
@@ -448,69 +488,65 @@ Texto original do badge: "cinema"
 
 Passos:
 1) web_search pela query de imagem
-2) Canva:upload-asset-from-url com a URL encontrada
-3) Canva:copy-design do template ${TEMPLATE_DESIGN_ID}
-4) Canva:read-design open_transaction=true
-5) edit-design paginas 1-4
-6) edit-design finalize=commit`;
+2) encontrar URL publica de foto real relacionada ao assunto
+3) Canva:upload-asset-from-url com a URL encontrada
+4) Canva:copy-design do template ${TEMPLATE_DESIGN_ID}
+5) Canva:read-design open_transaction=true
+6) edit-design paginas 1-4
+7) badge -> ${cat}
+8) subtitle -> ${item.publicado_em}
+9) title -> highlight correspondente
+10) update_fill image -> asset_id do upload
+11) edit-design finalize=commit`;
 }
 
-// ─── PROMPT PRINCIPAL ─────────────────────────────────────────────────────────
+// ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
 
 function buildSystemPrompt() {
-  const total =
-    CATEGORY_ORDER.length *
-    NEWS_PER_CATEGORY;
-
   return `Voce e o editor-chefe de uma redacao especializada em GAMES, CULTURA GEEK, CINEMA e ANIME no Brasil.
 
 Sua voz e de colunista: opinativa, engajada, moderna e com personalidade propria, mas sempre apoiada em fatos reais e verificaveis.
 
 Voce tem acesso a busca na web e DEVE usa-la antes de escrever.
 
-OBJETIVO: Encontrar exatamente ${total} noticias reais publicadas HOJE ou nas ULTIMAS 24 HORAS.
+OBJETIVO:
+Encontrar exatamente ${TOTAL_NEWS} noticias reais publicadas HOJE ou nas ULTIMAS 24 HORAS.
 
-DIVERSIDADE OBRIGATORIA: ${NEWS_PER_CATEGORY} noticias de cada categoria: games, geek, cinema, anime.
+DIVERSIDADE OBRIGATORIA:
+${NEWS_PER_CATEGORY} noticias de cada categoria.
 
-REGRAS CRITICAS DE ESTILO:
+Categorias:
+games
+geek
+cinema
+anime
 
+REGRAS:
 - NUNCA use travessao.
-- Use virgulas, dois-pontos, pontos ou parenteses.
-- Escreva com ritmo dinamico.
-- Use numeros concretos.
+- Nao invente fatos.
+- Nao invente datas.
+- Nao invente URLs.
+- Nao invente fontes.
 - Nao invente declaracoes.
-
-MATERIA:
-Entre 2000 e 2200 caracteres obrigatoriamente.
-Nunca entregue materia abaixo de 2000 caracteres.
-Nunca ultrapasse 2200 caracteres.
-
-FONTES:
-Nao invente fatos, datas, fontes ou URLs.
-Use URLs reais.
-
-PARA CADA NOTICIA:
-
-- materia: entre 2000 e 2200 caracteres
-- highlights: exatamente 4
-- hashtags: exatamente 5
-- categoria: games, geek, cinema ou anime
-- titulo: claro e atraente
-- publicado_em: Hoje ou Ultimas 24h
-- fontes: 1 a 3
-- image_query: busca em ingles
+- Use apenas informacoes verificaveis.
+- Cada materia deve possuir entre 2000 e 2200 caracteres.
+- Cada noticia deve possuir exatamente 4 highlights.
+- Cada noticia deve possuir exatamente 5 hashtags.
+- Cada noticia deve possuir de 1 a 3 fontes reais.
 
 FORMATO:
 Responda SOMENTE com JSON valido.
 
-O array news deve conter exatamente ${total} itens:
-${NEWS_PER_CATEGORY} games,
-${NEWS_PER_CATEGORY} geek,
-${NEWS_PER_CATEGORY} cinema,
-${NEWS_PER_CATEGORY} anime.`;
+O array news deve conter exatamente ${TOTAL_NEWS} itens.
+
+Distribuicao obrigatoria:
+3 games
+3 geek
+3 cinema
+3 anime.`;
 }
 
-// ─── COPY BUTTON ─────────────────────────────────────────────────────────────
+// ─── COPY BUTTON ──────────────────────────────────────────────────────────────
 
 function CopyButton({
   text,
@@ -568,11 +604,9 @@ function Stamp({ children }) {
   );
 }
 
-// ─── ARTICLE FORMAT ──────────────────────────────────────────────────────────
+// ─── FORMATTED ARTICLE ───────────────────────────────────────────────────────
 
-function FormattedArticle({
-  text,
-}) {
+function FormattedArticle({ text }) {
   if (!text) return null;
 
   const cleaned = String(text).replace(
@@ -580,11 +614,9 @@ function FormattedArticle({
     ","
   );
 
-  const lines =
-    cleaned.split(/\n/);
+  const lines = cleaned.split(/\n/);
 
   const blocks = [];
-
   let paragraph = [];
   let list = [];
 
@@ -592,8 +624,7 @@ function FormattedArticle({
     if (paragraph.length) {
       blocks.push({
         type: "p",
-        content:
-          paragraph.join(" "),
+        content: paragraph.join(" "),
       });
 
       paragraph = [];
@@ -653,7 +684,6 @@ function FormattedArticle({
       );
     } else {
       flushL();
-
       paragraph.push(line);
     }
   });
@@ -695,15 +725,10 @@ function FormattedArticle({
     }
   });
 
-  function renderInline(
-    t,
-    kp
-  ) {
+  function renderInline(t, kp) {
     return String(t || "")
       .replace(/[—–]/g, ",")
-      .split(
-        /(\*\*[^*]+\*\*)/g
-      )
+      .split(/(\*\*[^*]+\*\*)/g)
       .map((part, i) =>
         part.startsWith("**") &&
         part.endsWith("**") ? (
@@ -727,9 +752,7 @@ function FormattedArticle({
     <div className="space-y-2.5">
       {finalBlocks.map(
         (block, i) => {
-          if (
-            block.type === "h3"
-          ) {
+          if (block.type === "h3") {
             return (
               <h4
                 key={i}
@@ -756,9 +779,7 @@ function FormattedArticle({
             );
           }
 
-          if (
-            block.type === "ul"
-          ) {
+          if (block.type === "ul") {
             return (
               <ul
                 key={i}
@@ -787,8 +808,7 @@ function FormattedArticle({
             );
           }
 
-          const isLead =
-            i === 0;
+          const isLead = i === 0;
 
           return (
             <p
@@ -811,11 +831,9 @@ function FormattedArticle({
   );
 }
 
-// ─── BANNER SECTION ──────────────────────────────────────────────────────────
+// ─── BANNER SECTION ───────────────────────────────────────────────────────────
 
-function BannerSection({
-  item,
-}) {
+function BannerSection({ item }) {
   const [status, setStatus] =
     useState("idle");
 
@@ -835,8 +853,9 @@ function BannerSection({
     setBannerUrl("");
 
     try {
-      const response =
-        await fetch("/api/banner", {
+      const response = await fetch(
+        "/api/banner",
+        {
           method: "POST",
           headers: {
             "Content-Type":
@@ -853,7 +872,8 @@ function BannerSection({
             image_query:
               item.image_query,
           }),
-        });
+        }
+      );
 
       const data =
         await response.json();
@@ -893,16 +913,16 @@ function BannerSection({
       "wire-geek-banner.svg";
 
     document.body.appendChild(link);
+
     link.click();
+
     link.remove();
   }
 
   return (
     <div>
       <p className="mb-3 font-mono text-[10px] leading-relaxed text-[#5c6f6b]">
-        Gere automaticamente um
-        banner Wire/Geek para esta
-        noticia.
+        Gere automaticamente um banner Wire/Geek para esta noticia.
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -947,9 +967,9 @@ function BannerSection({
         <div className="mb-3 border border-[#3a4a4d] bg-[#1a2628] px-3 py-3 font-mono text-[10px] text-[#8fa39d]">
           GERANDO BANNER...
           <br />
+
           <span className="text-[#5c6f6b]">
-            Montando layout
-            Wire/Geek.
+            Montando layout Wire/Geek.
           </span>
         </div>
       )}
@@ -977,7 +997,7 @@ function BannerSection({
   );
 }
 
-// ─── DISPATCH CARD ───────────────────────────────────────────────────────────
+// ─── DISPATCH CARD ────────────────────────────────────────────────────────────
 
 function DispatchCard({
   item,
@@ -986,12 +1006,10 @@ function DispatchCard({
   const [tab, setTab] =
     useState("materia");
 
-  const {
-    words,
-    minutes,
-  } = estimateReading(
-    item.materia
-  );
+  const { words, minutes } =
+    estimateReading(
+      item.materia
+    );
 
   const catColor =
     CATEGORY_COLOR[
@@ -1109,9 +1127,10 @@ function DispatchCard({
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#5c6f6b]">
                 <Clock size={11} />
-                {minutes} min ·{" "}
-                {words} palavras ·{" "}
-                {item.materia.length} chars
+                {minutes} min · {words}{" "}
+                palavras ·{" "}
+                {item.materia.length}{" "}
+                chars
               </span>
 
               <CopyButton
@@ -1123,8 +1142,7 @@ function DispatchCard({
             <div
               className="mb-4 border-l-2 pl-3"
               style={{
-                borderColor:
-                  catColor,
+                borderColor: catColor,
               }}
             >
               <h5
@@ -1145,7 +1163,9 @@ function DispatchCard({
               }}
             >
               <FormattedArticle
-                text={item.materia}
+                text={
+                  item.materia
+                }
               />
             </div>
 
@@ -1289,7 +1309,7 @@ function DispatchCard({
   );
 }
 
-// ─── SCHEDULER ───────────────────────────────────────────────────────────────
+// ─── SCHEDULER ────────────────────────────────────────────────────────────────
 
 function SchedulerBadge({
   nextRun,
@@ -1313,7 +1333,7 @@ function SchedulerBadge({
   );
 }
 
-// ─── APP ─────────────────────────────────────────────────────────────────────
+// ─── APP ──────────────────────────────────────────────────────────────────────
 
 export default function GeekNewsWire() {
   const [status, setStatus] =
@@ -1353,17 +1373,17 @@ export default function GeekNewsWire() {
 
   function computeNextRun() {
     const now = new Date();
-    const next = new Date();
+    const date = new Date();
 
-    next.setHours(7, 0, 0, 0);
+    date.setHours(7, 0, 0, 0);
 
-    if (now >= next) {
-      next.setDate(
-        next.getDate() + 1
+    if (now >= date) {
+      date.setDate(
+        date.getDate() + 1
       );
     }
 
-    return next;
+    return date;
   }
 
   function formatNextRun(date) {
@@ -1403,12 +1423,10 @@ export default function GeekNewsWire() {
             ?.get(todayKey())
             .then((saved) => {
               if (!saved?.value) {
-                generate(false);
+                generate();
               }
             })
-            .catch(() =>
-              generate(false)
-            );
+            .catch(() => generate());
         }
 
         setNextRun(
@@ -1474,8 +1492,6 @@ export default function GeekNewsWire() {
           startScheduler();
         }
       } catch {}
-
-      return;
     })();
 
     return () => {
@@ -1551,41 +1567,95 @@ export default function GeekNewsWire() {
       activeFilter,
     ]);
 
-  // ─── GERACAO ───────────────────────────────────────────────────────────────
+  // ─── MODO TESTE GRATUITO ────────────────────────────────────────────────
 
-  async function generate(
-    isTestMode = false
-  ) {
+  function generateTestEdition() {
     if (status === "loading") {
       return;
     }
 
-    setTestMode(isTestMode);
+    setTestMode(true);
+    setStatus("loading");
+    setErrorMsg("");
+    setTicker(
+      "MODO TESTE GRATUITO · NAO USA GEMINI"
+    );
+
+    window.setTimeout(() => {
+      try {
+        const news =
+          createTestNews();
+
+        const validationError =
+          validateEdition(
+            news,
+            true
+          );
+
+        if (validationError) {
+          throw new Error(
+            validationError
+          );
+        }
+
+        const newEdition = {
+          generatedAt:
+            new Date().toISOString(),
+
+          testMode: true,
+
+          news,
+        };
+
+        setEdition(
+          newEdition
+        );
+
+        setStatus("done");
+
+        setTicker(
+          "TESTE CONCLUIDO · 1 DESPACHO · ZERO CREDITOS GEMINI"
+        );
+
+        setActiveFilter("all");
+      } catch (error) {
+        console.error(error);
+
+        setErrorMsg(
+          error?.message ||
+            "Falha no modo de teste."
+        );
+
+        setStatus("error");
+
+        setTicker(
+          "FALHA NO MODO TESTE"
+        );
+      }
+    }, 400);
+  }
+
+  // ─── GERACAO REAL ──────────────────────────────────────────────────────
+
+  async function generate() {
+    if (status === "loading") {
+      return;
+    }
+
+    setTestMode(false);
     setStatus("loading");
     setErrorMsg("");
 
-    const totalNormal =
-      CATEGORY_ORDER.length *
-      NEWS_PER_CATEGORY;
-
-    const phases = isTestMode
-      ? [
-          "INICIANDO TESTE GRATUITO",
-          "CONECTANDO AO BACKEND",
-          "VERIFICANDO GEMINI",
-          "SOLICITANDO 1 NOTICIA",
-          "VALIDANDO RESPOSTA",
-        ]
-      : [
-          "CONECTANDO AO FIO INTERNACIONAL",
-          "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
-          "FILTRANDO PUBLICACOES DAS ULTIMAS 24H",
-          "VALIDANDO DATA E FONTE",
-          "APURANDO OS FATOS",
-          "REDIGINDO COM VOZ PROPRIA",
-          "LAPIDANDO CHAMADAS",
-          "FORMATANDO PARA REDES SOCIAIS",
-        ];
+    const phases = [
+      "CONECTANDO AO FIO INTERNACIONAL",
+      "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
+      "FILTRANDO PUBLICACOES DAS ULTIMAS 24H",
+      "VALIDANDO DATA E FONTE",
+      "APURANDO OS FATOS",
+      "REDIGINDO COM VOZ PROPRIA",
+      "LAPIDANDO CHAMADAS",
+      "FORMATANDO PARA REDES SOCIAIS",
+    ];
 
     let phaseIndex = 0;
 
@@ -1603,102 +1673,35 @@ export default function GeekNewsWire() {
     setTicker(phases[0]);
 
     try {
-      const prompt =
-        isTestMode
-          ? `MODO DE TESTE GRATUITO.
-
-Gere exatamente 1 noticia real.
-
-Escolha uma categoria entre games, geek, cinema ou anime.
-
-Use uma noticia recente e verificavel.
-
-Nao invente fatos.
-
-Nao invente fontes.
-
-Nao invente URLs.
-
-A materia pode ser curta para fins de teste.
-
-Retorne somente JSON.
-
-Formato:
-
-{
-  "news": [
-    {
-      "categoria": "geek",
-      "titulo": "Titulo da noticia",
-      "publicado_em": "Ultimas 24h",
-      "materia": "Materia de teste",
-      "highlights": [
-        "Highlight 1",
-        "Highlight 2",
-        "Highlight 3",
-        "Highlight 4"
-      ],
-      "hashtags": [
-        "#Geek",
-        "#Noticias",
-        "#WireGeek",
-        "#BagacaStudios",
-        "#Teste"
-      ],
-      "fontes": [
-        {
-          "nome": "Fonte",
-          "url": "https://example.com",
-          "publicado_em": "Ultimas 24h"
-        }
-      ],
-      "image_query": "geek news"
-    }
-  ]
-}`
-          : `Gere a edicao de hoje com exatamente ${totalNormal} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime).
-
-Todas publicadas nas ultimas 24 horas.
-
-Busque na web antes de escrever.
-
-Cada materia deve obrigatoriamente ter entre 2000 e 2200 caracteres.
-
-Nunca entregue materia com menos de 2000 caracteres.
-
-Nunca use travessao.
-
-Responda somente com o JSON solicitado.`;
-
       const response =
         await fetchWithRetry(
           "/api/news",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
+
             body: JSON.stringify({
-              prompt,
-              testMode:
-                isTestMode,
+              prompt: `Gere a edicao de hoje com exatamente ${TOTAL_NEWS} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Cada materia deve obrigatoriamente ter entre 2000 e 2200 caracteres. Nunca entregue materia com menos de 2000 caracteres. Nunca use travessao. Responda somente com o JSON solicitado.`,
+
+              testMode: false,
             }),
           },
           {
-            attempts: isTestMode
-              ? 1
-              : 4,
+            attempts: 4,
 
             onRetry: (
               s,
-              a,
-              t,
-              w
+              attempt,
+              total,
+              wait
             ) => {
               setTicker(
-                `SERVIDOR OCUPADO: TENTATIVA ${a}/${t} EM ${Math.round(
-                  w / 1000
+                `SERVIDOR OCUPADO: TENTATIVA ${attempt}/${total - 1} EM ${Math.round(
+                  wait / 1000
                 )}S`
               );
             },
@@ -1714,7 +1717,7 @@ Responda somente com o JSON solicitado.`;
         throw new Error(
           `Erro no backend ${response.status}: ${body.slice(
             0,
-            800
+            500
           )}`
         );
       }
@@ -1770,13 +1773,12 @@ Responda somente com o JSON solicitado.`;
           );
         }
 
-        parsed =
-          JSON.parse(
-            cleaned.slice(
-              start,
-              end + 1
-            )
-          );
+        parsed = JSON.parse(
+          cleaned.slice(
+            start,
+            end + 1
+          )
+        );
       }
 
       const news = (
@@ -1788,7 +1790,7 @@ Responda somente com o JSON solicitado.`;
       const validationError =
         validateEdition(
           news,
-          isTestMode
+          false
         );
 
       if (validationError) {
@@ -1801,60 +1803,45 @@ Responda somente com o JSON solicitado.`;
         generatedAt:
           new Date().toISOString(),
 
-        testMode: isTestMode,
+        testMode: false,
 
         news,
       };
 
-      setEdition(newEdition);
+      setEdition(
+        newEdition
+      );
+
       setStatus("done");
 
-      if (isTestMode) {
-        setTicker(
-          "TESTE GRATUITO CONCLUIDO · 1 DESPACHO"
-        );
-      } else {
-        setTicker(
-          `APURACAO CONCLUIDA · ${news.length} DESPACHOS`
-        );
-      }
+      setTicker(
+        `APURACAO CONCLUIDA · ${news.length} DESPACHOS`
+      );
 
       setActiveFilter("all");
 
-      /*
-       * Nao salvamos o teste como
-       * edicao oficial do dia.
-       */
-      if (
-        !isTestMode &&
-        window.storage?.set
-      ) {
-        try {
+      try {
+        if (window.storage?.set) {
           await window.storage.set(
             todayKey(),
             JSON.stringify(
               newEdition
             )
           );
-        } catch {}
-      }
-    } catch (err) {
-      console.error(
-        "WIRE/GEEK FRONTEND ERROR:",
-        err
-      );
+        }
+      } catch {}
+    } catch (error) {
+      console.error(error);
 
       setErrorMsg(
-        err?.message ||
+        error?.message ||
           "Falha desconhecida."
       );
 
       setStatus("error");
 
       setTicker(
-        isTestMode
-          ? "FALHA NO TESTE GRATUITO"
-          : "FALHA NA APURACAO"
+        "FALHA NA APURACAO"
       );
     } finally {
       clearInterval(interval);
@@ -1927,23 +1914,22 @@ Responda somente com o JSON solicitado.`;
             </h1>
 
             <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">
-              BAGACA STUDIOS ·
-              NEWSROOM 3.0
+              BAGACA STUDIOS · NEWSROOM
+              3.0
             </div>
           </div>
 
           <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">
-            GAMES · GEEK · CINEMA
-            · ANIME
+            GAMES · GEEK · CINEMA ·
+            ANIME
           </span>
         </div>
 
         <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
           Central editorial para
-          apuracao diaria. 4
-          categorias, 3 noticias
-          cada, banners no Canva
-          com imagens reais.
+          apuracao diaria. 4 categorias,
+          3 noticias cada, banners no
+          Canva com imagens reais.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -1965,11 +1951,7 @@ Responda somente com o JSON solicitado.`;
                 }}
               >
                 {NEWS_PER_CATEGORY}x{" "}
-                {
-                  CATEGORY_LABEL[
-                    cat
-                  ]
-                }
+                {CATEGORY_LABEL[cat]}
               </span>
             )
           )}
@@ -1988,31 +1970,28 @@ Responda somente com o JSON solicitado.`;
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
-            {/* APURAR NORMAL */}
+            {/* APURAR */}
 
             <button
               type="button"
-              onClick={() =>
-                generate(false)
-              }
+              onClick={generate}
               disabled={
-                status === "loading"
+                status ===
+                "loading"
               }
               className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw
                 size={14}
                 className={
-                  status === "loading" &&
-                  !testMode
+                  status ===
+                  "loading"
                     ? "animate-spin"
                     : ""
                 }
               />
 
-              {status ===
-              "loading" &&
-              !testMode
+              {status === "loading"
                 ? "Apurando..."
                 : "Apurar Noticias"}
             </button>
@@ -2021,29 +2000,20 @@ Responda somente com o JSON solicitado.`;
 
             <button
               type="button"
-              onClick={() =>
-                generate(true)
+              onClick={
+                generateTestEdition
               }
               disabled={
-                status === "loading"
+                status ===
+                "loading"
               }
-              className="inline-flex items-center gap-2 border border-[#5fbf7a]/60 px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#5fbf7a] transition-colors hover:bg-[#5fbf7a]/10 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 border border-[#f0b429]/50 px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#f0b429] transition-colors hover:bg-[#f0b429]/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Zap
+              <FlaskConical
                 size={14}
-                className={
-                  status === "loading" &&
-                  testMode
-                    ? "animate-pulse"
-                    : ""
-                }
               />
 
-              {status ===
-                "loading" &&
-              testMode
-                ? "Testando..."
-                : "Teste Gratuito"}
+              Modo Teste Gratuito
             </button>
 
             {/* SCHEDULER */}
@@ -2059,7 +2029,9 @@ Responda somente com o JSON solicitado.`;
                   : "border-[#3a4a4d] text-[#7a8f8a] hover:border-[#5fbf7a]/50 hover:text-[#5fbf7a]"
               }`}
             >
-              <Calendar size={14} />
+              <Calendar
+                size={14}
+              />
 
               {schedulerEnabled
                 ? "Auto 7H · Ativo"
@@ -2084,19 +2056,28 @@ Responda somente com o JSON solicitado.`;
           )}
         </div>
 
-        {/* TEST MODE NOTICE */}
+        {/* AVISO TESTE */}
 
         {edition?.testMode && (
-          <div className="mb-5 border border-[#5fbf7a]/40 bg-[#0c1814] px-3 py-3 font-mono text-[10px] text-[#8fd6a4]">
-            <div className="font-bold tracking-wider text-[#5fbf7a]">
-              MODO DE TESTE GRATUITO
-            </div>
+          <div className="mb-5 flex items-start gap-3 border border-[#f0b429]/40 bg-[#211c0c] px-4 py-3 text-[#f0b429]">
+            <FlaskConical
+              size={18}
+              className="mt-0.5 shrink-0"
+            />
 
-            <div className="mt-1 text-[#7fa58b]">
-              Esta resposta contém
-              apenas 1 noticia e nao
-              foi salva como edicao
-              oficial.
+            <div>
+              <div className="font-mono text-[11px] font-bold uppercase tracking-wider">
+                MODO TESTE GRATUITO
+              </div>
+
+              <div className="mt-1 font-mono text-[10px] leading-relaxed text-[#cdbd82]">
+                Esta noticia foi gerada
+                localmente. Nenhuma
+                chamada ao Gemini foi
+                realizada e nenhum
+                credito da API foi
+                consumido.
+              </div>
             </div>
           </div>
         )}
@@ -2114,8 +2095,12 @@ Responda somente com o JSON solicitado.`;
                   ] || 0;
 
                 const ok =
-                  count ===
-                  NEWS_PER_CATEGORY;
+                  edition.testMode
+                    ? count === 1 &&
+                      cat ===
+                        "geek"
+                    : count ===
+                      NEWS_PER_CATEGORY;
 
                 const color =
                   CATEGORY_COLOR[
@@ -2143,7 +2128,12 @@ Responda somente com o JSON solicitado.`;
                           : "text-[#e0452f]"
                       }`}
                     >
-                      {ok
+                      {edition.testMode
+                        ? cat ===
+                          "geek"
+                          ? "1 TESTE ✓"
+                          : "TESTE"
+                        : ok
                         ? `${count}/${NEWS_PER_CATEGORY} ✓`
                         : `${count}/${NEWS_PER_CATEGORY}`}
                     </div>
@@ -2175,20 +2165,15 @@ Responda somente com o JSON solicitado.`;
           !edition && (
             <div className="border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#5c6f6b]">
               <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">
-                REDACAO EM
-                ESPERA
+                REDACAO EM ESPERA
               </div>
 
-              Nenhuma edicao
-              gerada hoje. Inicie
-              a apuracao ou use o
-              Teste Gratuito para
-              verificar a conexao
-              com o Gemini.
+              Nenhuma edicao gerada
+              hoje. Inicie a apuracao
+              ou utilize o modo de teste
+              gratuito.
             </div>
           )}
-
-        {/* LOADING */}
 
         {status === "loading" &&
           !edition && (
@@ -2197,7 +2182,7 @@ Responda somente com o JSON solicitado.`;
             </div>
           )}
 
-        {/* FILTERS + CARDS */}
+        {/* FILTROS + CARDS */}
 
         {edition && (
           <>
@@ -2257,9 +2242,11 @@ Responda somente com o JSON solicitado.`;
                             ? color
                             : color +
                               "40",
+
                         color: active
                           ? "#0a1315"
                           : color,
+
                         backgroundColor:
                           active
                             ? color
@@ -2271,7 +2258,9 @@ Responda somente com o JSON solicitado.`;
                           cat
                         ]
                       }{" "}
-                      ({count})
+                      (
+                      {count}
+                      )
                     </button>
                   );
                 }
@@ -2303,14 +2292,13 @@ Responda somente com o JSON solicitado.`;
       <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
         <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
           <span>
-            WIRE/GEEK 3.0 ·
-            BAGACA STUDIOS
+            WIRE/GEEK 3.0 · BAGACA
+            STUDIOS
           </span>
 
           <span>
-            EDICOES SALVAS · AUTO
-            7H · BANNERS COM
-            IMAGENS REAIS
+            EDICOES SALVAS · AUTO 7H ·
+            BANNERS COM IMAGENS REAIS
           </span>
         </div>
       </footer>

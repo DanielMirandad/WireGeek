@@ -305,13 +305,23 @@ Expanda a materia ate atingir obrigatoriamente entre 2000 e 2200 caracteres.
         }
       );
 
-      if (!expandResponse.ok) {
-        throw new Error(
-          `Falha ao expandir "${item.titulo}": HTTP ${expandResponse.status}`
-        );
-      }
+     const expandResponseText = await expandResponse.text();
 
-      const expandRaw = await expandResponse.json();
+if (!expandResponse.ok) {
+  throw new Error(
+    `Anthropic retornou HTTP ${expandResponse.status}: ${expandResponseText.slice(0, 1000)}`
+  );
+}
+
+let expandRaw;
+
+try {
+  expandRaw = JSON.parse(expandResponseText);
+} catch {
+  throw new Error(
+    `Resposta invalida da Anthropic durante expansao: ${expandResponseText.slice(0, 1000)}`
+  );
+}
 
       const expandedText = (expandRaw.content || [])
         .filter((block) => block.type === "text")
@@ -333,12 +343,33 @@ Expanda a materia ate atingir obrigatoriamente entre 2000 e 2200 caracteres.
      * Processa somente as noticias que ficaram abaixo do minimo.
      */
     for (const item of parsed.news) {
-      const materia = String(item.materia || "").trim();
+  const materia = String(item.materia || "").trim();
 
-      if (materia.length < 2000) {
-        item.materia = await expandMateria(item);
-      }
+  if (materia.length < 2000) {
+    try {
+      console.log(
+        `WIRE/GEEK: expandindo "${item.titulo}" (${materia.length} caracteres)`
+      );
+
+      item.materia = await expandMateria(item);
+
+      console.log(
+        `WIRE/GEEK: "${item.titulo}" expandida para ${item.materia.length} caracteres`
+      );
+    } catch (error) {
+      console.error(
+        `WIRE/GEEK: falha ao expandir "${item.titulo}"`,
+        error
+      );
+
+      return res.status(502).json({
+        error: "Falha ao expandir materia.",
+        titulo: item.titulo,
+        detalhes: error?.message || "Erro desconhecido",
+      });
     }
+  }
+}
 
     /*
      * Validacao final.

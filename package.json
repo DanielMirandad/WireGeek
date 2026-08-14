@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
+    "autoprefixer": "latest",
+    "lucide-react": "latest",
+    "postcss": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "lucide-react": "latest"
-  },
-  "devDependencies": {}
+    "tailwindcss": "latest",
+    "vite": "latest"
+  }
 }

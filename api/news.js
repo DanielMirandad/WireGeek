@@ -2,7 +2,9 @@ import { GoogleGenAI } from "@google/genai";
 
 const MODEL = "gemini-3.5-flash-lite";
 
-const TEST_MODE = true;
+git add api/news.js
+git commit -m "Restore paid Gemini editorial mode"
+git push origin main
 
 const TEST_SCHEMA = {
   type: "object",

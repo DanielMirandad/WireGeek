@@ -1,6 +1,3 @@
-# api/news.js
-
-```javascript
 import { GoogleGenAI } from "@google/genai";
 
 const MODEL = "gemini-3.5-flash-lite";
@@ -15,16 +12,16 @@ const CATEGORIES = [
 const NEWS_PER_CATEGORY = 3;
 const TOTAL_NEWS = 12;
 
-const MIN_ARTICLE_LENGTH = 2000;
-const MAX_ARTICLE_LENGTH = 2200;
-
 const NEWS_SCHEMA = {
   type: "object",
+
   properties: {
     news: {
       type: "array",
+
       minItems: TOTAL_NEWS,
       maxItems: TOTAL_NEWS,
+
       items: {
         type: "object",
 
@@ -50,6 +47,7 @@ const NEWS_SCHEMA = {
             type: "array",
             minItems: 4,
             maxItems: 4,
+
             items: {
               type: "string",
             },
@@ -59,6 +57,7 @@ const NEWS_SCHEMA = {
             type: "array",
             minItems: 5,
             maxItems: 5,
+
             items: {
               type: "string",
             },
@@ -117,10 +116,10 @@ const NEWS_SCHEMA = {
 };
 
 /*
-============================================================
-NORMALIZAÇÃO
-============================================================
-*/
+ * ============================================================
+ * NORMALIZAÇÃO
+ * ============================================================
+ */
 
 function normalizeText(value) {
   return String(value || "")
@@ -136,7 +135,7 @@ function normalizeNews(news) {
 
   return news.map((item) => ({
     categoria: String(
-      item?.categoria || ""
+      item?.categoria || "geek"
     )
       .toLowerCase()
       .trim(),
@@ -153,41 +152,42 @@ function normalizeNews(news) {
       item?.materia
     ),
 
-    highlights:
-      Array.isArray(item?.highlights)
-        ? item.highlights
-            .map(normalizeText)
-            .filter(Boolean)
-            .slice(0, 4)
-        : [],
+    highlights: Array.isArray(
+      item?.highlights
+    )
+      ? item.highlights
+          .map(normalizeText)
+          .slice(0, 4)
+      : [],
 
-    hashtags:
-      Array.isArray(item?.hashtags)
-        ? item.hashtags
-            .map(normalizeText)
-            .filter(Boolean)
-            .slice(0, 5)
-        : [],
+    hashtags: Array.isArray(
+      item?.hashtags
+    )
+      ? item.hashtags
+          .map(normalizeText)
+          .slice(0, 5)
+      : [],
 
-    fontes:
-      Array.isArray(item?.fontes)
-        ? item.fontes
-            .slice(0, 3)
-            .map((source) => ({
-              nome: normalizeText(
-                source?.nome
+    fontes: Array.isArray(
+      item?.fontes
+    )
+      ? item.fontes
+          .slice(0, 3)
+          .map((source) => ({
+            nome: normalizeText(
+              source?.nome
+            ),
+
+            url: String(
+              source?.url || ""
+            ).trim(),
+
+            publicado_em:
+              normalizeText(
+                source?.publicado_em
               ),
-
-              url: String(
-                source?.url || ""
-              ).trim(),
-
-              publicado_em:
-                normalizeText(
-                  source?.publicado_em
-                ),
-            }))
-        : [],
+          }))
+      : [],
 
     image_query: normalizeText(
       item?.image_query ||
@@ -197,25 +197,31 @@ function normalizeNews(news) {
 }
 
 /*
-============================================================
-VALIDAÇÃO
-============================================================
-*/
+ * ============================================================
+ * VALIDAÇÃO
+ * ============================================================
+ */
 
 function validateNews(news) {
   const errors = [];
 
   if (!Array.isArray(news)) {
-    return [
-      "news precisa ser um array.",
-    ];
+    return ["news não é um array."];
   }
+
+  /*
+   * Quantidade total
+   */
 
   if (news.length !== TOTAL_NEWS) {
     errors.push(
       `A edição precisa conter exatamente ${TOTAL_NEWS} notícias. Recebidas: ${news.length}.`
     );
   }
+
+  /*
+   * Contagem por categoria
+   */
 
   const counts = {
     games: 0,
@@ -235,9 +241,15 @@ function validateNews(news) {
       errors.push(
         `Notícia ${number}: categoria inválida "${item.categoria}".`
       );
-    } else {
-      counts[item.categoria]++;
+
+      return;
     }
+
+    counts[item.categoria]++;
+
+    /*
+     * Título
+     */
 
     if (!item.titulo) {
       errors.push(
@@ -245,11 +257,19 @@ function validateNews(news) {
       );
     }
 
+    /*
+     * Data
+     */
+
     if (!item.publicado_em) {
       errors.push(
         `Notícia ${number}: publicado_em ausente.`
       );
     }
+
+    /*
+     * Matéria
+     */
 
     if (!item.materia) {
       errors.push(
@@ -257,26 +277,24 @@ function validateNews(news) {
       );
     }
 
-    const articleLength =
+    const length =
       item.materia?.length || 0;
 
-    if (
-      articleLength <
-      MIN_ARTICLE_LENGTH
-    ) {
+    if (length < 2000) {
       errors.push(
-        `Notícia ${number}: matéria possui ${articleLength} caracteres. Mínimo: ${MIN_ARTICLE_LENGTH}.`
+        `Notícia ${number} "${item.titulo}": matéria possui ${length} caracteres. Mínimo: 2000.`
       );
     }
 
-    if (
-      articleLength >
-      MAX_ARTICLE_LENGTH
-    ) {
+    if (length > 2200) {
       errors.push(
-        `Notícia ${number}: matéria possui ${articleLength} caracteres. Máximo: ${MAX_ARTICLE_LENGTH}.`
+        `Notícia ${number} "${item.titulo}": matéria possui ${length} caracteres. Máximo: 2200.`
       );
     }
+
+    /*
+     * Highlights
+     */
 
     if (
       !Array.isArray(
@@ -289,6 +307,10 @@ function validateNews(news) {
       );
     }
 
+    /*
+     * Hashtags
+     */
+
     if (
       !Array.isArray(
         item.hashtags
@@ -300,8 +322,14 @@ function validateNews(news) {
       );
     }
 
+    /*
+     * Fontes
+     */
+
     if (
-      !Array.isArray(item.fontes) ||
+      !Array.isArray(
+        item.fontes
+      ) ||
       item.fontes.length < 1 ||
       item.fontes.length > 3
     ) {
@@ -310,14 +338,20 @@ function validateNews(news) {
       );
     }
 
-    if (
-      !item.image_query
-    ) {
+    /*
+     * Image query
+     */
+
+    if (!item.image_query) {
       errors.push(
         `Notícia ${number}: image_query ausente.`
       );
     }
   });
+
+  /*
+   * Exatamente 3 por categoria
+   */
 
   for (const category of CATEGORIES) {
     if (
@@ -325,7 +359,7 @@ function validateNews(news) {
       NEWS_PER_CATEGORY
     ) {
       errors.push(
-        `${category}: esperado ${NEWS_PER_CATEGORY}, recebido ${counts[category]}.`
+        `${category}: esperadas ${NEWS_PER_CATEGORY}, recebidas ${counts[category]}.`
       );
     }
   }
@@ -334,45 +368,67 @@ function validateNews(news) {
 }
 
 /*
-============================================================
-PROMPT PRINCIPAL
-============================================================
-*/
+ * ============================================================
+ * PROMPT EDITORIAL
+ * ============================================================
+ */
 
 function buildPrompt(prompt) {
   return `
-Você é o editor-chefe do WIRE/GEEK, uma publicação brasileira especializada em games, cultura geek, cinema e anime.
+Você é o editor-chefe da WIRE/GEEK, uma publicação brasileira especializada em games, cultura geek, cinema e anime.
 
-Sua missão é produzir uma edição jornalística real e atualizada.
+Sua função é produzir uma edição jornalística atual, factual e interessante.
 
-IMPORTANTE:
-
-Pesquise a web ANTES de escrever.
-
-Use somente fatos verificáveis.
+PESQUISE A WEB ANTES DE ESCREVER.
 
 A edição precisa conter EXATAMENTE ${TOTAL_NEWS} notícias.
 
 DISTRIBUIÇÃO OBRIGATÓRIA:
 
-${NEWS_PER_CATEGORY} notícias de GAMES.
-${NEWS_PER_CATEGORY} notícias de GEEK.
-${NEWS_PER_CATEGORY} notícias de CINEMA.
-${NEWS_PER_CATEGORY} notícias de ANIME.
+3 notícias de GAMES.
+3 notícias de GEEK.
+3 notícias de CINEMA.
+3 notícias de ANIME.
 
-TOTAL: ${TOTAL_NEWS} notícias.
+NÃO entregue 11.
+NÃO entregue 13.
+NÃO entregue quantidade diferente.
+
+A resposta final precisa possuir exatamente 12 objetos dentro de "news".
 
 ============================================================
 ATUALIDADE
 ============================================================
 
-Priorize notícias publicadas HOJE ou nas últimas 24 horas.
+Priorize notícias publicadas hoje ou nas últimas 24 horas.
 
-Não utilize notícias antigas apenas para preencher quantidade.
+Confirme a data de publicação através das fontes.
 
-Caso uma categoria tenha poucas notícias relevantes, procure fontes adicionais.
+Não utilize notícia antiga apenas porque ela é popular.
 
-Não invente fatos para completar a quantidade.
+Se uma informação for uma atualização de uma notícia anterior, deixe isso claro.
+
+============================================================
+FATUALIDADE
+============================================================
+
+Não invente:
+
+- fatos;
+- datas;
+- nomes;
+- declarações;
+- números;
+- resultados;
+- lançamentos;
+- fontes;
+- URLs.
+
+Use somente informações encontradas nas fontes consultadas.
+
+Não crie URLs.
+
+Copie as URLs reais das fontes consultadas.
 
 ============================================================
 CATEGORIAS
@@ -380,80 +436,30 @@ CATEGORIAS
 
 GAMES:
 
-Jogos, consoles, PC, Xbox, PlayStation, Nintendo, Steam, trailers, lançamentos, atualizações, indústria, esports e mercado de games.
+Jogos, consoles, PC, PlayStation, Xbox, Nintendo, Steam, trailers, lançamentos, atualizações, desenvolvedoras, publishers, indústria e esports.
 
 GEEK:
 
-Quadrinhos, tecnologia geek, cultura pop, colecionáveis, eventos, ficção científica, fantasia, super-heróis e cultura nerd.
+Quadrinhos, tecnologia geek, cultura pop, colecionáveis, eventos, ficção científica, fantasia, cultura nerd e entretenimento relacionado.
 
 CINEMA:
 
-Filmes, trailers, lançamentos, franquias, atores, atrizes, diretores, produções, bilheterias, adaptações, remakes e sequências.
+Filmes, trailers, lançamentos, franquias, atores, atrizes, diretores, produções, bilheterias, adaptações, remakes, sequências e streaming cinematográfico.
 
 ANIME:
 
-Animes, mangás, light novels, episódios, temporadas, adaptações, dublagem, filmes, streaming, Crunchyroll e declarações de criadores.
-
-============================================================
-REGRAS EDITORIAIS
-============================================================
-
-1. Exatamente ${TOTAL_NEWS} notícias.
-
-2. Exatamente ${NEWS_PER_CATEGORY} notícias de cada categoria.
-
-3. Cada matéria deve possuir entre ${MIN_ARTICLE_LENGTH} e ${MAX_ARTICLE_LENGTH} caracteres.
-
-4. Não utilize travessão.
-
-5. Não utilize o caractere "—".
-
-6. Não utilize o caractere "–".
-
-7. Use vírgulas, pontos, dois-pontos ou parênteses.
-
-8. Não invente fatos.
-
-9. Não invente datas.
-
-10. Não invente declarações.
-
-11. Não invente fontes.
-
-12. Não invente URLs.
-
-13. As URLs das fontes devem ser URLs reais encontradas durante a pesquisa.
-
-14. Highlights: exatamente 4.
-
-15. Hashtags: exatamente 5.
-
-16. Fontes: entre 1 e 3.
-
-17. Cada notícia precisa possuir image_query.
-
-18. Evite repetir a mesma notícia em categorias diferentes.
-
-19. Evite repetir a mesma fonte quando houver outras fontes confiáveis disponíveis.
-
-20. A matéria deve ter estilo jornalístico brasileiro, claro, envolvente e informativo.
-
-21. Não escreva introdução fora do JSON.
-
-22. Não escreva comentários fora do JSON.
-
-23. Retorne SOMENTE o objeto JSON solicitado.
+Anime, mangá, light novels, episódios, temporadas, adaptações, dublagem, filmes, streaming, Crunchyroll e declarações de criadores.
 
 ============================================================
 FONTES PRIORITÁRIAS
 ============================================================
 
-Considere fontes como:
+Sempre que possível, priorize fontes jornalísticas e especializadas confiáveis, incluindo:
 
 IGN Brasil
 Omelete
-The Enemy
 Eurogamer
+The Enemy
 Jovem Nerd
 Adrenaline
 Canaltech
@@ -467,62 +473,148 @@ Crunchyroll News
 Anime News Network
 MyAnimeList News
 
-Use outras fontes confiáveis quando necessário.
+Também pode utilizar fontes oficiais de empresas, estúdios, publishers, desenvolvedores e plataformas quando forem a origem primária da informação.
+
+============================================================
+MATÉRIA
+============================================================
+
+Cada campo "materia" precisa possuir entre 2000 e 2200 caracteres.
+
+Mínimo: 2000 caracteres.
+Máximo: 2200 caracteres.
+
+Escreva em português brasileiro.
+
+Use estilo jornalístico de colunista:
+
+- informativo;
+- moderno;
+- envolvente;
+- objetivo;
+- com personalidade;
+- contextualizado.
+
+Não use travessão.
+
+Nunca utilize os caracteres:
+
+—
+–
+
+Utilize vírgulas, pontos, dois-pontos ou parênteses.
+
+Não fique repetindo a mesma informação apenas para atingir o tamanho.
+
+Inclua contexto, impacto e repercussão quando houver informação factual disponível.
+
+============================================================
+HIGHLIGHTS
+============================================================
+
+Cada notícia deve possuir EXATAMENTE 4 highlights.
+
+============================================================
+HASHTAGS
+============================================================
+
+Cada notícia deve possuir EXATAMENTE 5 hashtags.
+
+============================================================
+FONTES
+============================================================
+
+Cada notícia deve possuir entre 1 e 3 fontes.
+
+Cada fonte precisa conter:
+
+nome
+url
+publicado_em
+
+============================================================
+IMAGE QUERY
+============================================================
+
+Cada notícia precisa possuir um campo image_query.
+
+Esse campo deve ser uma consulta curta em inglês para encontrar uma imagem relacionada à notícia.
+
+Exemplo:
+
+"PlayStation new game announcement 2026"
 
 ============================================================
 FORMATO
 ============================================================
 
+Retorne SOMENTE JSON válido.
+
+Não escreva:
+
+"```json"
+
+Não escreva explicações antes do JSON.
+
+Não escreva explicações depois do JSON.
+
+Formato:
+
 {
   "news": [
     {
       "categoria": "games",
-      "titulo": "Título",
-      "publicado_em": "Data e horário",
-      "materia": "Matéria entre 2000 e 2200 caracteres",
+      "titulo": "",
+      "publicado_em": "",
+      "materia": "",
       "highlights": [
-        "Highlight 1",
-        "Highlight 2",
-        "Highlight 3",
-        "Highlight 4"
+        "",
+        "",
+        "",
+        ""
       ],
       "hashtags": [
-        "#Games",
-        "#Gaming",
-        "#WireGeek",
-        "#News",
-        "#Tecnologia"
+        "",
+        "",
+        "",
+        "",
+        ""
       ],
       "fontes": [
         {
-          "nome": "Nome da fonte",
-          "url": "https://url-real-da-fonte",
-          "publicado_em": "Data"
+          "nome": "",
+          "url": "",
+          "publicado_em": ""
         }
       ],
-      "image_query": "termos para buscar imagem relacionada"
+      "image_query": ""
     }
   ]
 }
 
-O array news DEVE possuir exatamente ${TOTAL_NEWS} objetos.
-
-Distribuição obrigatória:
+O array news precisa possuir exatamente 12 itens:
 
 3 games
 3 geek
 3 cinema
 3 anime
 
-${prompt || "Gere a edição atual do WIRE/GEEK com exatamente 12 notícias reais das últimas 24 horas."}
+============================================================
+SOLICITAÇÃO DO USUÁRIO
+============================================================
+
+${
+  prompt ||
+  "Gere a edição de hoje da WIRE/GEEK com exatamente 12 notícias reais publicadas nas últimas 24 horas."
+}
 `;
 }
 
 /*
-============================================================
-GERAÇÃO PRINCIPAL
-============================================================
-*/
+ * ============================================================
+ * GERAÇÃO PRINCIPAL
+ * ============================================================
+ */
 
 async function generateNews(
   ai,
@@ -554,9 +646,9 @@ async function generateNews(
       },
     });
 
-  if (!response?.text) {
+  if (!response.text) {
     throw new Error(
-      "Gemini não retornou conteúdo."
+      "Gemini não retornou texto."
     );
   }
 
@@ -567,6 +659,11 @@ async function generateNews(
       response.text
     );
   } catch (error) {
+    console.error(
+      "JSON GEMINI INVALIDO:",
+      response.text?.slice(0, 2000)
+    );
+
     throw new Error(
       "Gemini retornou JSON inválido."
     );
@@ -576,10 +673,10 @@ async function generateNews(
 }
 
 /*
-============================================================
-EXPANSÃO DE MATÉRIAS CURTAS
-============================================================
-*/
+ * ============================================================
+ * EXPANSÃO DE MATÉRIAS CURTAS
+ * ============================================================
+ */
 
 async function expandShortNews(
   ai,
@@ -590,14 +687,18 @@ async function expandShortNews(
       .map(
         (item, index) => ({
           index,
-          titulo: item.titulo,
-          materia: item.materia,
+          categoria:
+            item.categoria,
+          titulo:
+            item.titulo,
+          materia:
+            item.materia,
         })
       )
       .filter(
         (item) =>
           item.materia.length <
-          MIN_ARTICLE_LENGTH
+          2000
       );
 
   if (
@@ -605,6 +706,11 @@ async function expandShortNews(
   ) {
     return news;
   }
+
+  console.log(
+    "WIRE/GEEK: expandindo matérias curtas:",
+    shortItems.length
+  );
 
   const correctionSchema = {
     type: "object",
@@ -642,17 +748,19 @@ async function expandShortNews(
       model: MODEL,
 
       contents: `
-Você é um editor responsável por expandir matérias jornalísticas.
+Você é um editor responsável por corrigir o tamanho de matérias jornalísticas.
 
-Expanda SOMENTE as matérias abaixo.
+As matérias abaixo já foram produzidas com fatos pesquisados.
 
-Cada matéria final precisa possuir entre ${MIN_ARTICLE_LENGTH} e ${MAX_ARTICLE_LENGTH} caracteres.
+Sua tarefa é expandir SOMENTE as matérias que estão abaixo de 2000 caracteres.
 
 REGRAS:
 
-Não altere os fatos originais.
+Cada matéria FINAL precisa possuir entre 2000 e 2200 caracteres.
 
-Não invente fatos.
+Não altere o sentido dos fatos.
+
+Não invente informações.
 
 Não invente datas.
 
@@ -660,17 +768,34 @@ Não invente declarações.
 
 Não invente fontes.
 
+Não invente números.
+
 Não invente URLs.
 
-Acrescente apenas contexto jornalístico coerente com os fatos apresentados.
+Não adicione acontecimentos não presentes na matéria original.
 
-Não use travessão.
+Acrescente apenas contexto editorial coerente com as informações fornecidas.
 
-Não use "—".
+Escreva em português brasileiro.
 
-Não use "–".
+Não utilize travessão.
 
-Retorne somente JSON.
+Não utilize os caracteres:
+—
+–
+
+Retorne SOMENTE JSON válido.
+
+Formato:
+
+{
+  "items": [
+    {
+      "index": 0,
+      "materia": "..."
+    }
+  ]
+}
 
 MATÉRIAS:
 
@@ -679,10 +804,13 @@ ${shortItems
     (item) => `
 INDEX: ${item.index}
 
+CATEGORIA:
+${item.categoria}
+
 TÍTULO:
 ${item.titulo}
 
-MATÉRIA:
+MATÉRIA ORIGINAL:
 ${item.materia}
 `
   )
@@ -702,7 +830,7 @@ ${item.materia}
       },
     });
 
-  if (!response?.text) {
+  if (!response.text) {
     throw new Error(
       "Gemini não retornou a expansão."
     );
@@ -711,9 +839,10 @@ ${item.materia}
   let correction;
 
   try {
-    correction = JSON.parse(
-      response.text
-    );
+    correction =
+      JSON.parse(
+        response.text
+      );
   } catch {
     throw new Error(
       "Gemini retornou JSON inválido na expansão."
@@ -721,6 +850,7 @@ ${item.materia}
   }
 
   if (
+    !correction ||
     !Array.isArray(
       correction.items
     )
@@ -734,18 +864,21 @@ ${item.materia}
     const item of correction.items
   ) {
     const index =
-      Number(item.index);
+      Number(item?.index);
 
     if (
       Number.isInteger(index) &&
-      news[index] &&
-      typeof item.materia ===
-        "string"
+      news[index]
     ) {
-      news[index].materia =
+      const materia =
         normalizeText(
-          item.materia
+          item?.materia
         );
+
+      if (materia) {
+        news[index].materia =
+          materia;
+      }
     }
   }
 
@@ -753,45 +886,41 @@ ${item.materia}
 }
 
 /*
-============================================================
-HANDLER VERCEL
-============================================================
-*/
+ * ============================================================
+ * HANDLER VERCEL
+ * ============================================================
+ */
 
 export default async function handler(
   req,
   res
 ) {
   /*
-  Apenas POST
-  */
+   * Somente POST
+   */
 
-  if (
-    req.method !== "POST"
-  ) {
-    return res
-      .status(405)
-      .json({
-        error:
-          "Método não permitido.",
-      });
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      error:
+        "Método não permitido.",
+    });
   }
 
-  /*
-  ============================================================
-  GEMINI
-  ============================================================
-  */
-
   try {
+    /*
+     * ========================================================
+     * API KEY
+     * ========================================================
+     */
+
     const apiKey =
       process.env.GOOGLE_GEMINI_API_KEY ||
       process.env.GEMINI_API_KEY;
 
     console.log(
-      "WIRE/GEEK GEMINI ENV:",
+      "WIRE/GEEK GEMINI ENV CHECK:",
       {
-        googleGemini:
+        google:
           Boolean(
             process.env
               .GOOGLE_GEMINI_API_KEY
@@ -811,13 +940,17 @@ export default async function handler(
     );
 
     if (!apiKey) {
-      return res
-        .status(500)
-        .json({
-          error:
-            "GOOGLE_GEMINI_API_KEY não configurada na Vercel.",
-        });
+      return res.status(500).json({
+        error:
+          "GOOGLE_GEMINI_API_KEY não configurada na Vercel.",
+      });
     }
+
+    /*
+     * ========================================================
+     * GEMINI
+     * ========================================================
+     */
 
     const ai =
       new GoogleGenAI({
@@ -828,13 +961,18 @@ export default async function handler(
       req.body || {};
 
     const prompt =
-      body.prompt;
+      body.prompt ||
+      "Gere a edição de hoje da WIRE/GEEK com exatamente 12 notícias reais publicadas nas últimas 24 horas.";
+
+    console.log(
+      "WIRE/GEEK: iniciando geração editorial"
+    );
 
     /*
-    ==========================================================
-    GERAÇÃO
-    ==========================================================
-    */
+     * ========================================================
+     * GERAÇÃO
+     * ========================================================
+     */
 
     let data;
 
@@ -857,41 +995,44 @@ export default async function handler(
 
           code:
             error?.code,
+
+          details:
+            error?.details,
         }
       );
+
+      /*
+       * Quota / rate limit
+       */
 
       if (
         error?.status === 429
       ) {
-        return res
-          .status(429)
-          .json({
-            error:
-              "Limite ou quota do Gemini atingido.",
-
-            details:
-              error?.message ||
-              String(error),
-          });
-      }
-
-      return res
-        .status(502)
-        .json({
+        return res.status(429).json({
           error:
-            "Erro ao gerar notícias com Gemini.",
+            "Limite ou quota do Gemini atingido.",
 
           details:
             error?.message ||
             String(error),
         });
+      }
+
+      return res.status(502).json({
+        error:
+          "Erro ao gerar notícias com Gemini.",
+
+        details:
+          error?.message ||
+          String(error),
+      });
     }
 
     /*
-    ==========================================================
-    VERIFICAÇÃO
-    ==========================================================
-    */
+     * ========================================================
+     * FORMATO
+     * ========================================================
+     */
 
     if (
       !data ||
@@ -899,53 +1040,40 @@ export default async function handler(
         data.news
       )
     ) {
-      return res
-        .status(502)
-        .json({
-          error:
-            "Gemini retornou formato inválido.",
-        });
+      return res.status(502).json({
+        error:
+          "Gemini retornou formato de notícias inválido.",
+      });
     }
+
+    /*
+     * ========================================================
+     * NORMALIZAÇÃO
+     * ========================================================
+     */
 
     let news =
       normalizeNews(
         data.news
       );
 
-    /*
-    ==========================================================
-    GARANTIR EXATAMENTE 12
-    ==========================================================
-    */
-
-    if (
-      news.length !== TOTAL_NEWS
-    ) {
-      return res
-        .status(422)
-        .json({
-          error:
-            `Gemini retornou ${news.length} notícias. Eram necessárias exatamente ${TOTAL_NEWS}.`,
-
-          quantidade:
-            news.length,
-
-          esperado:
-            TOTAL_NEWS,
-        });
-    }
+    console.log(
+      "WIRE/GEEK: Gemini retornou:",
+      news.length,
+      "notícias"
+    );
 
     /*
-    ==========================================================
-    EXPANSÃO
-    ==========================================================
-    */
+     * ========================================================
+     * EXPANSÃO
+     * ========================================================
+     */
 
     const shortNews =
       news.filter(
         (item) =>
           item.materia.length <
-          MIN_ARTICLE_LENGTH
+          2000
       );
 
     if (
@@ -959,28 +1087,26 @@ export default async function handler(
           );
       } catch (error) {
         console.error(
-          "WIRE/GEEK GEMINI EXPANSION ERROR:",
+          "WIRE/GEEK EXPANSION ERROR:",
           error
         );
 
-        return res
-          .status(502)
-          .json({
-            error:
-              "Erro ao expandir matérias com Gemini.",
+        return res.status(502).json({
+          error:
+            "Erro ao expandir matérias com Gemini.",
 
-            details:
-              error?.message ||
-              String(error),
-          });
+          details:
+            error?.message ||
+            String(error),
+        });
       }
     }
 
     /*
-    ==========================================================
-    NORMALIZAÇÃO FINAL
-    ==========================================================
-    */
+     * ========================================================
+     * NORMALIZAÇÃO FINAL
+     * ========================================================
+     */
 
     news =
       normalizeNews(
@@ -988,10 +1114,10 @@ export default async function handler(
       );
 
     /*
-    ==========================================================
-    VALIDAÇÃO FINAL
-    ==========================================================
-    */
+     * ========================================================
+     * VALIDAÇÃO FINAL
+     * ========================================================
+     */
 
     const validationErrors =
       validateNews(
@@ -1006,109 +1132,117 @@ export default async function handler(
         validationErrors
       );
 
-      return res
-        .status(422)
-        .json({
-          error:
-            "A edição não passou na validação.",
+      return res.status(422).json({
+        error:
+          "A edição não passou na validação.",
 
-          details:
-            validationErrors,
+        details:
+          validationErrors,
 
-          resumo:
-            news.map(
-              (item) => ({
-                categoria:
-                  item.categoria,
+        news:
+          news.map(
+            (item) => ({
+              categoria:
+                item.categoria,
 
-                titulo:
-                  item.titulo,
+              titulo:
+                item.titulo,
 
-                caracteres:
-                  item.materia.length,
+              caracteres:
+                item.materia.length,
 
-                highlights:
-                  item.highlights.length,
+              highlights:
+                item.highlights.length,
 
-                hashtags:
-                  item.hashtags.length,
+              hashtags:
+                item.hashtags.length,
 
-                fontes:
-                  item.fontes.length,
-              })
-            ),
-        });
+              fontes:
+                item.fontes.length,
+            })
+          ),
+      });
     }
 
     /*
-    ==========================================================
-    SUCESSO
-    ==========================================================
-    */
+     * ========================================================
+     * RESUMO
+     * ========================================================
+     */
 
-    console.log(
-      "WIRE/GEEK EDITION OK:",
-      {
-        total:
-          news.length,
+    const summary = {
+      total: news.length,
 
+      byCategory: {
         games:
           news.filter(
-            (n) =>
-              n.categoria ===
+            (item) =>
+              item.categoria ===
               "games"
           ).length,
 
         geek:
           news.filter(
-            (n) =>
-              n.categoria ===
+            (item) =>
+              item.categoria ===
               "geek"
           ).length,
 
         cinema:
           news.filter(
-            (n) =>
-              n.categoria ===
+            (item) =>
+              item.categoria ===
               "cinema"
           ).length,
 
         anime:
           news.filter(
-            (n) =>
-              n.categoria ===
+            (item) =>
+              item.categoria ===
               "anime"
           ).length,
-      }
+      },
+    };
+
+    console.log(
+      "WIRE/GEEK: EDIÇÃO VALIDADA",
+      summary
     );
 
-    return res
-      .status(200)
-      .json({
-        testMode: false,
+    /*
+     * ========================================================
+     * RESPOSTA
+     * ========================================================
+     */
 
-        total: news.length,
+    return res.status(200).json({
+      testMode: false,
 
-        text:
-          JSON.stringify({
-            news,
-          }),
+      paidMode: true,
 
+      model: MODEL,
+
+      summary,
+
+      text: JSON.stringify({
         news,
-      });
+      }),
+
+      news,
+    });
   } catch (error) {
     console.error(
       "WIRE/GEEK API ERROR:",
       error
     );
 
-    return res
-      .status(500)
-      .json({
-        error:
-          error?.message ||
-          "Erro interno do servidor.",
-      });
+    return res.status(500).json({
+      error:
+        error?.message ||
+        "Erro interno do servidor.",
+
+      details:
+        error?.stack || undefined,
+    });
   }
 }
-```

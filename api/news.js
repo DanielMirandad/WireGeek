@@ -376,20 +376,12 @@ if (!apiKey) {
         ai,
         prompt
       );
-    } catch (error) {
-      console.error(
-        "GEMINI GENERATION ERROR:",
-        error
-      );
-
-      return res.status(502).json({
-        error:
-          "Erro ao gerar noticias com Gemini.",
-        details:
-          error?.message ||
-          "Erro desconhecido",
-      });
-    }
+console.error("GEMINI ERROR:", {
+  message: error?.message,
+  status: error?.status,
+  code: error?.code,
+  details: error?.details,
+});
 
     if (!data || !Array.isArray(data.news)) {
       return res.status(502).json({

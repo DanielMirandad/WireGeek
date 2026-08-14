@@ -1,4 +1,3 @@
-````jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -88,7 +87,7 @@ Tiktok: @bagacastudios
 Youtube: https://youtube.com/@bagacastudios
 
 SEJA VIP:
-https://linktr.ee/Bagacast`;
+https://linktr.ee/Bagacacast`;
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -119,7 +118,6 @@ function copyViaTextarea(text) {
       ta.style.opacity = "0";
 
       document.body.appendChild(ta);
-
       ta.select();
 
       document.execCommand("copy")
@@ -174,10 +172,7 @@ async function fetchWithRetry(
       status === 529 ||
       status === null;
 
-    if (
-      !transient ||
-      i === attempts - 1
-    ) {
+    if (!transient || i === attempts - 1) {
       if (response) {
         return response;
       }
@@ -205,9 +200,7 @@ async function fetchWithRetry(
 
   throw (
     lastError ||
-    new Error(
-      "Falha apos multiplas tentativas."
-    )
+    new Error("Falha apos multiplas tentativas.")
   );
 }
 
@@ -226,7 +219,6 @@ function estimateReading(text) {
   };
 }
 
-// Remove travessões
 function removeDashes(str) {
   return String(str || "")
     .replace(/[—–]/g, ",")
@@ -245,8 +237,7 @@ function normalizeNewsItem(item = {}) {
     ),
 
     publicado_em:
-      item.publicado_em ||
-      "Ultimas 24h",
+      item.publicado_em || "Ultimas 24h",
 
     materia: removeDashes(
       item.materia || ""
@@ -265,7 +256,9 @@ function normalizeNewsItem(item = {}) {
     )
       ? item.hashtags
           .slice(0, 5)
-          .map(removeDashes)
+          .map((tag) =>
+            removeDashes(tag)
+          )
       : [],
 
     fontes: Array.isArray(item.fontes)
@@ -279,15 +272,24 @@ function normalizeNewsItem(item = {}) {
   };
 }
 
-// ─── VALIDAÇÃO ────────────────────────────────────────────────────────────────
+// ─── VALIDACAO ───────────────────────────────────────────────────────────────
 
 function validateEdition(
   news,
   isTestMode = false
 ) {
-  // ─────────────────────────────────────────
-  // MODO DE TESTE
-  // ─────────────────────────────────────────
+  /*
+   * MODO DE TESTE
+   *
+   * O teste serve apenas para confirmar:
+   * 1. frontend consegue chamar /api/news
+   * 2. Vercel consegue executar a function
+   * 3. GEMINI_API_KEY está disponível
+   * 4. Gemini consegue devolver uma noticia
+   *
+   * Por isso NÃO exigimos 12 noticias
+   * e NÃO exigimos 2000 caracteres.
+   */
 
   if (isTestMode) {
     if (
@@ -320,40 +322,32 @@ function validateEdition(
       !item.materia
     ) {
       return (
-        "A noticia de teste possui titulo ou materia ausente."
+        "A noticia de teste possui campos obrigatorios ausentes."
       );
     }
 
     if (
-      item.materia.length < 2000
-    ) {
-      return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
-    }
-
-    if (
-      item.materia.length > 2200
-    ) {
-      return `"${item.titulo}" ultrapassa 2200 caracteres. Encontrado: ${item.materia.length}.`;
-    }
-
-    if (
+      !Array.isArray(item.highlights) ||
       item.highlights.length !== 4
     ) {
-      return `"${item.titulo}" precisa de 4 highlights.`;
+      return (
+        "A noticia de teste precisa ter 4 highlights."
+      );
     }
 
     if (
+      !Array.isArray(item.hashtags) ||
       item.hashtags.length !== 5
     ) {
-      return `"${item.titulo}" precisa de 5 hashtags.`;
+      return (
+        "A noticia de teste precisa ter 5 hashtags."
+      );
     }
 
     return null;
   }
 
-  // ─────────────────────────────────────────
-  // EDIÇÃO NORMAL
-  // ─────────────────────────────────────────
+  // ─── EDICAO NORMAL ────────────────────────────────────────────────────────
 
   const expectedTotal =
     CATEGORY_ORDER.length *
@@ -368,13 +362,10 @@ function validateEdition(
 
   for (const cat of CATEGORY_ORDER) {
     const count = news.filter(
-      (n) =>
-        n.categoria === cat
+      (n) => n.categoria === cat
     ).length;
 
-    if (
-      count !== NEWS_PER_CATEGORY
-    ) {
+    if (count !== NEWS_PER_CATEGORY) {
       return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
     }
   }
@@ -384,14 +375,10 @@ function validateEdition(
       !item.titulo ||
       !item.materia
     ) {
-      return (
-        "Noticia sem titulo ou materia."
-      );
+      return "Noticia sem titulo ou materia.";
     }
 
-    if (
-      item.materia.length < 2000
-    ) {
+    if (item.materia.length < 2000) {
       return `"${item.titulo}" precisa ter pelo menos 2000 caracteres. Encontrado: ${item.materia.length}.`;
     }
 
@@ -402,15 +389,24 @@ function validateEdition(
     }
 
     if (
+      !Array.isArray(item.highlights) ||
       item.highlights.length !== 4
     ) {
       return `"${item.titulo}" precisa de 4 highlights.`;
     }
 
     if (
+      !Array.isArray(item.hashtags) ||
       item.hashtags.length !== 5
     ) {
       return `"${item.titulo}" precisa de 5 hashtags.`;
+    }
+
+    if (
+      !Array.isArray(item.fontes) ||
+      item.fontes.length < 1
+    ) {
+      return `"${item.titulo}" precisa ter pelo menos 1 fonte.`;
     }
   }
 
@@ -424,10 +420,7 @@ function buildBannerCommand(item) {
     CATEGORY_LABEL[item.categoria] ||
     "PAUTA";
 
-  const h = item.highlights.slice(
-    0,
-    4
-  );
+  const h = item.highlights.slice(0, 4);
 
   const imgQuery =
     item.image_query ||
@@ -450,18 +443,19 @@ Pagina 1: badge=${LOCATORS.pages[0].badge} | subtitle=${LOCATORS.pages[0].subtit
 Pagina 2: badge=${LOCATORS.pages[1].badge} | subtitle=${LOCATORS.pages[1].subtitle} | title=${LOCATORS.pages[1].title} | image=${LOCATORS.pages[1].image}
 Pagina 3: badge=${LOCATORS.pages[2].badge} | subtitle=${LOCATORS.pages[2].subtitle} | title=${LOCATORS.pages[2].title} | image=${LOCATORS.pages[2].image}
 Pagina 4: badge=${LOCATORS.pages[3].badge} | subtitle=${LOCATORS.pages[3].subtitle} | title=${LOCATORS.pages[3].title} | image=${LOCATORS.pages[3].image}
+
 Texto original do badge: "cinema"
 
 Passos:
-1) web_search pela query de imagem, encontrar URL publica de foto real relacionada ao assunto
+1) web_search pela query de imagem
 2) Canva:upload-asset-from-url com a URL encontrada
 3) Canva:copy-design do template ${TEMPLATE_DESIGN_ID}
 4) Canva:read-design open_transaction=true
-5) edit-design paginas 1-4: badge->${cat}, subtitle->${item.publicado_em}, title->highlight correspondente, update_fill image->asset_id do upload
+5) edit-design paginas 1-4
 6) edit-design finalize=commit`;
 }
 
-// ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
+// ─── PROMPT PRINCIPAL ─────────────────────────────────────────────────────────
 
 function buildSystemPrompt() {
   const total =
@@ -479,46 +473,44 @@ OBJETIVO: Encontrar exatamente ${total} noticias reais publicadas HOJE ou nas UL
 DIVERSIDADE OBRIGATORIA: ${NEWS_PER_CATEGORY} noticias de cada categoria: games, geek, cinema, anime.
 
 REGRAS CRITICAS DE ESTILO:
-- NUNCA use travessao (-- ou em) em nenhum campo.
-- Use virgulas, dois-pontos, pontos ou parenteses no lugar de travessoes.
+
+- NUNCA use travessao.
+- Use virgulas, dois-pontos, pontos ou parenteses.
 - Escreva com ritmo dinamico.
-- Frases curtas e medias intercaladas.
-- Varie o inicio dos paragrafos.
 - Use numeros concretos.
-- Nunca invente citacoes.
+- Nao invente declaracoes.
 
-materia: coluna de opiniao dinamica entre 2000 e 2200 caracteres.
-
-CINEMA: filmes, lancamentos, trailers, franquias, atores, atrizes, diretores, producoes, bilheterias, adaptacoes, remakes, sequencias e super-herois.
-
-ANIME: animes, mangas, light novels, episodios, temporadas, adaptacoes animadas, dublagem, bilheterias, declaracoes de criadores, streaming e licenciamentos.
+MATERIA:
+Entre 2000 e 2200 caracteres obrigatoriamente.
+Nunca entregue materia abaixo de 2000 caracteres.
+Nunca ultrapasse 2200 caracteres.
 
 FONTES:
-IGN Brasil, Omelete, Eurogamer, The Enemy, Jovem Nerd, Adrenaline, Canaltech, GameSpot, IGN, Polygon, Variety, Deadline, The Hollywood Reporter, Crunchyroll News, ANN, MyAnimeList News.
-
-REGRAS DE APURACAO:
-Nao invente fatos, datas, fontes, URLs ou declaracoes.
-Nao use noticias com mais de 24 horas.
+Nao invente fatos, datas, fontes ou URLs.
 Use URLs reais.
 
 PARA CADA NOTICIA:
-- materia entre 2000 e 2200 caracteres.
-- highlights exatamente 4.
-- hashtags exatamente 5.
-- categoria somente games, geek, cinema ou anime.
-- titulo claro e atraente.
-- fontes entre 1 e 3.
-- image_query em ingles para encontrar foto real.
+
+- materia: entre 2000 e 2200 caracteres
+- highlights: exatamente 4
+- hashtags: exatamente 5
+- categoria: games, geek, cinema ou anime
+- titulo: claro e atraente
+- publicado_em: Hoje ou Ultimas 24h
+- fontes: 1 a 3
+- image_query: busca em ingles
 
 FORMATO:
 Responda SOMENTE com JSON valido.
 
-{"news":[{"categoria":"","titulo":"","publicado_em":"","materia":"","highlights":["","","",""],"hashtags":["","","","",""],"fontes":[{"nome":"","url":"","publicado_em":""}],"image_query":""}]}
-
-O array news deve conter exatamente ${total} itens: ${NEWS_PER_CATEGORY} de cada categoria.`;
+O array news deve conter exatamente ${total} itens:
+${NEWS_PER_CATEGORY} games,
+${NEWS_PER_CATEGORY} geek,
+${NEWS_PER_CATEGORY} cinema,
+${NEWS_PER_CATEGORY} anime.`;
 }
 
-// ─── COPY BUTTON ──────────────────────────────────────────────────────────────
+// ─── COPY BUTTON ─────────────────────────────────────────────────────────────
 
 function CopyButton({
   text,
@@ -566,7 +558,7 @@ function CopyButton({
   );
 }
 
-// ─── STAMP ────────────────────────────────────────────────────────────────────
+// ─── STAMP ───────────────────────────────────────────────────────────────────
 
 function Stamp({ children }) {
   return (
@@ -576,9 +568,11 @@ function Stamp({ children }) {
   );
 }
 
-// ─── ARTICLE FORMATTER ────────────────────────────────────────────────────────
+// ─── ARTICLE FORMAT ──────────────────────────────────────────────────────────
 
-function FormattedArticle({ text }) {
+function FormattedArticle({
+  text,
+}) {
   if (!text) return null;
 
   const cleaned = String(text).replace(
@@ -586,7 +580,8 @@ function FormattedArticle({ text }) {
     ","
   );
 
-  const lines = cleaned.split(/\n/);
+  const lines =
+    cleaned.split(/\n/);
 
   const blocks = [];
 
@@ -597,7 +592,8 @@ function FormattedArticle({ text }) {
     if (paragraph.length) {
       blocks.push({
         type: "p",
-        content: paragraph.join(" "),
+        content:
+          paragraph.join(" "),
       });
 
       paragraph = [];
@@ -630,15 +626,21 @@ function FormattedArticle({ text }) {
 
       blocks.push({
         type: "h3",
-        content: line.slice(4).trim(),
+        content: line
+          .slice(4)
+          .trim(),
       });
-    } else if (line.startsWith("> ")) {
+    } else if (
+      line.startsWith("> ")
+    ) {
       flushP();
       flushL();
 
       blocks.push({
         type: "quote",
-        content: line.slice(2).trim(),
+        content: line
+          .slice(2)
+          .trim(),
       });
     } else if (
       line.startsWith("- ") ||
@@ -671,8 +673,8 @@ function FormattedArticle({ text }) {
       let group = [];
 
       sentences.forEach(
-        (s, i) => {
-          group.push(s);
+        (sentence, i) => {
+          group.push(sentence);
 
           if (
             group.length >= 2 ||
@@ -680,7 +682,8 @@ function FormattedArticle({ text }) {
           ) {
             finalBlocks.push({
               type: "p",
-              content: group.join(" "),
+              content:
+                group.join(" "),
             });
 
             group = [];
@@ -692,7 +695,10 @@ function FormattedArticle({ text }) {
     }
   });
 
-  function renderInline(t, kp) {
+  function renderInline(
+    t,
+    kp
+  ) {
     return String(t || "")
       .replace(/[—–]/g, ",")
       .split(
@@ -750,7 +756,9 @@ function FormattedArticle({ text }) {
             );
           }
 
-          if (block.type === "ul") {
+          if (
+            block.type === "ul"
+          ) {
             return (
               <ul
                 key={i}
@@ -779,7 +787,8 @@ function FormattedArticle({ text }) {
             );
           }
 
-          const isLead = i === 0;
+          const isLead =
+            i === 0;
 
           return (
             <p
@@ -802,9 +811,11 @@ function FormattedArticle({ text }) {
   );
 }
 
-// ─── BANNER SECTION ───────────────────────────────────────────────────────────
+// ─── BANNER SECTION ──────────────────────────────────────────────────────────
 
-function BannerSection({ item }) {
+function BannerSection({
+  item,
+}) {
   const [status, setStatus] =
     useState("idle");
 
@@ -827,12 +838,10 @@ function BannerSection({ item }) {
       const response =
         await fetch("/api/banner", {
           method: "POST",
-
           headers: {
             "Content-Type":
               "application/json",
           },
-
           body: JSON.stringify({
             categoria:
               item.categoria,
@@ -880,14 +889,11 @@ function BannerSection({ item }) {
       document.createElement("a");
 
     link.href = bannerUrl;
-
     link.download =
       "wire-geek-banner.svg";
 
     document.body.appendChild(link);
-
     link.click();
-
     link.remove();
   }
 
@@ -941,7 +947,6 @@ function BannerSection({ item }) {
         <div className="mb-3 border border-[#3a4a4d] bg-[#1a2628] px-3 py-3 font-mono text-[10px] text-[#8fa39d]">
           GERANDO BANNER...
           <br />
-
           <span className="text-[#5c6f6b]">
             Montando layout
             Wire/Geek.
@@ -972,7 +977,7 @@ function BannerSection({ item }) {
   );
 }
 
-// ─── DISPATCH CARD ────────────────────────────────────────────────────────────
+// ─── DISPATCH CARD ───────────────────────────────────────────────────────────
 
 function DispatchCard({
   item,
@@ -1022,9 +1027,10 @@ function DispatchCard({
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[10px] text-[#7a8f8a]">
             DESPACHO{" "}
-            {String(
-              index + 1
-            ).padStart(2, "0")}
+            {String(index + 1).padStart(
+              2,
+              "0"
+            )}
           </span>
 
           <span
@@ -1139,9 +1145,7 @@ function DispatchCard({
               }}
             >
               <FormattedArticle
-                text={
-                  item.materia
-                }
+                text={item.materia}
               />
             </div>
 
@@ -1196,8 +1200,7 @@ function DispatchCard({
           </div>
         )}
 
-        {tab ===
-          "highlights" && (
+        {tab === "highlights" && (
           <div className="space-y-3">
             <div className="mb-1 flex items-center justify-between">
               <Stamp>
@@ -1286,7 +1289,7 @@ function DispatchCard({
   );
 }
 
-// ─── SCHEDULER ────────────────────────────────────────────────────────────────
+// ─── SCHEDULER ───────────────────────────────────────────────────────────────
 
 function SchedulerBadge({
   nextRun,
@@ -1304,12 +1307,13 @@ function SchedulerBadge({
   return (
     <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
       <Calendar size={11} />
-      AUTO 7H · {nextRun || "..."}
+      AUTO 7H ·{" "}
+      {nextRun || "..."}
     </span>
   );
 }
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
+// ─── APP ─────────────────────────────────────────────────────────────────────
 
 export default function GeekNewsWire() {
   const [status, setStatus] =
@@ -1339,37 +1343,36 @@ export default function GeekNewsWire() {
     setActiveFilter,
   ] = useState("all");
 
-  const [testMode, setTestMode] =
-    useState(false);
+  const [
+    testMode,
+    setTestMode,
+  ] = useState(false);
 
   const schedulerRef =
     useRef(null);
 
   function computeNextRun() {
-    const n = new Date();
-    const d = new Date();
+    const now = new Date();
+    const next = new Date();
 
-    d.setHours(7, 0, 0, 0);
+    next.setHours(7, 0, 0, 0);
 
-    if (n >= d) {
-      d.setDate(
-        d.getDate() + 1
+    if (now >= next) {
+      next.setDate(
+        next.getDate() + 1
       );
     }
 
-    return d;
+    return next;
   }
 
   function formatNextRun(date) {
     return date
-      .toLocaleString(
-        "pt-BR",
-        {
-          weekday: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        }
-      )
+      .toLocaleString("pt-BR", {
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
       .toUpperCase();
   }
 
@@ -1390,8 +1393,7 @@ export default function GeekNewsWire() {
 
     schedulerRef.current =
       setInterval(() => {
-        const now =
-          new Date();
+        const now = new Date();
 
         if (
           now.getHours() === 7 &&
@@ -1472,12 +1474,12 @@ export default function GeekNewsWire() {
           startScheduler();
         }
       } catch {}
+
+      return;
     })();
 
     return () => {
-      if (
-        schedulerRef.current
-      ) {
+      if (schedulerRef.current) {
         clearInterval(
           schedulerRef.current
         );
@@ -1513,9 +1515,7 @@ export default function GeekNewsWire() {
 
     const byCategory = {};
 
-    for (
-      const cat of CATEGORY_ORDER
-    ) {
+    for (const cat of CATEGORY_ORDER) {
       byCategory[cat] =
         news.filter(
           (n) =>
@@ -1551,9 +1551,7 @@ export default function GeekNewsWire() {
       activeFilter,
     ]);
 
-  // ─────────────────────────────────────────
-  // GERAÇÃO
-  // ─────────────────────────────────────────
+  // ─── GERACAO ───────────────────────────────────────────────────────────────
 
   async function generate(
     isTestMode = false
@@ -1562,16 +1560,21 @@ export default function GeekNewsWire() {
       return;
     }
 
+    setTestMode(isTestMode);
     setStatus("loading");
     setErrorMsg("");
 
+    const totalNormal =
+      CATEGORY_ORDER.length *
+      NEWS_PER_CATEGORY;
+
     const phases = isTestMode
       ? [
-          "MODO DE TESTE GRATUITO",
+          "INICIANDO TESTE GRATUITO",
           "CONECTANDO AO BACKEND",
-          "TESTANDO GERACAO GEMINI",
-          "VALIDANDO NOTICIA",
-          "FINALIZANDO TESTE",
+          "VERIFICANDO GEMINI",
+          "SOLICITANDO 1 NOTICIA",
+          "VALIDANDO RESPOSTA",
         ]
       : [
           "CONECTANDO AO FIO INTERNACIONAL",
@@ -1602,41 +1605,60 @@ export default function GeekNewsWire() {
     try {
       const prompt =
         isTestMode
-          ? `
-MODO DE TESTE GRATUITO.
+          ? `MODO DE TESTE GRATUITO.
 
 Gere exatamente 1 noticia real.
 
-Escolha uma das categorias:
-games, geek, cinema ou anime.
+Escolha uma categoria entre games, geek, cinema ou anime.
 
-Pesquise na web antes de escrever.
+Use uma noticia recente e verificavel.
 
-A noticia deve ser real e verificavel.
+Nao invente fatos.
 
-A materia deve ter entre 2000 e 2200 caracteres.
+Nao invente fontes.
 
-Nunca invente fatos, datas, fontes ou URLs.
+Nao invente URLs.
 
-Nunca use travessao.
+A materia pode ser curta para fins de teste.
 
-Retorne somente o JSON solicitado.
+Retorne somente JSON.
 
-O array news deve conter exatamente 1 item.
-`
-          : `
-Gere a edicao de hoje com exatamente ${
-              CATEGORY_ORDER.length *
-              NEWS_PER_CATEGORY
-            } noticias reais.
+Formato:
 
-Distribuicao obrigatoria:
-${NEWS_PER_CATEGORY} games
-${NEWS_PER_CATEGORY} geek
-${NEWS_PER_CATEGORY} cinema
-${NEWS_PER_CATEGORY} anime
+{
+  "news": [
+    {
+      "categoria": "geek",
+      "titulo": "Titulo da noticia",
+      "publicado_em": "Ultimas 24h",
+      "materia": "Materia de teste",
+      "highlights": [
+        "Highlight 1",
+        "Highlight 2",
+        "Highlight 3",
+        "Highlight 4"
+      ],
+      "hashtags": [
+        "#Geek",
+        "#Noticias",
+        "#WireGeek",
+        "#BagacaStudios",
+        "#Teste"
+      ],
+      "fontes": [
+        {
+          "nome": "Fonte",
+          "url": "https://example.com",
+          "publicado_em": "Ultimas 24h"
+        }
+      ],
+      "image_query": "geek news"
+    }
+  ]
+}`
+          : `Gere a edicao de hoje com exatamente ${totalNormal} noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime).
 
-Todas as noticias devem ter sido publicadas nas ultimas 24 horas.
+Todas publicadas nas ultimas 24 horas.
 
 Busque na web antes de escrever.
 
@@ -1646,20 +1668,17 @@ Nunca entregue materia com menos de 2000 caracteres.
 
 Nunca use travessao.
 
-Responda somente com o JSON solicitado.
-`;
+Responda somente com o JSON solicitado.`;
 
       const response =
         await fetchWithRetry(
           "/api/news",
           {
             method: "POST",
-
             headers: {
               "Content-Type":
                 "application/json",
             },
-
             body: JSON.stringify({
               prompt,
               testMode:
@@ -1667,8 +1686,9 @@ Responda somente com o JSON solicitado.
             }),
           },
           {
-            attempts:
-              isTestMode ? 1 : 4,
+            attempts: isTestMode
+              ? 1
+              : 4,
 
             onRetry: (
               s,
@@ -1677,7 +1697,7 @@ Responda somente com o JSON solicitado.
               w
             ) => {
               setTicker(
-                `SERVIDOR OCUPADO: TENTATIVA ${a}/${t - 1} EM ${Math.round(
+                `SERVIDOR OCUPADO: TENTATIVA ${a}/${t} EM ${Math.round(
                   w / 1000
                 )}S`
               );
@@ -1689,9 +1709,7 @@ Responda somente com o JSON solicitado.
         const body =
           await response
             .text()
-            .catch(
-              () => ""
-            );
+            .catch(() => "");
 
         throw new Error(
           `Erro no backend ${response.status}: ${body.slice(
@@ -1736,9 +1754,7 @@ Responda somente com o JSON solicitado.
           JSON.parse(cleaned);
       } catch {
         const start =
-          cleaned.indexOf(
-            "{"
-          );
+          cleaned.indexOf("{");
 
         const end =
           cleaned.lastIndexOf(
@@ -1785,33 +1801,30 @@ Responda somente com o JSON solicitado.
         generatedAt:
           new Date().toISOString(),
 
-        testMode:
-          isTestMode,
+        testMode: isTestMode,
 
         news,
       };
 
-      setEdition(
-        newEdition
-      );
-
+      setEdition(newEdition);
       setStatus("done");
 
-      setTestMode(
-        isTestMode
-      );
+      if (isTestMode) {
+        setTicker(
+          "TESTE GRATUITO CONCLUIDO · 1 DESPACHO"
+        );
+      } else {
+        setTicker(
+          `APURACAO CONCLUIDA · ${news.length} DESPACHOS`
+        );
+      }
 
-      setTicker(
-        isTestMode
-          ? "TESTE GRATUITO CONCLUIDO · 1 DESPACHO"
-          : `APURACAO CONCLUIDA · ${news.length} DESPACHOS`
-      );
+      setActiveFilter("all");
 
-      setActiveFilter(
-        "all"
-      );
-
-      // Teste não grava a edição diária
+      /*
+       * Nao salvamos o teste como
+       * edicao oficial do dia.
+       */
       if (
         !isTestMode &&
         window.storage?.set
@@ -1844,15 +1857,9 @@ Responda somente com o JSON solicitado.
           : "FALHA NA APURACAO"
       );
     } finally {
-      clearInterval(
-        interval
-      );
+      clearInterval(interval);
     }
   }
-
-  // ─────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────
 
   return (
     <div
@@ -1873,9 +1880,9 @@ Responda somente com o JSON solicitado.
         crossOrigin=""
       />
 
-      <style>
-        {`@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap');`}
-      </style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap');
+      `}</style>
 
       {/* TICKER */}
 
@@ -1926,25 +1933,22 @@ Responda somente com o JSON solicitado.
           </div>
 
           <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">
-            GAMES · GEEK · CINEMA ·
-            ANIME
+            GAMES · GEEK · CINEMA
+            · ANIME
           </span>
         </div>
 
         <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
           Central editorial para
           apuracao diaria. 4
-          categorias, 3 noticias cada.
-          Use "Teste Gratuito" para
-          testar a integracao com o
-          Gemini.
+          categorias, 3 noticias
+          cada, banners no Canva
+          com imagens reais.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-            <CheckCircle2
-              size={11}
-            />
+            <CheckCircle2 size={11} />
             ULTIMAS 24H
           </span>
 
@@ -1999,15 +2003,16 @@ Responda somente com o JSON solicitado.
               <RefreshCw
                 size={14}
                 className={
-                  status ===
-                  "loading"
+                  status === "loading" &&
+                  !testMode
                     ? "animate-spin"
                     : ""
                 }
               />
 
               {status ===
-              "loading"
+              "loading" &&
+              !testMode
                 ? "Apurando..."
                 : "Apurar Noticias"}
             </button>
@@ -2022,19 +2027,23 @@ Responda somente com o JSON solicitado.
               disabled={
                 status === "loading"
               }
-              className="inline-flex items-center gap-2 border border-[#5fbf7a]/50 px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#5fbf7a] transition-colors hover:bg-[#5fbf7a]/10 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 border border-[#5fbf7a]/60 px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#5fbf7a] transition-colors hover:bg-[#5fbf7a]/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Zap
                 size={14}
                 className={
-                  status ===
-                  "loading"
-                    ? "animate-spin"
+                  status === "loading" &&
+                  testMode
+                    ? "animate-pulse"
                     : ""
                 }
               />
 
-              Teste Gratuito
+              {status ===
+                "loading" &&
+              testMode
+                ? "Testando..."
+                : "Teste Gratuito"}
             </button>
 
             {/* SCHEDULER */}
@@ -2050,9 +2059,7 @@ Responda somente com o JSON solicitado.
                   : "border-[#3a4a4d] text-[#7a8f8a] hover:border-[#5fbf7a]/50 hover:text-[#5fbf7a]"
               }`}
             >
-              <Calendar
-                size={14}
-              />
+              <Calendar size={14} />
 
               {schedulerEnabled
                 ? "Auto 7H · Ativo"
@@ -2077,17 +2084,22 @@ Responda somente com o JSON solicitado.
           )}
         </div>
 
-        {/* AVISO TESTE */}
+        {/* TEST MODE NOTICE */}
 
-        {testMode &&
-          edition && (
-            <div className="mb-5 border border-[#5fbf7a]/40 bg-[#0c1914] px-3 py-2 font-mono text-[10px] text-[#5fbf7a]">
-              MODO DE TESTE GRATUITO ·
-              1 NOTICIA GERADA ·
-              RESULTADO NAO SALVO
-              COMO EDICAO DIARIA
+        {edition?.testMode && (
+          <div className="mb-5 border border-[#5fbf7a]/40 bg-[#0c1814] px-3 py-3 font-mono text-[10px] text-[#8fd6a4]">
+            <div className="font-bold tracking-wider text-[#5fbf7a]">
+              MODO DE TESTE GRATUITO
             </div>
-          )}
+
+            <div className="mt-1 text-[#7fa58b]">
+              Esta resposta contém
+              apenas 1 noticia e nao
+              foi salva como edicao
+              oficial.
+            </div>
+          </div>
+        )}
 
         {/* STATUS GRID */}
 
@@ -2098,8 +2110,8 @@ Responda somente com o JSON solicitado.
                 const count =
                   summary
                     .byCategory[
-                      cat
-                    ] || 0;
+                    cat
+                  ] || 0;
 
                 const ok =
                   count ===
@@ -2157,33 +2169,35 @@ Responda somente com o JSON solicitado.
           </div>
         )}
 
-        {/* IDLE */}
+        {/* EMPTY */}
 
         {status === "idle" &&
           !edition && (
             <div className="border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#5c6f6b]">
               <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">
-                REDACAO EM ESPERA
+                REDACAO EM
+                ESPERA
               </div>
 
               Nenhuma edicao
-              gerada hoje. Inicie a
-              apuracao ou use o
-              Teste Gratuito.
+              gerada hoje. Inicie
+              a apuracao ou use o
+              Teste Gratuito para
+              verificar a conexao
+              com o Gemini.
             </div>
           )}
 
         {/* LOADING */}
 
-        {status ===
-          "loading" &&
+        {status === "loading" &&
           !edition && (
             <div className="animate-pulse border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#8fa39d]">
               {ticker}...
             </div>
           )}
 
-        {/* NEWS */}
+        {/* FILTERS + CARDS */}
 
         {edition && (
           <>
@@ -2215,8 +2229,8 @@ Responda somente com o JSON solicitado.
                   const count =
                     summary
                       .byCategory[
-                        cat
-                      ] || 0;
+                      cat
+                    ] || 0;
 
                   const active =
                     activeFilter ===
@@ -2243,11 +2257,9 @@ Responda somente com o JSON solicitado.
                             ? color
                             : color +
                               "40",
-
                         color: active
                           ? "#0a1315"
                           : color,
-
                         backgroundColor:
                           active
                             ? color
@@ -2291,17 +2303,17 @@ Responda somente com o JSON solicitado.
       <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
         <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
           <span>
-            WIRE/GEEK 3.0 · BAGACA
-            STUDIOS
+            WIRE/GEEK 3.0 ·
+            BAGACA STUDIOS
           </span>
 
           <span>
-            EDICOES SALVAS · AUTO 7H ·
-            BANNERS COM IMAGENS REAIS
+            EDICOES SALVAS · AUTO
+            7H · BANNERS COM
+            IMAGENS REAIS
           </span>
         </div>
       </footer>
     </div>
   );
 }
-````

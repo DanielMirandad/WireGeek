@@ -2,15 +2,15 @@ import { GoogleGenAI } from "@google/genai";
 
 const MODEL = "gemini-3.5-flash-lite";
 
-const CATEGORIES = ["games", "geek", "cinema", "anime"];
+const TEST_MODE = true;
 
-const NEWS_SCHEMA = {
+const TEST_SCHEMA = {
   type: "object",
   properties: {
     news: {
       type: "array",
-      minItems: 12,
-      maxItems: 12,
+      minItems: 1,
+      maxItems: 1,
       items: {
         type: "object",
         properties: {
@@ -46,7 +46,7 @@ const NEWS_SCHEMA = {
           fontes: {
             type: "array",
             minItems: 1,
-            maxItems: 3,
+            maxItems: 1,
             items: {
               type: "object",
               properties: {
@@ -60,7 +60,11 @@ const NEWS_SCHEMA = {
                   type: "string",
                 },
               },
-              required: ["nome", "url", "publicado_em"],
+              required: [
+                "nome",
+                "url",
+                "publicado_em",
+              ],
             },
           },
           image_query: {
@@ -106,237 +110,58 @@ function normalizeNews(news) {
       ? item.fontes.map((source) => ({
           nome: normalizeText(source.nome),
           url: String(source.url || "").trim(),
-          publicado_em: normalizeText(source.publicado_em),
+          publicado_em: normalizeText(
+            source.publicado_em
+          ),
         }))
       : [],
     image_query: normalizeText(item.image_query),
   }));
 }
 
-function validateNews(news) {
-  const errors = [];
-
-  if (!Array.isArray(news)) {
-    return ["news nao e um array"];
-  }
-
-  if (news.length !== 12) {
-    errors.push(`Esperadas 12 noticias, recebidas ${news.length}`);
-  }
-
-  const counts = {
-    games: 0,
-    geek: 0,
-    cinema: 0,
-    anime: 0,
-  };
-
-  news.forEach((item, index) => {
-    const category = item.categoria;
-
-    if (counts[category] !== undefined) {
-      counts[category]++;
-    } else {
-      errors.push(
-        `Noticia ${index + 1}: categoria invalida`
-      );
-    }
-
-    const length = item.materia.length;
-
-    if (length < 2000 || length > 2200) {
-      errors.push(
-        `Noticia ${index + 1} "${item.titulo}": ${length} caracteres`
-      );
-    }
-
-    if (item.highlights.length !== 4) {
-      errors.push(
-        `Noticia ${index + 1}: highlights != 4`
-      );
-    }
-
-    if (item.hashtags.length !== 5) {
-      errors.push(
-        `Noticia ${index + 1}: hashtags != 5`
-      );
-    }
-
-    if (
-      !Array.isArray(item.fontes) ||
-      item.fontes.length < 1 ||
-      item.fontes.length > 3
-    ) {
-      errors.push(
-        `Noticia ${index + 1}: fontes invalidas`
-      );
-    }
-  });
-
-  for (const category of CATEGORIES) {
-    if (counts[category] !== 3) {
-      errors.push(
-        `${category}: esperadas 3, recebidas ${counts[category]}`
-      );
-    }
-  }
-
-  return errors;
-}
-
-async function generateNews(ai, prompt) {
+async function generateTestNews(ai) {
   const response = await ai.models.generateContent({
     model: MODEL,
+
     contents: `
-${prompt || "Gere a edicao de hoje com exatamente 12 noticias reais."}
+Voce e o editor do Wire/Geek.
+
+Gere APENAS UMA noticia curta sobre GAMES, GEEK, CINEMA ou ANIME.
 
 IMPORTANTE:
 
-Pesquise a web antes de escrever.
+Esta e uma requisicao de TESTE.
 
-A edicao precisa conter exatamente:
-3 games
-3 geek
-3 cinema
-3 anime
+Nao use busca na web nesta etapa.
 
-Cada materia deve ter obrigatoriamente entre 2000 e 2200 caracteres.
+Nao invente uma noticia apresentada como fato real.
+
+Use um tema conhecido apenas para testar a resposta da API.
+
+A materia deve ter aproximadamente 500 caracteres.
 
 Nao use travessao.
 
-Nao invente fatos, datas, fontes ou URLs.
-
-Retorne somente o objeto JSON solicitado.
+Retorne somente JSON valido.
 `,
+
     config: {
-      tools: [
-        {
-          googleSearch: {},
-        },
-      ],
       responseMimeType: "application/json",
-      responseSchema: NEWS_SCHEMA,
-      temperature: 0.4,
-      maxOutputTokens: 30000,
+      responseSchema: TEST_SCHEMA,
+
+      temperature: 0.2,
+
+      maxOutputTokens: 1200,
     },
   });
 
   if (!response.text) {
-    throw new Error("Gemini nao retornou texto.");
+    throw new Error(
+      "Gemini nao retornou texto."
+    );
   }
 
   return JSON.parse(response.text);
-}
-
-async function expandShortNews(ai, news) {
-  const shortItems = news
-    .map((item, index) => ({
-      index,
-      titulo: item.titulo,
-      materia: item.materia,
-    }))
-    .filter(
-      (item) => item.materia.length < 2000
-    );
-
-  if (shortItems.length === 0) {
-    return news;
-  }
-
-  const correctionSchema = {
-    type: "object",
-    properties: {
-      items: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            index: {
-              type: "integer",
-            },
-            materia: {
-              type: "string",
-            },
-          },
-          required: ["index", "materia"],
-        },
-      },
-    },
-    required: ["items"],
-  };
-
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: `
-Expanda as materias abaixo.
-
-Cada materia FINAL precisa ter obrigatoriamente entre 2000 e 2200 caracteres.
-
-Nao altere o sentido dos fatos.
-
-Nao invente informacoes.
-
-Nao invente datas.
-
-Nao invente declaracoes.
-
-Nao invente fontes.
-
-Acrescente contexto, impacto, repercussao e analise jornalistica quando necessario.
-
-Nao use travessao.
-
-Retorne somente JSON.
-
-MATERIAS:
-
-${shortItems
-  .map(
-    (item) => `
-INDEX: ${item.index}
-TITULO: ${item.titulo}
-
-MATERIA:
-${item.materia}
-`
-  )
-  .join("\n")}
-`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: correctionSchema,
-      temperature: 0.3,
-      maxOutputTokens: 18000,
-    },
-  });
-
-  if (!response.text) {
-    throw new Error(
-      "Gemini nao retornou a expansao."
-    );
-  }
-
-  const correction = JSON.parse(response.text);
-
-  if (!Array.isArray(correction.items)) {
-    throw new Error(
-      "Formato de expansao invalido."
-    );
-  }
-
-  for (const item of correction.items) {
-    const index = Number(item.index);
-
-    if (
-      Number.isInteger(index) &&
-      news[index]
-    ) {
-      news[index].materia =
-        normalizeText(item.materia);
-    }
-  }
-
-  return news;
 }
 
 export default async function handler(req, res) {
@@ -351,15 +176,25 @@ export default async function handler(req, res) {
       process.env.GOOGLE_GEMINI_API_KEY ||
       process.env.GEMINI_API_KEY;
 
-    console.log("GEMINI ENV CHECK:", {
-      google: Boolean(process.env.GOOGLE_GEMINI_API_KEY),
-      gemini: Boolean(process.env.GEMINI_API_KEY),
-      length: apiKey?.length || 0,
-    });
+    console.log(
+      "GEMINI TEST ENV CHECK:",
+      {
+        google: Boolean(
+          process.env.GOOGLE_GEMINI_API_KEY
+        ),
+        gemini: Boolean(
+          process.env.GEMINI_API_KEY
+        ),
+        length: apiKey?.length || 0,
+        model: MODEL,
+        testMode: TEST_MODE,
+      }
+    );
 
     if (!apiKey) {
       return res.status(500).json({
-        error: "GEMINI_API_KEY nao configurada na Vercel.",
+        error:
+          "GEMINI_API_KEY nao configurada na Vercel.",
       });
     }
 
@@ -367,63 +202,55 @@ export default async function handler(req, res) {
       apiKey,
     });
 
-    const { prompt } = req.body || {};
-
-    let data;
-
-    // Primeira chamada ao Gemini
-    try {
-      data = await generateNews(
-        ai,
-        prompt
-      );
-    } catch (error) {
-      console.error(
-        "GEMINI GENERATION ERROR:",
-        error?.message || String(error)
+    if (TEST_MODE) {
+      console.log(
+        "WIRE/GEEK: TESTE GRATUITO GEMINI"
       );
 
-      return res.status(502).json({
-        error: "Erro ao gerar noticias com Gemini.",
-        details:
-          error?.message ||
-          String(error),
-      });
-    }
-
-    if (!data || !Array.isArray(data.news)) {
-      return res.status(502).json({
-        error:
-          "Gemini retornou formato de noticias invalido.",
-      });
-    }
-
-    let news = normalizeNews(data.news);
-
-    /*
-     * Expande todas as materias curtas
-     * em uma unica chamada adicional.
-     */
-    const shortNews = news.filter(
-      (item) =>
-        item.materia.length < 2000
-    );
-
-    if (shortNews.length > 0) {
       try {
-        news = await expandShortNews(
-          ai,
-          news
+        const data =
+          await generateTestNews(ai);
+
+        if (
+          !data ||
+          !Array.isArray(data.news)
+        ) {
+          return res.status(502).json({
+            error:
+              "Gemini retornou formato invalido.",
+          });
+        }
+
+        const news =
+          normalizeNews(data.news);
+
+        console.log(
+          "WIRE/GEEK: TESTE GEMINI OK",
+          {
+            quantidade: news.length,
+            caracteres:
+              news[0]?.materia?.length || 0,
+          }
         );
+
+        return res.status(200).json({
+          test: true,
+          message:
+            "Teste Gemini executado com sucesso.",
+          text: JSON.stringify({
+            news,
+          }),
+        });
       } catch (error) {
         console.error(
-          "GEMINI EXPANSION ERROR:",
-          error?.message || String(error)
+          "GEMINI TEST ERROR:",
+          error?.message ||
+            String(error)
         );
 
         return res.status(502).json({
           error:
-            "Erro ao expandir noticias com Gemini.",
+            "Erro no teste do Gemini.",
           details:
             error?.message ||
             String(error),
@@ -431,28 +258,9 @@ export default async function handler(req, res) {
       }
     }
 
-    news = normalizeNews(news);
-
-    const validationErrors =
-      validateNews(news);
-
-    if (validationErrors.length > 0) {
-      return res.status(422).json({
-        error:
-          "A edicao nao passou na validacao.",
-        details: validationErrors,
-        news: news.map((item) => ({
-          titulo: item.titulo,
-          caracteres:
-            item.materia.length,
-        })),
-      });
-    }
-
-    return res.status(200).json({
-      text: JSON.stringify({
-        news,
-      }),
+    return res.status(500).json({
+      error:
+        "Modo de teste desativado incorretamente.",
     });
   } catch (error) {
     console.error(

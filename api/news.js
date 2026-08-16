@@ -453,7 +453,8 @@ REGRAS:
 11. Cada noticia deve possuir exatamente 5 hashtags.
 12. Cada noticia deve possuir entre 1 e 3 fontes.
 13. image_query deve ser uma consulta curta para encontrar uma imagem relacionada ao assunto.
-14. Todos os titulos, subtitulos e highlights devem estar em portugues brasileiro. Nunca responda titulo ou subtitulo em ingles.`n15. Responda somente JSON.
+14. Todos os titulos, subtitulos e highlights devem estar em portugues brasileiro. Nunca responda titulo ou subtitulo em ingles.
+15. Responda somente JSON.
 15. Nao coloque markdown.
 16. Nao coloque json.
 17. Nao escreva explicacoes fora do JSON.
@@ -728,6 +729,7 @@ export default async function handler(
     });
   }
 }
+
 
 
 

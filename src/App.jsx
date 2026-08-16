@@ -1,10 +1,10 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, Check, CheckCircle2, Clock, Copy,
   Hash, Newspaper, Radio, RefreshCw, Zap, ImageIcon, Calendar,
 } from "lucide-react";
 
-// â”€â”€â”€ CONSTANTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CONSTANTES ──────────────────────────────────────────────────────────────
 const TEMPLATE_DESIGN_ID = "DAHSAXUcxX4";
 const LOCATORS = {
   pages: [
@@ -39,7 +39,7 @@ Youtube: https://youtube.com/@bagacastudios
 SEJA VIP:
 https://linktr.ee/Bagacacast`;
 
-// â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function todayKey()     { const d = new Date(); return `wire-geek:v3:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function schedulerKey() { return "wire-geek:scheduler"; }
 function sleep(ms)      { return new Promise(r => setTimeout(r, ms)); }
@@ -79,9 +79,9 @@ function estimateReading(text) {
   return { words: words.length, minutes: Math.max(1,Math.round(words.length/200)) };
 }
 
-// Remove travessÃµes de todos os campos
+// Remove travessões de todos os campos
 function removeDashes(str) {
-  return String(str||"").replace(/[â€”â€“]/g, ",").replace(/\s{2,}/g, " ").trim();
+  return String(str||"").replace(/[—–]/g, ",").replace(/\s{2,}/g, " ").trim();
 }
 
 function normalizeNewsItem(item={}) {
@@ -111,7 +111,7 @@ function validateEdition(news) {
   return null;
 }
 
-// â”€â”€â”€ BANNER PROMPT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── BANNER PROMPT ────────────────────────────────────────────────────────────
 function buildBannerCommand(item) {
   const highlights = (item.highlights || [])
     .slice(0, 4)
@@ -318,7 +318,7 @@ const tabs = [
           <div>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#5c6f6b]">
-                <Clock size={11}/>{minutes} min Â· {words} palavras Â· {item.materia.length} chars
+                <Clock size={11}/>{minutes} min · {words} palavras · {item.materia.length} chars
               </span>
               <CopyButton text={`${item.titulo}\n\n${item.materia}\n\n${RODAPE_FIXO}`} label="Copiar materia"/>
             </div>
@@ -343,7 +343,7 @@ const tabs = [
                       {source.url
                         ? <a href={source.url} target="_blank" rel="noopener noreferrer" className="underline decoration-[#3a4a4d] underline-offset-2 hover:text-[#e0452f]">{source.nome||source.url}</a>
                         : source.nome}
-                      {source.publicado_em?` Â· ${source.publicado_em}`:""}
+                      {source.publicado_em?` · ${source.publicado_em}`:""}
                     </li>
                   ))}
                 </ul>
@@ -401,13 +401,29 @@ const tabs = [
   );
 }
 
-// â”€â”€â”€ SCHEDULER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function SchedulerBadge({nextRun,isEnabled}) {
-  if(!isEnabled) return <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#5c6f6b]"><Calendar size={11}/>AUTO 7H Â· INATIVO</span>;
-  return <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]"><Calendar size={11}/>AUTO 7H Â· {nextRun||"..."}</span>;
+// ─── SCHEDULER ───────────────────────────────────────────────────────────────
+  if(!isEnabled) return <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#5c6f6b]"><Calendar size={11}/>AUTO 7H · INATIVO</span>;
+  return <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]"><Calendar size={11}/>AUTO 7H · {nextRun||"..."}</span>;
 }
 
-// â”€â”€â”€ APP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── APP ──────────────────────────────────────────────────────────────────────
+function SchedulerBadge({ nextRun, isEnabled }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[10px] tracking-wider ${
+        isEnabled
+          ? "border-[#5fbf7a]/40 text-[#5fbf7a]"
+          : "border-[#3a4a4d] text-[#5c6f6b]"
+      }`}
+    >
+      <Clock size={11} />
+      {isEnabled
+        ? `AUTO 7H · ${nextRun || "ATIVO"}`
+        : "AUTO 7H DESATIVADO"}
+    </span>
+  );
+}
+
 export default function GeekNewsWire() {
   const [status,   setStatus]   = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -567,7 +583,7 @@ export default function GeekNewsWire() {
 
     setEdition(newEdition);
     setStatus("done");
-    setTicker(`APURACAO CONCLUIDA Â· ${news.length} DESPACHOS`);
+    setTicker(`APURACAO CONCLUIDA · ${news.length} DESPACHOS`);
     setActiveFilter("all");
 
     try {
@@ -605,9 +621,9 @@ export default function GeekNewsWire() {
             <h1 className="text-3xl font-black tracking-tight text-[#f4f0e8] sm:text-4xl" style={{fontFamily:"'Archivo Black', sans-serif"}}>
               WIRE<span className="text-[#e0452f]">/</span>GEEK
             </h1>
-            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">BAGACA STUDIOS Â· NEWSROOM 3.0</div>
+            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">BAGACA STUDIOS · NEWSROOM 3.0</div>
           </div>
-          <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">GAMES Â· GEEK Â· CINEMA Â· ANIME</span>
+          <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">GAMES · GEEK · CINEMA · ANIME</span>
         </div>
         <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
           Central editorial para apuracao diaria. 4 categorias, 3 noticias cada, banners no Canva com imagens reais.
@@ -636,7 +652,7 @@ export default function GeekNewsWire() {
             </button>
             <button type="button" onClick={toggleScheduler}
               className={`inline-flex items-center gap-2 border px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${schedulerEnabled?"border-[#5fbf7a]/50 text-[#5fbf7a] hover:bg-[#5fbf7a]/10":"border-[#3a4a4d] text-[#7a8f8a] hover:border-[#5fbf7a]/50 hover:text-[#5fbf7a]"}`}>
-              <Calendar size={14}/>{schedulerEnabled?"Auto 7H Â· Ativo":"Ativar Auto 7H"}
+              <Calendar size={14}/>{schedulerEnabled?"Auto 7H · Ativo":"Ativar Auto 7H"}
             </button>
           </div>
           {edition && (
@@ -656,7 +672,7 @@ export default function GeekNewsWire() {
                 <div key={cat} className="border-r border-[#243436] px-3 py-2 last:border-r-0">
                   <div className="font-mono text-[9px] tracking-[0.2em]" style={{color}}>{cat}</div>
                   <div className={`mt-0.5 font-mono text-[10px] ${ok?"text-[#5fbf7a]":"text-[#e0452f]"}`}>
-                    {ok?`${count}/${NEWS_PER_CATEGORY} âœ“`:`${count}/${NEWS_PER_CATEGORY}`}
+                    {ok?`${count}/${NEWS_PER_CATEGORY} ✓`:`${count}/${NEWS_PER_CATEGORY}`}
                   </div>
                 </div>
               );
@@ -709,13 +725,15 @@ export default function GeekNewsWire() {
 
       <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
         <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
-          <span>WIRE/GEEK 3.0 Â· BAGACA STUDIOS</span>
-          <span>EDICOES SALVAS Â· AUTO 7H Â· BANNERS COM IMAGENS REAIS</span>
-        </div>
+          <span>WIRE/GEEK 3.0 · BAGACA STUDIOS</span>
+          <span>EDICOES SALVAS · AUTO 7H · BANNERS COM IMAGENS REAIS</span>
+        </div>sc
       </footer>
     </div>
   );
 }
+
+
 
 
 

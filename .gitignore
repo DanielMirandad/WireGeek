@@ -7,3 +7,5 @@ dist/
 
 *.backup*
 api/news.before-schema-test.js
+.vercel
+.env*

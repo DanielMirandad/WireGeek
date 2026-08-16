@@ -1,0 +1,9 @@
+﻿.vercel
+.env*
+node_modules/
+dist/
+*.zip
+*.deploy-backup
+
+*.backup*
+api/news.before-schema-test.js

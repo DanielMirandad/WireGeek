@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, Check, CheckCircle2, Clock, Copy,
   Hash, Newspaper, Radio, RefreshCw, Zap, ImageIcon, Calendar,
 } from "lucide-react";
 
-// ─── CONSTANTES ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ CONSTANTES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const TEMPLATE_DESIGN_ID = "DAHSAXUcxX4";
 const LOCATORS = {
   pages: [
@@ -33,13 +33,13 @@ https://youtube.com/@bagacastudios
 
 REDES SOCIAIS:
 Instagram: @bagacastudios
-Tiktok: @bagacastudios
-Youtube: https://youtube.com/@bagacastudios
+TikTok: @bagacastudios
+YouTube: https://youtube.com/@bagacastudios
 
 SEJA VIP:
 https://linktr.ee/Bagacacast`;
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function todayKey()     { const d = new Date(); return `wire-geek:v3:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function schedulerKey() { return "wire-geek:scheduler"; }
 function sleep(ms)      { return new Promise(r => setTimeout(r, ms)); }
@@ -72,25 +72,25 @@ async function fetchWithRetry(url, options, { attempts=4, onRetry }={}) {
     onRetry?.(status,i+1,attempts,wait);
     await sleep(wait);
   }
-  throw lastError||new Error("Falha apos multiplas tentativas.");
+  throw lastError||new Error("Falha após múltiplas tentativas.");
 }
 function estimateReading(text) {
   const words = String(text||"").trim().split(/\s+/).filter(Boolean);
   return { words: words.length, minutes: Math.max(1,Math.round(words.length/200)) };
 }
 
-// Remove travessões de todos os campos
+// Remove travessÃµes de todos os campos
 function removeDashes(str) {
-  return String(str||"").replace(/[—–]/g, ",").replace(/\s{2,}/g, " ").trim();
+  return String(str||"").replace(/[â€”â€“]/g, ",").replace(/\s{2,}/g, " ").trim();
 }
 
 function normalizeNewsItem(item={}) {
   return {
     categoria:    String(item.categoria||"geek").toLowerCase(),
-    titulo:       removeDashes(item.titulo||"Sem titulo"),
-    publicado_em: item.publicado_em||"Ultimas 24h",
+    titulo:       removeDashes(item.titulo||"Sem título"),
+    publicado_em: item.publicado_em||"Últimas 24h",
     materia:      removeDashes(item.materia||""),
-    highlights:   Array.isArray(item.highlights)?item.highlights.slice(0,4).map(removeDashes):[],
+    highlights:   Array.isArray(item.highlights)?item.highlights.slice(0,1).map(removeDashes):[],
     hashtags:     Array.isArray(item.hashtags)?item.hashtags.slice(0,5):[],
     fontes:       Array.isArray(item.fontes)?item.fontes.slice(0,3):[],
     image_query:  item.image_query||item.titulo||"",
@@ -98,23 +98,23 @@ function normalizeNewsItem(item={}) {
 }
 function validateEdition(news) {
   if (!Array.isArray(news)||news.length!==CATEGORY_ORDER.length*NEWS_PER_CATEGORY)
-    return `Aedicao precisa conter exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} noticias.`;
+    return `A edição precisa conter exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} notícias.`;
   for (const cat of CATEGORY_ORDER) {
     const count = news.filter(n=>n.categoria===cat).length;
-    if (count!==NEWS_PER_CATEGORY) return `"${cat}" deve ter ${NEWS_PER_CATEGORY} noticias (encontrado: ${count}).`;
+    if (count!==NEWS_PER_CATEGORY) return `"${cat}" deve ter ${NEWS_PER_CATEGORY} notícias (encontrado: ${count}).`;
   }
   for (const item of news) {
-    if (!item.titulo||!item.materia) return "Noticia sem titulo ou materia.";
-    if (item.highlights.length!==4) return `"${item.titulo}" precisa de 4 highlights.`;
+    if (!item.titulo||!item.materia) return "Notícia sem título ou matéria.";
+    if (item.highlights.length!==1) return `"${item.titulo}" precisa de 1 destaques.`;
     if (item.hashtags.length!==5)   return `"${item.titulo}" precisa de 5 hashtags.`;
   }
   return null;
 }
 
-// ─── BANNER PROMPT ────────────────────────────────────────────────────────────
+// â”€â”€â”€ BANNER PROMPT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function buildBannerCommand(item) {
   const highlights = (item.highlights || [])
-    .slice(0, 4)
+    .slice(0, 1)
     .map((h, i) => `${i + 1}. ${h}`)
     .join("\\n");
 
@@ -122,29 +122,29 @@ function buildBannerCommand(item) {
 
 Voce e o responsavel pela criacao do banner do Wire/Geek.
 
-NAO apenas explique.
-NAO apenas escreva um prompt.
+NÃO apenas explique.
+NÃO apenas escreva um prompt.
 EXECUTE a criacao utilizando a integracao do Canva disponivel para voce.
 
 MARCA:
 Wire/Geek
 
 ESTUDIO:
-Bagaca Studios
+Bagaça Studios
 
 CATEGORIA:
 ${item.categoria || ""}
 
-TITULO:
+TÍTULO:
 ${item.titulo || ""}
 
-SUBTITULO:
+SUBTÍTULO:
 ${item.subtitulo || ""}
 
 HIGHLIGHTS:
 ${highlights}
 
-MATERIA:
+MATÉRIA:
 ${item.materia || ""}
 
 HASHTAGS:
@@ -157,18 +157,18 @@ DIRECAO VISUAL:
 - Estilo jornalistico geek moderno.
 - Visual impactante.
 - Tipografia forte.
-- Hierarquia clara entre titulo, subtitulo e imagem.
+- Hierarquia clara entre título, subtítulo e imagem.
 - Utilizar imagem real relacionada ao assunto.
 - Manter identidade visual consistente do Wire/Geek.
-- Inserir Bagaca Studios de forma discreta.
+- Inserir Bagaça Studios de forma discreta.
 - Todo texto visual deve estar em portugues brasileiro.
-- Nao inventar personagens, logos ou acontecimentos.
-- Nao utilizar imagem generica quando houver imagem real apropriada.
+- Não inventar personagens, logos ou acontecimentos.
+- Não utilizar imagem genérica quando houver imagem real apropriada.
 
 CANVA:
 1. Use o template do Wire/Geek definido para banners.
 2. Crie uma nova versao do design.
-3. Substitua titulo e subtitulo pelos dados da noticia.
+3. Substitua título e subtítulo pelos dados da notícia.
 4. Escolha uma imagem real adequada ao assunto.
 5. Ajuste enquadramento, contraste e legibilidade.
 6. Mantenha a identidade visual do Wire/Geek.
@@ -224,7 +224,7 @@ function BannerSection({ item }) {
           </h3>
 
           <p className="mt-2 text-sm leading-6 text-[#a9bab5]">
-            O Wire/Geek prepara os dados da noticia.
+            O Wire/Geek prepara os dados da notícia.
             O Claude IA recebe a solicitacao e executa
             a criacao do banner utilizando o Canva.
           </p>
@@ -266,7 +266,7 @@ function BannerSection({ item }) {
   );
 
 const tabs = [
-    {id:"materia",    label:"Materia",    icon:Newspaper},
+    {id:"materia",    label:"Matéria",    icon:Newspaper},
     {id:"highlights", label:"Highlights", icon:Zap},
     {id:"hashtags",   label:"Hashtags",   icon:Hash},
     {id:"banner",     label:"Banner",     icon:ImageIcon},
@@ -290,7 +290,7 @@ const tabs = [
         <span className="font-mono text-[10px] text-[#5c6f6b]">{new Date().toLocaleDateString("pt-BR")}</span>
       </div>
 
-      {/* Titulo */}
+      {/* Título */}
       <div className="px-4 pt-4 pb-2">
         <h3 className="text-xl font-black leading-tight text-[#f4f0e8] sm:text-2xl" style={{fontFamily:"'Archivo Black', sans-serif"}}>
           {item.titulo}
@@ -318,9 +318,9 @@ const tabs = [
           <div>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#5c6f6b]">
-                <Clock size={11}/>{minutes} min · {words} palavras · {item.materia.length} chars
+                <Clock size={11}/>{minutes} min · {words} palavras · {item.materia.length} caracteres
               </span>
-              <CopyButton text={`${item.titulo}\n\n${item.materia}\n\n${RODAPE_FIXO}`} label="Copiar materia"/>
+              <CopyButton text={`${item.titulo}\n\n${item.materia}\n\n${RODAPE_FIXO}`} label="Copiar matéria"/>
             </div>
 
             {/* Lead destacado */}
@@ -336,7 +336,7 @@ const tabs = [
 
             {item.fontes.length>0 && (
               <div className="mt-5 border-t border-[#243436] pt-3">
-                <span className="mb-2 block font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">FONTES DA APURACAO</span>
+                <span className="mb-2 block font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">FONTES DA APURAÇÃO</span>
                 <ul className="space-y-1">
                   {item.fontes.map((source,i)=>(
                     <li key={i} className="font-mono text-[10px] text-[#7a8f8a]">
@@ -401,12 +401,307 @@ const tabs = [
   );
 }
 
-// ─── SCHEDULER ───────────────────────────────────────────────────────────────
-  if(!isEnabled) return <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#5c6f6b]"><Calendar size={11}/>AUTO 7H · INATIVO</span>;
-  return <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]"><Calendar size={11}/>AUTO 7H · {nextRun||"..."}</span>;
+
+// â”€â”€â”€ APP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function CopyButton({ text, label = "Copiar" }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await copyToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      console.error("WIRE/GEEK: erro ao copiar", error);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] text-[#8fa39d] transition hover:border-[#e0452f] hover:text-[#e0452f]"
+    >
+      <Copy size={11} />
+      {copied ? "Copiado" : label}
+    </button>
+  );
 }
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
+function Stamp({ children }) {
+  return (
+    <span className="border border-[#e0452f]/50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-[#e0452f]">
+      {children}
+    </span>
+  );
+}
+
+function FormattedArticle({ text }) {
+  return (
+    <div className="space-y-3 text-[15px] leading-7 text-[#cfd8d4]">
+      {String(text || "")
+        .split(/\n+/)
+        .filter(Boolean)
+        .map((paragraph, index) => (
+          <p key={index}>{paragraph}</p>
+        ))}
+    </div>
+  );
+}
+
+function DispatchCard({ item, index }) {
+  const [tab, setTab] = useState("materia");
+  const { words, minutes } = estimateReading(item.materia);
+  const catColor = CATEGORY_COLOR[item.categoria] || "#e0452f";
+
+  const tabs = [
+    { id: "materia", label: "Matéria", icon: Newspaper },
+    { id: "highlights", label: "Highlights", icon: Zap },
+    { id: "hashtags", label: "Hashtags", icon: Hash },
+    { id: "banner", label: "Banner", icon: ImageIcon },
+  ];
+
+  return (
+    <article className="relative border border-[#3a4a4d] bg-[#0f1a1c]">
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#3a4a4d] bg-[#132025] px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3">
+
+          <span className="font-mono text-[10px] text-[#7a8f8a]">
+            DESPACHO {String(index + 1).padStart(2, "0")}
+          </span>
+
+          <span
+            className="border px-1.5 py-0.5 font-mono text-[10px] tracking-[0.2em]"
+            style={{
+              borderColor: `${catColor}80`,
+              color: catColor
+            }}
+          >
+            {CATEGORY_LABEL[item.categoria] || "PAUTA"}
+          </span>
+
+          {item.publicado_em && (
+            <span className="border border-[#5fbf7a]/40 px-1.5 py-0.5 font-mono text-[10px] text-[#5fbf7a]">
+              {item.publicado_em}
+            </span>
+          )}
+        </div>
+
+        <span className="font-mono text-[10px] text-[#5c6f6b]">
+          {new Date().toLocaleDateString("pt-BR")}
+        </span>
+      </div>
+
+      <div className="px-4 pb-2 pt-4">
+        <h3
+          className="text-xl font-black leading-tight text-[#f4f0e8] sm:text-2xl"
+          style={{ fontFamily: "'Archivo Black', sans-serif" }}
+        >
+          {item.titulo}
+        </h3>
+      </div>
+
+      <div className="flex gap-1 overflow-x-auto border-b border-[#243436] px-4">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[10px] font-mono uppercase tracking-wider ${
+              tab === id
+                ? "border-[#e0452f] text-[#f4f0e8]"
+                : "border-transparent text-[#7a8f8a]"
+            }`}
+          >
+            <Icon size={12} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-4">
+
+        {tab === "materia" && (
+          <div>
+
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#5c6f6b]">
+                <Clock size={11} />
+                {minutes} min · {words} palavras · {item.materia.length} caracteres
+              </span>
+
+              <CopyButton
+                text={`${item.titulo}\n\n${item.materia}\n\n${RODAPE_FIXO}`}
+                label="Copiar matéria"
+              />
+            </div>
+
+            <div
+              className="mb-4 border-l-2 pl-3"
+              style={{ borderColor: catColor }}
+            >
+              <h5 className="text-[15px] font-black leading-snug text-[#f4f0e8]">
+                {item.titulo}
+              </h5>
+            </div>
+
+            <FormattedArticle text={item.materia} />
+
+            {item.fontes.length > 0 && (
+              <div className="mt-5 border-t border-[#243436] pt-3">
+
+                <span className="mb-2 block font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">
+                  FONTES DA APURAÇÃO
+                </span>
+
+                <ul className="space-y-1">
+                  {item.fontes.map((source, i) => (
+                    <li
+                      key={i}
+                      className="font-mono text-[10px] text-[#7a8f8a]"
+                    >
+                      {source.url ? (
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline hover:text-[#e0452f]"
+                        >
+                          {source.nome || source.url}
+                        </a>
+                      ) : (
+                        source.nome
+                      )}
+
+                      {source.publicado_em
+                        ? ` · ${source.publicado_em}`
+                        : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mt-4 border-t border-[#243436] pt-3">
+              <pre className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-[#8fa39d]">
+                {RODAPE_FIXO}
+              </pre>
+            </div>
+
+          </div>
+        )}
+
+{tab === "highlights" && (
+  <div className="space-y-4">
+
+    <div className="flex items-center justify-between border-b border-[#243436] pb-3">
+      <div>
+        <Stamp>Sensacionalista</Stamp>
+        <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[#7a8f8a]">
+          1 destaque editorial • até 20 palavras
+        </p>
+      </div>
+
+      <CopyButton
+        text={item.highlights.join("\n")}
+        label="Copiar"
+      />
+    </div>
+
+    <div className="grid gap-3">
+
+      {item.highlights.map((highlight, i) => (
+        <div
+          key={i}
+          className="group relative overflow-hidden border border-[#344447] bg-[#121e21] px-4 py-4 transition-all hover:border-[#e0452f]/70"
+        >
+
+          <div className="absolute left-0 top-0 h-full w-1 bg-[#e0452f]" />
+
+          <div className="flex items-start gap-4">
+
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-[#e0452f]/50 bg-[#1b282b]">
+              <span className="font-mono text-[11px] font-bold text-[#e0452f]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+            </div>
+
+            <div className="min-w-0 flex-1">
+
+              <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[#667b77]">
+                Destaque {String(i + 1).padStart(2, "0")}
+              </div>
+
+              <p className="font-mono text-[13px] font-medium leading-relaxed text-[#f4f0e8]">
+                {highlight}
+              </p>
+
+            </div>
+
+          </div>
+
+        </div>
+      ))}
+
+    </div>
+
+  </div>
+)}
+
+        {tab === "hashtags" && (
+          <div>
+
+            <div className="mb-3 flex justify-end">
+              <CopyButton
+                text={item.hashtags.join(" ")}
+                label="Copiar hashtags"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {item.hashtags.map((tag, i) => (
+                <span
+                  key={i}
+                  className="border border-[#e0452f]/40 px-2 py-1 font-mono text-[11px] text-[#e0452f]"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+          </div>
+        )}
+
+        {tab === "banner" && (
+          <BannerSection item={item} />
+        )}
+
+      </div>
+
+      <div className="border-t border-[#243436] bg-[#0c1618] px-4 py-3">
+
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">
+            RODAPE FIXO
+          </span>
+
+          <CopyButton
+            text={RODAPE_FIXO}
+            label="Copiar rodape"
+          />
+        </div>
+
+        <pre className="whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-[#8fa39d]">
+          {RODAPE_FIXO}
+        </pre>
+
+      </div>
+
+    </article>
+  );
+}
+
 function SchedulerBadge({ nextRun, isEnabled }) {
   return (
     <span
@@ -418,13 +713,18 @@ function SchedulerBadge({ nextRun, isEnabled }) {
     >
       <Clock size={11} />
       {isEnabled
-        ? `AUTO 7H · ${nextRun || "ATIVO"}`
+        ? `AUTO ÀS 7H · ${nextRun || "ATIVO"}`
         : "AUTO 7H DESATIVADO"}
     </span>
   );
 }
 
 export default function GeekNewsWire() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [adminKey, setAdminKey] = useState("");
+  const [authError, setAuthError] = useState("");
+
   const [status,   setStatus]   = useState("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [edition,  setEdition]  = useState(null);
@@ -433,6 +733,71 @@ export default function GeekNewsWire() {
   const [nextRun,  setNextRun]  = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
   const schedulerRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const response = await fetch("/api/auth", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (active) {
+          const data = await response.json().catch(() => ({}));
+          setAuthenticated(response.ok && data.authenticated === true);
+        }
+      } catch {
+        if (active) {
+          setAuthenticated(false);
+        }
+      } finally {
+        if (active) {
+          setAuthChecking(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function login() {
+    if (!adminKey.trim()) {
+      setAuthError("Informe a chave administrativa.");
+      return;
+    }
+
+    setAuthError("");
+    setAuthChecking(true);
+
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ key: adminKey }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Falha na autenticacao.");
+      }
+
+      setAuthenticated(true);
+      setAdminKey("");
+    } catch (error) {
+      setAuthenticated(false);
+      setAuthError(error?.message || "Falha na autenticacao.");
+    } finally {
+      setAuthChecking(false);
+    }
+  }
 
   function computeNextRun() { const n=new Date(),d=new Date(); d.setHours(7,0,0,0); if(n>=d)d.setDate(d.getDate()+1); return d; }
   function formatNextRun(date) { return date.toLocaleString("pt-BR",{weekday:"short",hour:"2-digit",minute:"2-digit"}).toUpperCase(); }
@@ -489,10 +854,10 @@ export default function GeekNewsWire() {
   const phases = [
     "CONECTANDO AO FIO INTERNACIONAL",
     "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
-    "FILTRANDO PUBLICACOES DAS ULTIMAS 24H",
+    "FILTRANDO PUBLICAÇÕES DAS ÚLTIMAS 24H",
     "VALIDANDO DATA E FONTE",
     "APURANDO OS FATOS",
-    "REDIGINDO COM VOZ PROPRIA",
+    "REDIGINDO COM VOZ PRÓPRIA",
     "LAPIDANDO CHAMADAS",
     "FORMATANDO PARA REDES SOCIAIS",
   ];
@@ -515,9 +880,9 @@ export default function GeekNewsWire() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: `Gere a edicao de hoje com exatamente ${
+          prompt: `Gere a edição de hoje com exatamente ${
             CATEGORY_ORDER.length * NEWS_PER_CATEGORY
-          } noticias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas ultimas 24 horas. Busque na web antes de escrever. Nunca use travessao. Responda somente com o JSON solicitado.`,
+          } notícias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas últimas 24 horas. Busque na web antes de escrever. Nunca use travessão. Responda somente com o JSON solicitado.`,
         }),
       },
       {
@@ -532,43 +897,62 @@ export default function GeekNewsWire() {
       }
     );
 
-    if (!response.ok) {
+        if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw new Error(
-        `Erro no backend ${response.status}: ${body.slice(0, 300)}`
+        body || `Backend respondeu com HTTP ${response.status}.`
+      );
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!contentType.toLowerCase().includes("application/json")) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Backend não retornou JSON. Content-Type: ${contentType || "desconhecido"}${
+          body ? ` | Resposta: ${body.slice(0, 300)}` : ""
+        }`
       );
     }
 
     const data = await response.json();
 
-    const text = String(data?.text || "").trim();
+    let news = [];
 
-    if (!text) {
-      throw new Error("Backend nao retornou JSON.");
-    }
+    if (Array.isArray(data?.news)) {
+      news = data.news;
+    } else {
+      const text = String(data?.text || "").trim();
 
-    const cleaned = text
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-
-    let parsed;
-
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      const start = cleaned.indexOf("{");
-      const end = cleaned.lastIndexOf("}");
-
-      if (start < 0 || end <= start) {
-        throw new Error("JSON invalido retornado pelo backend.");
+      if (!text) {
+        throw new Error("Backend não retornou notícias.");
       }
 
-      parsed = JSON.parse(cleaned.slice(start, end + 1));
+      const cleaned = text
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      let parsed;
+
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+
+        if (start < 0 || end <= start) {
+          throw new Error("JSON inválido retornado pelo backend.");
+        }
+
+        parsed = JSON.parse(cleaned.slice(start, end + 1));
+      }
+
+      news = Array.isArray(parsed?.news) ? parsed.news : [];
     }
 
-    const news = (parsed.news || []).map(normalizeNewsItem);
+    news = news.map(normalizeNewsItem);
 
     const validationError = validateEdition(news);
 
@@ -583,7 +967,7 @@ export default function GeekNewsWire() {
 
     setEdition(newEdition);
     setStatus("done");
-    setTicker(`APURACAO CONCLUIDA · ${news.length} DESPACHOS`);
+    setTicker(`APURAÇÃO CONCLUÍDA · ${news.length} DESPACHOS`);
     setActiveFilter("all");
 
     try {
@@ -592,11 +976,87 @@ export default function GeekNewsWire() {
   } catch (err) {
     setErrorMsg(err?.message || "Falha desconhecida.");
     setStatus("error");
-    setTicker("FALHA NA APURACAO");
+    setTicker("FALHA NA APURAÇÃO");
   } finally {
     clearInterval(interval);
   }
 }
+
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9] flex items-center justify-center p-6"
+        style={{ fontFamily: "\x27IBM Plex Mono\x27, monospace" }}>
+        <div className="w-full max-w-md border border-[#3a4a4d] bg-[#0f1a1c] p-6 text-center">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.25em] text-[#e0452f]">
+            WIRE/GEEK
+          </div>
+          <div className="font-mono text-sm text-[#8fa39d]">
+            VERIFICANDO SESSAO...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9] flex items-center justify-center p-6"
+        style={{ fontFamily: "\x27IBM Plex Mono\x27, monospace" }}>
+        <div className="w-full max-w-md border border-[#3a4a4d] bg-[#0f1a1c] p-6">
+          <div className="mb-6">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-[#e0452f]">
+              ACESSO ADMINISTRATIVO
+            </div>
+            <h1 className="mt-2 text-2xl font-black text-[#f4f0e8]"
+              style={{ fontFamily: "\x27Archivo Black\x27, sans-serif" }}>
+              WIRE/GEEK
+            </h1>
+            <p className="mt-2 text-xs leading-5 text-[#7a8f8a]">
+              Informe a chave administrativa para acessar o painel de apuracao.
+            </p>
+          </div>
+
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              login();
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-[#8fa39d]">
+                Chave administrativa
+              </label>
+              <input
+                type="password"
+                value={adminKey}
+                onChange={(event) => setAdminKey(event.target.value)}
+                autoComplete="current-password"
+                autoFocus
+                className="w-full border border-[#3a4a4d] bg-[#07110f] px-3 py-3 font-mono text-sm text-[#f4f0e8] outline-none transition focus:border-[#e0452f]"
+                placeholder="Digite a chave de acesso"
+              />
+            </div>
+
+            {authError && (
+              <div className="flex gap-2 border border-[#e0452f]/40 bg-[#1a1010] p-3 text-xs text-[#e0452f]">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authChecking}
+              className="flex w-full items-center justify-center gap-2 bg-[#e0452f] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {authChecking ? "Autenticando..." : "Entrar"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9]" style={{fontFamily:"'IBM Plex Mono', monospace"}}>
@@ -621,16 +1081,16 @@ export default function GeekNewsWire() {
             <h1 className="text-3xl font-black tracking-tight text-[#f4f0e8] sm:text-4xl" style={{fontFamily:"'Archivo Black', sans-serif"}}>
               WIRE<span className="text-[#e0452f]">/</span>GEEK
             </h1>
-            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">BAGACA STUDIOS · NEWSROOM 3.0</div>
+            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">BAGAÇA STUDIOS · NEWSROOM 3.0</div>
           </div>
           <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">GAMES · GEEK · CINEMA · ANIME</span>
         </div>
         <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
-          Central editorial para apuracao diaria. 4 categorias, 3 noticias cada, banners no Canva com imagens reais.
+          Central editorial para apuração diária. 4 categorias, 3 notícias cada, banners no Canva com imagens reais.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-            <CheckCircle2 size={11}/>ULTIMAS 24H
+            <CheckCircle2 size={11}/>ÚLTIMAS 24H
           </span>
           {CATEGORY_ORDER.map(cat=>(
             <span key={cat} className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider" style={{color:CATEGORY_COLOR[cat]}}>
@@ -648,16 +1108,16 @@ export default function GeekNewsWire() {
             <button type="button" onClick={generate} disabled={status==="loading"}
               className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50">
               <RefreshCw size={14} className={status==="loading"?"animate-spin":""}/>
-              {status==="loading"?"Apurando...":"Apurar Noticias"}
+              {status==="loading"?"Apurando...":"Apurar Notícias"}
             </button>
             <button type="button" onClick={toggleScheduler}
               className={`inline-flex items-center gap-2 border px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${schedulerEnabled?"border-[#5fbf7a]/50 text-[#5fbf7a] hover:bg-[#5fbf7a]/10":"border-[#3a4a4d] text-[#7a8f8a] hover:border-[#5fbf7a]/50 hover:text-[#5fbf7a]"}`}>
-              <Calendar size={14}/>{schedulerEnabled?"Auto 7H · Ativo":"Ativar Auto 7H"}
+              <Calendar size={14}/>{schedulerEnabled?"Auto às 7H · Ativo":"Ativar Auto às 7H"}
             </button>
           </div>
           {edition && (
             <div className="text-right">
-              <div className="font-mono text-[10px] text-[#5c6f6b]">ULTIMA APURACAO</div>
+              <div className="font-mono text-[10px] text-[#5c6f6b]">ÚLTIMA APURAÇÃO</div>
               <div className="font-mono text-[11px] text-[#8fa39d]">{new Date(edition.generatedAt).toLocaleTimeString("pt-BR")}</div>
             </div>
           )}
@@ -672,7 +1132,7 @@ export default function GeekNewsWire() {
                 <div key={cat} className="border-r border-[#243436] px-3 py-2 last:border-r-0">
                   <div className="font-mono text-[9px] tracking-[0.2em]" style={{color}}>{cat}</div>
                   <div className={`mt-0.5 font-mono text-[10px] ${ok?"text-[#5fbf7a]":"text-[#e0452f]"}`}>
-                    {ok?`${count}/${NEWS_PER_CATEGORY} ✓`:`${count}/${NEWS_PER_CATEGORY}`}
+                    {ok?`${count}/${NEWS_PER_CATEGORY} âœ“`:`${count}/${NEWS_PER_CATEGORY}`}
                   </div>
                 </div>
               );
@@ -687,8 +1147,8 @@ export default function GeekNewsWire() {
         )}
         {status==="idle"&&!edition && (
           <div className="border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#5c6f6b]">
-            <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">REDACAO EM ESPERA</div>
-            Nenhuma edicao gerada hoje. Inicie a apuracao ou ative o agendamento para as 7h.
+            <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">REDAÇÃO EM ESPERA</div>
+            Nenhuma edição gerada hoje. Inicie a apuração ou ative o agendamento para às 7h.
           </div>
         )}
         {status==="loading"&&!edition && (
@@ -725,13 +1185,15 @@ export default function GeekNewsWire() {
 
       <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
         <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
-          <span>WIRE/GEEK 3.0 · BAGACA STUDIOS</span>
-          <span>EDICOES SALVAS · AUTO 7H · BANNERS COM IMAGENS REAIS</span>
-        </div>sc
+          <span>WIRE/GEEK 3.0 · BAGAÇA STUDIOS</span>
+          <span>EDIÇÕES SALVAS · AUTO 7H · BANNERS COM IMAGENS REAIS</span>
+        </div>
       </footer>
     </div>
   );
 }
+
+
 
 
 

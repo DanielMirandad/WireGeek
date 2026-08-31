@@ -1,11 +1,38 @@
-﻿.vercel
+﻿# Ambiente
 .env*
+.vercel/
 node_modules/
 dist/
-*.zip
-*.deploy-backup
 
+# Bancos e dados locais
+data/
+backups/
+api-backups/
+
+# Backups e cópias temporárias
 *.backup*
-api/news.before-schema-test.js
+*.bak
+*.deploy-backup
+*.before-*
+*.tmp
+
+# Arquivos compactados
+*.zip
+
+# Logs
+*.log
+
+# Arquivos temporários de testes/diagnóstico
+inspect-*.js
+inspect-*.mjs
+test-*.js
+temp-*.txt
+sameStory.tmp.js
+
+# Arquivo acidental criado pelo terminal
+.js*
+
+*.bak*
+backup-*/
 .vercel
 .env*

@@ -1422,9 +1422,10 @@ veiculo especializado em cultura geek.
 Escreva em portugues brasileiro natural, direto e profissional.
 
 Cada paragrafo deve desenvolver uma informacao diferente.
+
 IMPORTANTE SOBRE A FORMATACAO DA MATERIA:
 
-PARAGRAFOS 3 E 4 — DETALHES:
+A materia DEVE possuir exatamente 3 paragrafos.
 
 Cada paragrafo DEVE ser separado do seguinte por uma linha em branco,
 utilizando duas quebras de linha (\n\n) dentro da string JSON.
@@ -1433,23 +1434,9 @@ NAO escreva todos os paragrafos como um unico bloco de texto.
 
 NAO substitua as quebras de paragrafo por espacos.
 
-A resposta deve preservar explicitamente a separacao entre os paragrafos.
+A resposta deve preservar explicitamente a separacao entre os 3 paragrafos.
 
-Exemplo obrigatorio:
-
-"Primeiro paragrafo da noticia.
-
-Segundo paragrafo da noticia.
-
-Terceiro paragrafo da noticia.
-
-Quarto paragrafo da noticia."
-
-As quebras de linha entre os paragrafos devem ser preservadas
-na resposta JSON final.
-
-
-ESTRUTURA:
+ESTRUTURA OBRIGATORIA:
 
 PARAGRAFO 1 — LEAD:
 
@@ -1459,33 +1446,24 @@ O leitor deve entender logo no primeiro paragrafo
 o que aconteceu, quem esta envolvido e por que o assunto
 e relevante.
 
-PARAGRAFO 2 — CONTEXTO:
+PARAGRAFO 2 — CONTEXTO E DETALHES:
 
 Explique o contexto necessario para compreender a noticia.
 
-Inclua informacoes sobre o projeto, produto, franquia,
-empresa, pessoa ou acontecimento quando esses dados
-estiverem presentes no candidato.
+Inclua os principais detalhes confirmados presentes no candidato,
+como datas, numeros, nomes, declaracoes, caracteristicas,
+informacoes de producao, plataformas, valores ou outros dados factuais.
 
-PARAGRAFOS 3 E 4 — DETALHES:
+PARAGRAFO 3 — DESDOBRAMENTO:
 
-Apresente os principais detalhes confirmados.
-
-Utilize numeros, datas, nomes, declaracoes, caracteristicas,
-informacoes de producao, plataformas, valores ou outros
-dados somente quando estiverem presentes no candidato.
-
-PARAGRAFO FINAL — DESDOBRAMENTO:
-
-O PARAGRAFO 3 deve apresentar os principais detalhes,
-consequencias, proximos passos ou informacoes adicionais
-somente quando esses dados estiverem presentes no candidato.
+Apresente os principais detalhes restantes, consequencias,
+proximos passos ou informacoes adicionais somente quando
+esses dados estiverem presentes no candidato.
 
 Se nao houver um proximo passo confirmado, finalize com
-o terceiro paragrafo usando os detalhes factuais restantes.
+os detalhes factuais restantes.
 
 NAO invente um desdobramento.
-NAO transforme a materia em uma sequencia de frases genericas.
 
 NAO repita a mesma informacao em paragrafos diferentes.
 
@@ -1507,6 +1485,27 @@ EVITE CONSTRUCOES ARTIFICIAIS como:
 
 Essas construcoes somente podem ser utilizadas quando
 expressarem um fato especifico realmente presente no candidato.
+
+REGRA DE TAMANHO:
+
+Antes de finalizar cada materia, estime o tamanho.
+
+Nunca entregue abaixo de ${MIN_ARTICLE_CHARS} caracteres.
+
+Nunca ultrapasse ${MAX_ARTICLE_CHARS} caracteres.
+
+O tamanho deve ser alcancado por meio de informacao jornalistica
+realmente presente no candidato, nunca por preenchimento artificial.
+
+PRIORIDADE EDITORIAL:
+
+A qualidade e a naturalidade da materia sao mais importantes
+que aumentar artificialmente o numero de caracteres.
+
+Se houver poucos fatos no candidato, desenvolva o contexto
+somente com informacoes que ja estejam presentes nele.
+
+NAO invente informacoes para atingir o limite minimo.
 
 NAO INVENTE:
 

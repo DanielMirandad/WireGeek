@@ -1340,11 +1340,27 @@ NAO altere acontecimentos.
 
 NAO mova candidatos entre categorias.
 
-A distribuicao entre categorias e LIVRE.
+DISTRIBUICAO OBRIGATORIA DA EDICAO FINAL:
 
-NAO e obrigatorio possuir a mesma quantidade de noticias em cada categoria.
+A edicao deve possuir EXATAMENTE 12 noticias.
 
-NAO force uma categoria artificialmente.
+A distribuicao obrigatoria e:
+
+- 3 noticias de games;
+- 3 noticias de geek;
+- 3 noticias de cinema;
+- 3 noticias de anime.
+
+A categoria series NAO pode aparecer na edicao final.
+
+NAO entregue 2 noticias de uma categoria e compense com outra.
+
+NAO altere a categoria original de um candidato.
+
+NAO invente noticias para completar uma categoria.
+
+A edicao somente pode ser finalizada quando houver
+3 candidatos validos de cada uma das quatro categorias.
 
 A selecao deve priorizar:
 

@@ -19,7 +19,6 @@ const LOCATORS = {
 const CATEGORY_LABEL  = { games: "GAMES", geek: "GEEK", cinema: "CINEMA", anime: "ANIME" };
 const CATEGORY_COLOR  = { games: "#E8002D", geek: "#7C3AED", cinema: "#D97706", anime: "#0EA5E9" };
 const CATEGORY_ORDER  = ["games", "geek", "cinema", "anime"];
-const NEWS_PER_CATEGORY = 3;
 
 const RODAPE_FIXO = `___
 
@@ -88,7 +87,7 @@ function normalizeNewsItem(item={}) {
   return {
     categoria:    String(item.categoria||"geek").toLowerCase(),
     titulo:       removeDashes(item.titulo||"Sem título"),
-    publicado_em: item.publicado_em||"Últimas 24h",
+    publicado_em: item.publicado_em||"Últimas 48h",
     materia:      removeDashes(item.materia||""),
     highlights:   Array.isArray(item.highlights)?item.highlights.slice(0,1).map(removeDashes):[],
     hashtags:     Array.isArray(item.hashtags)?item.hashtags.slice(0,5):[],
@@ -97,17 +96,20 @@ function normalizeNewsItem(item={}) {
   };
 }
 function validateEdition(news) {
-  if (!Array.isArray(news)||news.length!==CATEGORY_ORDER.length*NEWS_PER_CATEGORY)
-    return `A edição precisa conter exatamente ${CATEGORY_ORDER.length*NEWS_PER_CATEGORY} notícias.`;
-  for (const cat of CATEGORY_ORDER) {
-    const count = news.filter(n=>n.categoria===cat).length;
-    if (count!==NEWS_PER_CATEGORY) return `"${cat}" deve ter ${NEWS_PER_CATEGORY} notícias (encontrado: ${count}).`;
-  }
+  if (!Array.isArray(news) || news.length < 6 || news.length > 12)
+    return "A edição deve conter entre 6 e 12 notícias.";
+
   for (const item of news) {
-    if (!item.titulo||!item.materia) return "Notícia sem título ou matéria.";
-    if (item.highlights.length!==1) return `"${item.titulo}" precisa de 1 destaques.`;
-    if (item.hashtags.length!==5)   return `"${item.titulo}" precisa de 5 hashtags.`;
+    if (!item.titulo || !item.materia)
+      return "Notícia sem título ou matéria.";
+
+    if (item.highlights.length !== 1)
+      return `"${item.titulo}" precisa de 1 destaque.`;
+
+    if (item.hashtags.length !== 5)
+      return `"${item.titulo}" precisa de 5 hashtags.`;
   }
+
   return null;
 }
 
@@ -854,7 +856,7 @@ export default function GeekNewsWire() {
   const phases = [
     "CONECTANDO AO FIO INTERNACIONAL",
     "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
-    "FILTRANDO PUBLICAÇÕES DAS ÚLTIMAS 24H",
+    "FILTRANDO PUBLICAÇÕES DAS ÚLTIMAS 48H",
     "VALIDANDO DATA E FONTE",
     "APURANDO OS FATOS",
     "REDIGINDO COM VOZ PRÓPRIA",
@@ -880,9 +882,7 @@ export default function GeekNewsWire() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: `Gere a edição de hoje com exatamente ${
-            CATEGORY_ORDER.length * NEWS_PER_CATEGORY
-          } notícias reais: ${NEWS_PER_CATEGORY} de cada categoria (games, geek, cinema, anime). Todas publicadas nas últimas 24 horas. Busque na web antes de escrever. Nunca use travessão. Responda somente com o JSON solicitado.`,
+          prompt: `Gere a edição de hoje com notícias reais. Se houver 12 ou mais notícias válidas, selecione as 12 melhores. Se houver de 6 a 11 notícias válidas, use todas. Se houver menos de 6 notícias válidas, não publique. Preserve a categoria original de cada notícia (games, geek, cinema, anime). Considere notícias das últimas 48 horas. Busque na web antes de escrever. Nunca use travessão. Responda somente com o JSON solicitado.`,
         }),
       },
       {
@@ -1086,15 +1086,15 @@ export default function GeekNewsWire() {
           <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">GAMES · GEEK · CINEMA · ANIME</span>
         </div>
         <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
-          Central editorial para apuração diária. 4 categorias, 3 notícias cada, banners no Canva com imagens reais.
+          Central editorial para apuração diária. 4 categorias, de 6 a 12 notícias, banners no Canva com imagens reais.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-            <CheckCircle2 size={11}/>ÚLTIMAS 24H
+            <CheckCircle2 size={11}/>ÚLTIMAS 48H
           </span>
           {CATEGORY_ORDER.map(cat=>(
             <span key={cat} className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider" style={{color:CATEGORY_COLOR[cat]}}>
-              {NEWS_PER_CATEGORY}x {CATEGORY_LABEL[cat]}
+              {CATEGORY_LABEL[cat]}
             </span>
           ))}
           <SchedulerBadge nextRun={nextRun} isEnabled={schedulerEnabled}/>
@@ -1127,12 +1127,12 @@ export default function GeekNewsWire() {
         {edition && (
           <div className="mb-5 grid grid-cols-4 border border-[#243436] bg-[#0c1618]">
             {CATEGORY_ORDER.map(cat=>{
-              const count=summary.byCategory[cat]||0,ok=count===NEWS_PER_CATEGORY,color=CATEGORY_COLOR[cat];
+              const count=summary.byCategory[cat]||0,color=CATEGORY_COLOR[cat];
               return (
                 <div key={cat} className="border-r border-[#243436] px-3 py-2 last:border-r-0">
                   <div className="font-mono text-[9px] tracking-[0.2em]" style={{color}}>{cat}</div>
                   <div className={`mt-0.5 font-mono text-[10px] ${ok?"text-[#5fbf7a]":"text-[#e0452f]"}`}>
-                    {ok?`${count}/${NEWS_PER_CATEGORY} âœ“`:`${count}/${NEWS_PER_CATEGORY}`}
+                    `${count} notícia${count===1?"":"s"}`
                   </div>
                 </div>
               );
@@ -1192,6 +1192,9 @@ export default function GeekNewsWire() {
     </div>
   );
 }
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-﻿import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { XMLParser } from "fast-xml-parser";
 import { persistEdition } from "./persistence.js";
 
@@ -10,7 +10,6 @@ const CATEGORIES = [
   "geek",
   "cinema",
   "anime",
-  "series",
 ];
 
 
@@ -20,7 +19,7 @@ const MIN_HIGHLIGHT_WORDS = 10;
 const MAX_HIGHLIGHT_WORDS = 20;
 const RESEARCH_WINDOW_HOURS = 48;
 
-const MIN_NEWS = 3;
+const MIN_NEWS = 6;
 const MAX_NEWS = 12;
 
 const CATEGORY_LABELS = {
@@ -28,7 +27,6 @@ const CATEGORY_LABELS = {
   geek: "Geek / Tecnologia",
   cinema: "Cinema",
   anime: "Anime",
-  series: "Séries",
 };
 /*
  * ============================================================
@@ -1312,57 +1310,23 @@ material em uma edicao jornalistica com as noticias validas disponiveis.
 
 QUANTIDADE DA EDICAO:
 
-QUANTIDADE DA EDICAO:
+A edicao deve possuir NO MAXIMO 12 noticias.
 
-A edicao deve conter no minimo 3 e no maximo 12 noticias.
+REGRAS DE SELECAO:
 
-REGRA OBRIGATORIA DE QUANTIDADE:
+- Se houver 12 ou mais candidatos validos, selecione EXATAMENTE as 12 melhores noticias.
+- Se houver entre 6 e 11 candidatos validos, utilize todas as noticias validas disponiveis.
+- Se houver menos de 6 candidatos validos, NAO finalize a edicao.
+- A distribuicao entre categorias e LIVRE.
+- NAO altere a categoria original de nenhum candidato.
+- NAO mova candidatos entre categorias.
+- A categoria "series" NAO pode aparecer.
+- NAO invente noticias.
+- NAO repita noticias.
+- NAO duplique acontecimentos.
+- NAO crie noticias para completar quantidade.
 
-- Se existirem 12 ou mais candidatos validos, selecione EXATAMENTE 12 noticias.
-- Se existirem entre 3 e 11 candidatos validos, utilize TODOS os candidatos validos disponiveis.
-- Se existirem menos de 3 candidatos validos, a edicao NAO deve ser publicada.
-
-Quando existirem mais de 12 candidatos validos, selecione as 12 melhores
-noticias segundo os criterios de relevancia jornalistica, atualidade,
-diversidade de assuntos, confiabilidade das fontes e interesse para o
-publico geek.
-
-NAO reduza a quantidade de noticias arbitrariamente.
-
-NAO selecione menos de 12 noticias quando existirem 12 ou mais candidatos
-validos.
-
-NAO invente noticias para completar 12.
-
-NAO repita noticias.
-
-NAO altere acontecimentos.
-
-NAO mova candidatos entre categorias.
-
-DISTRIBUICAO OBRIGATORIA DA EDICAO FINAL:
-
-A edicao deve possuir EXATAMENTE 12 noticias.
-
-A distribuicao obrigatoria e:
-
-- 3 noticias de games;
-- 3 noticias de geek;
-- 3 noticias de cinema;
-- 3 noticias de anime.
-
-A categoria series NAO pode aparecer na edicao final.
-
-NAO entregue 2 noticias de uma categoria e compense com outra.
-
-NAO altere a categoria original de um candidato.
-
-NAO invente noticias para completar uma categoria.
-
-A edicao somente pode ser finalizada quando houver
-3 candidatos validos de cada uma das quatro categorias.
-
-A selecao deve priorizar:
+Na selecao das melhores noticias, priorize:
 
 1. relevancia jornalistica;
 2. atualidade;
@@ -1370,46 +1334,9 @@ A selecao deve priorizar:
 4. confiabilidade das fontes;
 5. interesse para o publico geek.
 
-A distribuicao entre categorias e LIVRE.
-
-NAO e obrigatorio possuir a mesma quantidade de noticias em cada categoria.
-
-NAO force uma categoria artificialmente.
-
-NAO mova candidatos entre categorias.
-
-NAO invente noticias para atingir 12.
-
-IMPORTANTE:
-
-O sistema somente permitira uma edicao com pelo menos 3 noticias.
-
-Se houver menos de 12 candidatos realmente validos, utilize somente os
-candidatos validos realmente disponiveis.
-
-NAO invente noticias, NAO repita noticias e NAO altere acontecimentos
-para completar a quantidade.
-
-Se houver menos de 3 candidatos validos, a edicao NAO deve ser publicada.
-
-NAO mova candidatos entre categorias. A distribuicao entre categorias pode ser desigual.
-
-NAO crie acontecimentos.
-
-NAO crie noticias a partir de assuntos diferentes.
-
-NAO reutilize o mesmo acontecimento.
-
-NAO duplique uma noticia.
-
-Somente finalize quando houver candidatos validos suficientes para montar
-a edicao de acordo com a regra de quantidade definida acima.
-
-Quando houver 12 ou mais candidatos validos, a edicao deve utilizar
-exatamente 12 candidatos.
-
-Quando houver entre 3 e 11 candidatos validos, a edicao deve utilizar
-todos os candidatos validos disponiveis.
+As noticias podem ser organizadas por categoria apenas para facilitar
+a edicao e a geracao dos banners, sem exigir quantidade minima ou fixa
+por categoria.
 
 Os candidatos abaixo ja foram pesquisados.
 
@@ -1642,7 +1569,7 @@ FORMATO EXATO:
       "categoria": "games",
       "titulo": "Titulo em portugues",
       "publicado_em": "2026-08-17T18:30:00-06:00",
-      "materia": "Materia entre 800 e 2000 caracteres.",
+      "materia": "Materia entre 700 e 2000 caracteres.",
       "highlights": [
         "Destaque factual entre 10 e 20 palavras"
       ],
@@ -1960,8 +1887,8 @@ NAO use notÃ­cias antigas sobre estreias jÃ¡ anunciadas.
   const allErrors = [];
   let totalPesquisados = 0;
 
-  const MAX_RESEARCH_ATTEMPTS = 3;
-  const TARGET_CANDIDATES = 10;
+  const MAX_RESEARCH_ATTEMPTS = 4;
+  const TARGET_CANDIDATES = 20;
 
   try {
     const rssCandidates =
@@ -1972,24 +1899,8 @@ NAO use notÃ­cias antigas sobre estreias jÃ¡ anunciadas.
       rssCandidates.length
     );
 
-    for (const candidate of rssCandidates) {
-      const duplicate =
-        candidates.some(
-          (existing) =>
-            sameStory(
-              existing,
-              candidate
-            )
-        );
-
-      if (!duplicate) {
-        candidates.push(candidate);
-      }
-    }
-
     console.log(
-      "WIRE/GEEK: candidatos RSS adicionados:",
-      candidates.length
+      "WIRE/GEEK: RSS usado como contexto de pesquisa."
     );
   } catch (error) {
     console.error(
@@ -2021,14 +1932,7 @@ NAO use notÃ­cias antigas sobre estreias jÃ¡ anunciadas.
       "Pesquise primeiro fontes oficiais de estudios, produtoras, distribuidores, plataformas e eventos.",
       "Depois pesquise Anime News Network e outros veiculos especializados confiaveis.",
       "Priorize novos anuncios, trailers, producoes, adaptacoes, elenco de voz, projetos, plataformas e eventos com anuncio novo."
-    ],
-
-    series: [
-      "Pesquise primeiro Netflix, Disney, Prime Video, Max, Apple TV+, Paramount+, Hulu e fontes oficiais de estudios.",
-      "Depois pesquise Variety, Deadline, The Hollywood Reporter e veiculos especializados confiaveis.",
-      "Priorize novas series, temporadas, episodios, trailers, producoes, elenco, renovacoes, cancelamentos, estreias e anuncios oficiais."
-    ]
-  };
+    ],};
 
   const sourcePools = {
     games: [
@@ -2053,22 +1957,13 @@ NAO use notÃ­cias antigas sobre estreias jÃ¡ anunciadas.
       "sites oficiais de estudios e produtoras",
       "Anime News Network",
       "Crunchyroll e fontes oficiais de distribuidores e eventos"
-    ],
-
-    series: [
-      "sites oficiais das plataformas de streaming",
-      "Variety, Deadline e The Hollywood Reporter",
-      "fontes oficiais de estudios e producoes"
-    ]
-  };
+    ],};
 
   const researchFocus = {
     games: researchStrategies.games,
     geek: researchStrategies.geek,
     cinema: researchStrategies.cinema,
-    anime: researchStrategies.anime,
-    series: researchStrategies.series
-  };
+    anime: researchStrategies.anime,};
 
 
   for (
@@ -2607,17 +2502,7 @@ async function formatNews(
     );
   }
 
-  const validCandidates =
-  candidates.filter(
-    (item) =>
-      CATEGORIES.includes(
-        item?.categoria
-      ) &&
-      item?.url &&
-      item?.publicado_em &&
-      !isFuture(item.publicado_em) &&
-      isWithinResearchWindow(item.publicado_em)
-  );
+  const validCandidates = filterValidCandidates(candidates);
 
 
   const formatPrompt =
@@ -3250,7 +3135,7 @@ que estao abaixo do tamanho minimo.
 OBJETIVO:
 
 Cada materia retornada DEVE possuir entre
-900 e 1500 caracteres.
+700 e 2000 caracteres.
 
 O limite absoluto do sistema e:
 
@@ -3313,7 +3198,7 @@ a quantidade de caracteres.
 24. Escreva em portugues brasileiro natural,
 jornalistico e profissional.
 
-25. Mantenha de 2 a 6 paragrafos.
+25. Mantenha exatamente 3 paragrafos.
 
 26. Cada paragrafo deve desenvolver uma informacao
 diferente presente no material original.
@@ -3682,49 +3567,30 @@ export default async function handler(
      * ========================================================
      */
 
-    const candidateCounts =
+    const validCandidatesForEdition =
+  filterValidCandidates(
+    researchData?.candidatos
+  );
+
+const candidateCounts =
   CATEGORIES.reduce(
     (result, category) => {
       result[category] =
-        Array.isArray(
-          researchData?.candidatos
-        )
-          ? researchData.candidatos.filter(
-              (item) =>
-                item?.categoria === category
-            ).length
-          : 0;
+        validCandidatesForEdition.filter(
+          (item) =>
+            item?.categoria === category
+        ).length;
 
       return result;
     },
     {}
-  );
-
-    console.log(
-      "WIRE/GEEK: candidatos validos por categoria:",
-      candidateCounts
-    );
-/*
-     * ========================================================
-     * EDICAO
-     * ========================================================
-     */
-
-   console.log(
-  "WIRE/GEEK: iniciando edicao."
-);
-
-const validCandidateCount =
-  Array.isArray(
-    researchData?.candidatos
-  )
-    ? researchData.candidatos.length
-    : 0;
+  );const validCandidateCount =
+  validCandidatesForEdition.length;
 
 if (validCandidateCount < MIN_NEWS) {
   return res.status(422).json({
     error:
-      "Nao existem candidatos validos suficientes para montar uma edicao. O minimo e de 3 noticias.",
+      "Nao existem candidatos validos suficientes para montar uma edicao. O minimo e de 6 noticias.",
 
     candidatos_validos:
       validCandidateCount,
@@ -4143,6 +4009,8 @@ errors = [
     });
   }
 }
+
+
 
 
 

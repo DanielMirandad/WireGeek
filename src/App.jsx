@@ -1131,7 +1131,7 @@ export default function GeekNewsWire() {
               return (
                 <div key={cat} className="border-r border-[#243436] px-3 py-2 last:border-r-0">
                   <div className="font-mono text-[9px] tracking-[0.2em]" style={{color}}>{cat}</div>
-                  <div className={`mt-0.5 font-mono text-[10px] ${ok?"text-[#5fbf7a]":"text-[#e0452f]"}`}>
+                  <div className={`mt-0.5 font-mono text-[10px] ${count > 0 ? "text-[#5fbf7a]" : "text-[#e0452f]"}`}>
                     `${count} notícia${count===1?"":"s"}`
                   </div>
                 </div>

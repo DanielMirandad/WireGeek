@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+﻿import { GoogleGenAI } from "@google/genai";
 import { XMLParser } from "fast-xml-parser";
 import { persistEdition } from "./persistence.js";
 
@@ -292,7 +292,7 @@ function hasTime(value) {
    * 2026-08-17T18:30:00Z
    * 2026-08-17 18:30:00 -06:00
    *
-   * NÃ£o aceita somente:
+   * NÃƒÂ£o aceita somente:
    *
    * 2026-08-17
    * August 17, 2026
@@ -407,8 +407,8 @@ function extractJson(text) {
 
 function sanitizeArticleText(text) {
   return String(text || "")
-    .replace(/â€”/g, ",")
-    .replace(/â€“/g, ",")
+    .replace(/Ã¢â‚¬â€/g, ",")
+    .replace(/Ã¢â‚¬â€œ/g, ",")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .split(/\n\s*\n/)
@@ -587,8 +587,8 @@ function titleLooksEnglish(title) {
     .split(/\s+/)
     .map((word) =>
       word
-        .replace(/^[^a-z0-9áéíóúàâêôãõçü]+/i, "")
-        .replace(/[^a-z0-9áéíóúàâêôãõçü]+$/i, "")
+        .replace(/^[^a-z0-9Ã¡Ã©Ã­Ã³ÃºÃ Ã¢ÃªÃ´Ã£ÃµÃ§Ã¼]+/i, "")
+        .replace(/[^a-z0-9Ã¡Ã©Ã­Ã³ÃºÃ Ã¢ÃªÃ´Ã£ÃµÃ§Ã¼]+$/i, "")
     )
     .filter(Boolean);
 
@@ -750,9 +750,9 @@ function titleLooksEnglish(title) {
     /\b(encerra|encerrou|assina|assinou|estreia|estreara)\b/,
     /\b(divulga|divulgou|apresenta|apresentou)\b/,
     /\b(ganha|recebe|recebera|tera|tem|conta|mostra)\b/,
-    /\b(e|é|foi|sera|será)\b/,
+    /\b(e|Ã©|foi|sera|serÃ¡)\b/,
     /\b(primeiro|novo|nova|novos|novas)\b/,
-    /\b(filme|anime|jogo|serie|série|trailer|videoclipe|musica|música)\b/,
+    /\b(filme|anime|jogo|serie|sÃ©rie|trailer|videoclipe|musica|mÃºsica)\b/,
   ];
 
   const hasStrongPortuguesePattern =
@@ -1381,7 +1381,7 @@ A resposta deve preservar explicitamente a separacao entre os 3 paragrafos.
 
 ESTRUTURA OBRIGATORIA:
 
-PARAGRAFO 1 — LEAD:
+PARAGRAFO 1 â€” LEAD:
 
 Apresente imediatamente o fato principal da noticia.
 
@@ -1389,7 +1389,7 @@ O leitor deve entender logo no primeiro paragrafo
 o que aconteceu, quem esta envolvido e por que o assunto
 e relevante.
 
-PARAGRAFO 2 — CONTEXTO E DETALHES:
+PARAGRAFO 2 â€” CONTEXTO E DETALHES:
 
 Explique o contexto necessario para compreender a noticia.
 
@@ -1397,7 +1397,7 @@ Inclua os principais detalhes confirmados presentes no candidato,
 como datas, numeros, nomes, declaracoes, caracteristicas,
 informacoes de producao, plataformas, valores ou outros dados factuais.
 
-PARAGRAFO 3 — DESDOBRAMENTO:
+PARAGRAFO 3 â€” DESDOBRAMENTO:
 
 Apresente os principais detalhes restantes, consequencias,
 proximos passos ou informacoes adicionais somente quando
@@ -1804,14 +1804,14 @@ Procure acontecimentos reais sobre:
 - Epic Games;
 - desenvolvedoras;
 - publishers;
-- lanÃ§amentos;
-- atualizaÃ§Ãµes relevantes;
-- anÃºncios oficiais;
+- lanÃƒÂ§amentos;
+- atualizaÃƒÂ§ÃƒÂµes relevantes;
+- anÃƒÂºncios oficiais;
 - trailers oficiais quando representarem um acontecimento novo;
-- vendas, aquisiÃ§Ãµes ou mudanÃ§as importantes;
-- eventos de games que tenham produzido um anÃºncio novo.
+- vendas, aquisiÃƒÂ§ÃƒÂµes ou mudanÃƒÂ§as importantes;
+- eventos de games que tenham produzido um anÃƒÂºncio novo.
 
-NAO pesquise anime, cinema ou cultura geek genÃ©rica.
+NAO pesquise anime, cinema ou cultura geek genÃƒÂ©rica.
 `,
 
     geek: `
@@ -1825,13 +1825,13 @@ Procure acontecimentos reais sobre:
 - internet;
 - plataformas digitais;
 - empresas de tecnologia;
-- quadrinhos quando houver acontecimento jornalÃ­stico;
-- cultura pop tecnolÃ³gica;
+- quadrinhos quando houver acontecimento jornalÃƒÂ­stico;
+- cultura pop tecnolÃƒÂ³gica;
 - produtos relevantes;
-- anÃºncios oficiais;
-- aquisiÃ§Ãµes;
-- lanÃ§amentos;
-- mudanÃ§as importantes de serviÃ§os.
+- anÃƒÂºncios oficiais;
+- aquisiÃƒÂ§ÃƒÂµes;
+- lanÃƒÂ§amentos;
+- mudanÃƒÂ§as importantes de serviÃƒÂ§os.
 
 NAO pesquise videogames como assunto principal.
 NAO pesquise cinema ou anime como assunto principal.
@@ -1842,20 +1842,20 @@ PESQUISE EXCLUSIVAMENTE CINEMA.
 
 Procure acontecimentos reais sobre:
 - filmes;
-- estÃºdios;
+- estÃƒÂºdios;
 - diretores;
 - atores;
 - elenco;
-- produÃ§Ãµes cinematogrÃ¡ficas;
-- lanÃ§amentos;
+- produÃƒÂ§ÃƒÂµes cinematogrÃƒÂ¡ficas;
+- lanÃƒÂ§amentos;
 - trailers oficiais;
-- anÃºncios oficiais;
+- anÃƒÂºncios oficiais;
 - bilheteria quando houver acontecimento novo;
-- aquisiÃ§Ãµes ou mudanÃ§as relevantes;
-- produÃ§Ã£o ou distribuiÃ§Ã£o de filmes.
+- aquisiÃƒÂ§ÃƒÂµes ou mudanÃƒÂ§as relevantes;
+- produÃƒÂ§ÃƒÂ£o ou distribuiÃƒÂ§ÃƒÂ£o de filmes.
 
-NAO use notÃ­cias antigas apenas porque receberam atualizaÃ§Ã£o.
-NAO transforme uma data futura de lanÃ§amento em notÃ­cia nova.
+NAO use notÃƒÂ­cias antigas apenas porque receberam atualizaÃƒÂ§ÃƒÂ£o.
+NAO transforme uma data futura de lanÃƒÂ§amento em notÃƒÂ­cia nova.
 `,
 
     anime: `
@@ -1863,22 +1863,22 @@ PESQUISE EXCLUSIVAMENTE ANIME.
 
 Procure acontecimentos reais sobre:
 - anime;
-- mangÃ¡ quando relacionado diretamente a uma adaptaÃ§Ã£o ou anÃºncio relevante;
-- estÃºdios de animaÃ§Ã£o;
-- produÃ§Ãµes de anime;
-- novos anÃºncios;
+- mangÃƒÂ¡ quando relacionado diretamente a uma adaptaÃƒÂ§ÃƒÂ£o ou anÃƒÂºncio relevante;
+- estÃƒÂºdios de animaÃƒÂ§ÃƒÂ£o;
+- produÃƒÂ§ÃƒÂµes de anime;
+- novos anÃƒÂºncios;
 - trailers oficiais;
 - novos projetos;
 - elenco de voz;
-      - datas de estreia quando o anúncio tiver sido publicado nas ${RESEARCH_WINDOW_HOURS} horas;
-- plataformas de streaming quando houver anÃºncio novo;
-- eventos de anime quando houver anÃºncio novo.
+      - datas de estreia quando o anÃºncio tiver sido publicado nas ${RESEARCH_WINDOW_HOURS} horas;
+- plataformas de streaming quando houver anÃƒÂºncio novo;
+- eventos de anime quando houver anÃƒÂºncio novo.
 
 NAO use listas de animes.
 NAO use rankings.
 NAO use guias.
-NAO use calendÃ¡rios antigos.
-NAO use notÃ­cias antigas sobre estreias jÃ¡ anunciadas.
+NAO use calendÃƒÂ¡rios antigos.
+NAO use notÃƒÂ­cias antigas sobre estreias jÃƒÂ¡ anunciadas.
 `,
 
   };
@@ -2006,8 +2006,8 @@ ${candidates
   )
   .join("\n")}
 
-Use esses itens como pontos de partida para investigação.
-Verifique os fatos antes de transformar qualquer item em notícia.
+Use esses itens como pontos de partida para investigaÃ§Ã£o.
+Verifique os fatos antes de transformar qualquer item em notÃ­cia.
 `
         : "";
     const researchPrompt = `Voce e o pesquisador-chefe do Wire/Geek.
@@ -2442,7 +2442,7 @@ ${
     );
 
   console.log(
-    "WIRE/GEEK: candidatos vÃ¡lidos finais:",
+    "WIRE/GEEK: candidatos vÃƒÂ¡lidos finais:",
     candidates.length
   );
 
@@ -2452,7 +2452,7 @@ ${
   );
 
   console.log(
-    "WIRE/GEEK: erros de validaÃ§Ã£o acumulados:",
+    "WIRE/GEEK: erros de validaÃƒÂ§ÃƒÂ£o acumulados:",
     allErrors.length
   );
 
@@ -2984,6 +2984,28 @@ Tambem corrija:
 - image_query;
 - ausencia de travessao.
 
+FORMATO OBRIGATORIO DA MATERIA:
+
+A materia DEVE possuir exatamente 3 paragrafos.
+
+Cada paragrafo DEVE ser separado por uma linha em branco,
+utilizando exatamente duas quebras de linha (\n\n).
+
+PARAGRAFO 1:
+Apresente o fato principal da noticia.
+
+PARAGRAFO 2:
+Apresente contexto e detalhes factuais ja presentes.
+
+PARAGRAFO 3:
+Apresente os demais detalhes, desdobramentos ou informacoes
+factuais ja presentes.
+
+NAO entregue 2 paragrafos.
+NAO entregue 4 ou mais paragrafos.
+NAO transforme os 3 paragrafos em um bloco unico.
+NAO invente informacoes para criar o terceiro paragrafo.
+
 IMPORTANTE SOBRE PUBLICACAO:
 
 NAO altere publicado_em.
@@ -3443,7 +3465,7 @@ export default async function handler(
 
   if (process.env.WIREGEEK_DISABLE_GEMINI === "true") {
     console.warn(
-      "WIRE/GEEK: Gemini temporariamente desativado por configuração."
+      "WIRE/GEEK: Gemini temporariamente desativado por configuraÃ§Ã£o."
     );
 
     return res.status(503).json({
@@ -3452,9 +3474,9 @@ export default async function handler(
   }
 
   if (!sessionModule.hasValidSession(req)) {
-    console.warn("WIRE/GEEK: tentativa de acesso não autorizado.");
+    console.warn("WIRE/GEEK: tentativa de acesso nÃ£o autorizado.");
     return res.status(401).json({
-      error: "Acesso não autorizado.",
+      error: "Acesso nÃ£o autorizado.",
     });
   }
 
@@ -3531,7 +3553,7 @@ export default async function handler(
       createAIBudget(4);
 
     console.log(
-      "WIRE/GEEK: orçamento Gemini criado:",
+      "WIRE/GEEK: orÃ§amento Gemini criado:",
       {
         pesquisa: researchBudget.maxCalls,
         editorial: editorialBudget.maxCalls,
@@ -3956,7 +3978,7 @@ errors = [
 
     const persistedEdition =
   await persistEdition({
-        title: "Edição Wire/Geek",
+        title: "EdiÃ§Ã£o Wire/Geek",
         date: new Date().toISOString(),
         status: "publicada",
         news,
@@ -4009,6 +4031,7 @@ errors = [
     });
   }
 }
+
 
 
 

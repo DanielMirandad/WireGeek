@@ -33,8 +33,10 @@ export default async function handler(req, res) {
 
   req.body = {
     prompt:
-      "Gere a edicao automatica do WIRE/GEEK de hoje com exatamente 12 noticias reais, sendo 3 games, 3 geek, 3 cinema e 3 anime. Todas devem ser publicadas nas ultimas 24 horas. Use busca na web antes de escrever. Responda somente com JSON valido."
+      "Gere a edicao automatica do WIRE/GEEK de hoje com noticias reais disponiveis na pesquisa. A edicao deve conter entre 1 e 12 noticias validas. Se houver 12 ou mais candidatos validos, selecione as 12 melhores. Se houver entre 1 e 11 candidatos validos, utilize todas as noticias validas disponiveis. Se houver menos de 1 candidato valido, nao finalize a edicao. A distribuicao entre categorias e livre. Nao crie noticias para completar quantidade. Considere acontecimentos das ultimas 48 horas. Use busca na web antes de escrever. Responda somente com JSON valido."
   };
 
   return newsHandler(req, res);
 }
+
+

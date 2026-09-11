@@ -125,6 +125,8 @@ async function persistEdition({
     }
   }
 
+  const noticiaIds = [];
+
   for (const [index, item] of news.entries()) {
     const primarySource =
       Array.isArray(item.fontes)
@@ -166,6 +168,7 @@ async function persistEdition({
     }
 
     const noticiaId = noticia.id;
+    noticiaIds.push(noticiaId);
 
     const { error: editionNewsError } =
       await supabase
@@ -278,7 +281,7 @@ async function persistEdition({
     editionId
   );
 
-  return editionId;
+  return { editionId, noticiaIds };
 }
 
 export {

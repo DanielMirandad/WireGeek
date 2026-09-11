@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import { hasValidSession } from "./auth.js";
+import { hasValidWireGeekAuth } from "./auth.js";
 import { resolveBannerImages } from "../lib/banner-images.mjs";
 import { validateVisualCandidates } from "../lib/banner-vision.mjs";
 import { validateHighlights } from "../lib/editorial-rules.mjs";
@@ -226,7 +226,7 @@ async function handleBriefingFinalBanner(
   req,
   res
 ) {
-  if (!hasValidSession(req)) {
+  if (!hasValidWireGeekAuth(req)) {
     return res.status(401).json({
       error: "Acesso nao autorizado.",
     });

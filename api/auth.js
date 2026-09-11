@@ -71,6 +71,42 @@ export function hasValidSession(req) {
   );
 }
 
+export function hasValidAutomationKey(req) {
+  const expected = String(
+    process.env.WIREGEEK_AUTOMATION_KEY || ""
+  ).trim();
+
+  const provided = String(
+    req.headers?.["x-wiregeek-automation-key"] || ""
+  ).trim();
+
+  if (!expected || !provided) {
+    return false;
+  }
+
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+
+  if (
+    expectedBuffer.length !==
+    providedBuffer.length
+  ) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    expectedBuffer,
+    providedBuffer
+  );
+}
+
+export function hasValidWireGeekAuth(req) {
+  return (
+    hasValidSession(req) ||
+    hasValidAutomationKey(req)
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method === "GET") {
     return res.status(200).json({

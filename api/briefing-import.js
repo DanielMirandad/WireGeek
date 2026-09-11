@@ -1,5 +1,5 @@
 ﻿import { createClient } from "@supabase/supabase-js";
-import { hasValidSession } from "./auth.js";
+import { hasValidWireGeekAuth } from "./auth.js";
 import { persistEdition } from "./persistence.js";
 import { parseBriefingPayload } from "../lib/briefing-adapter.mjs";
 
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!hasValidSession(req)) {
+  if (!hasValidWireGeekAuth(req)) {
     return res.status(401).json({
       error: "Acesso nao autorizado.",
     });

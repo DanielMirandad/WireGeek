@@ -606,15 +606,7 @@ function DispatchCard({ item, index }) {
     { id: "materia", label: "Matéria", icon: Newspaper },
     { id: "highlights", label: "Highlights", icon: Zap },
     { id: "hashtags", label: "Hashtags", icon: Hash },
-    ...(BRIEFING_ONLY_LOCAL
-      ? []
-      : [
-          {
-            id: "banner",
-            label: "Banner",
-            icon: ImageIcon,
-          },
-        ]),
+
   ];
 
   return (
@@ -832,10 +824,7 @@ function DispatchCard({ item, index }) {
           </div>
         )}
 
-                {tab === "banner" &&
-          !BRIEFING_ONLY_LOCAL && (
-            <BriefingBannerSection deriveShortTitle={deriveShortTitle} item={item} />
-          )}
+
 
       </div>
     </article>

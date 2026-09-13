@@ -9,6 +9,9 @@
     "api/banner.js": {
       "maxDuration": 300
     },
+    "api/banner-briefing.js": {
+      "maxDuration": 300
+    },
     "api/auth.js": {
       "maxDuration": 30
     }

@@ -1,11 +1,17 @@
-import { cleanEditorialText } from "../lib/editorial-rules.mjs";
-import { buildBannerRequest } from "../lib/banner-request.mjs";
+import BriefingBannerSection from "./briefing/BriefingBannerSection.jsx";
+import { cleanBriefingText } from "../lib/briefing-text.mjs";
+import { parseBriefingRealInput } from "./briefing-real-input.mjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, Check, CheckCircle2, Clock, Copy,
   Hash, Newspaper, Radio, RefreshCw, Zap, ImageIcon,
   Calendar, Archive,
 } from "lucide-react";
+
+import {
+  hasBriefingBannerSpecs,
+  buildBriefingClientPayload,
+} from "./briefing/briefing-banner-contract.js";
 
 // --- CONSTANTES ---
 const TEMPLATE_DESIGN_ID = "DAHSAXUcxX4";
@@ -86,7 +92,42 @@ function estimateReading(text) {
 
 // Remove travessões de todos os campos
 function removeDashes(str) {
-  return cleanEditorialText(str);
+  return cleanBriefingText(str);
+}
+
+function deriveShortTitle(value) {
+  const source = removeDashes(value || "")
+    .replace(/[|/:].*$/, "")
+    .trim();
+
+  if (!source) return "";
+
+  const words = source
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return "";
+
+  const first = words[0];
+  const second = words[1] || "";
+
+  if (
+    /^(?:nhl|nba|fifa|fc|gta|ufc|f1)$/i.test(first) &&
+    second
+  ) {
+    return `${first} ${second}`.slice(0, 24);
+  }
+
+  if (
+    second &&
+    first.length + second.length + 1 <= 24 &&
+    /^[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ]/.test(second) &&
+    !/^(?:terá|tem|ganha|recebe|chega|lança|anuncia|revela|confirma|é|vai)$/i.test(second)
+  ) {
+    return `${first} ${second}`;
+  }
+
+  return first.slice(0, 24);
 }
 
 function normalizeNewsItem(item={}) {
@@ -94,7 +135,11 @@ function normalizeNewsItem(item={}) {
     id:             item.id,
     categoria:      String(item.categoria||"geek").toLowerCase(),
     titulo:         removeDashes(item.titulo||"Sem título"),
-    titulo_curto:   removeDashes(item.titulo_curto||item.short_title||""),
+    titulo_curto: removeDashes(
+      item.titulo_curto ||
+      item.short_title ||
+      deriveShortTitle(item.titulo || item.title || "")
+    ),
     publicado_em:   item.publicado_em||"Últimas 48h",
     materia:        removeDashes(item.materia||""),
     resumo:         removeDashes(item.resumo||""),
@@ -108,7 +153,7 @@ function normalizeNewsItem(item={}) {
     url:            item.url||"",
     imagens:        Array.isArray(item.imagens)?item.imagens:[],
     banners:        Array.isArray(item.banners)?item.banners.slice(0,2):[],
-    final_banners:  Array.isArray(item.final_banners)?item.final_banners.slice(0,2):[],
+    final_banners:  Array.isArray(item.final_banners)?item.final_banners.slice(0,3):[],
     briefing_source: item.briefing_source === true,
   };
 }
@@ -130,377 +175,130 @@ function validateEdition(news) {
 }
 
 // --- BANNER PROMPT ---
-function BannerSection({ item }) {
-  const [generating, setGenerating] = useState(false);
-  const [banners, setBanners] = useState(
-    Array.isArray(item.final_banners)
-      ? item.final_banners
-      : []
-  );
-  const [error, setError] = useState("");
-  const [updatingPublication, setUpdatingPublication] = useState(null);
 
-  const [shortTitle, setShortTitle] = useState(item.titulo_curto || "");
-  const [imageOverrides, setImageOverrides] = useState(["", ""]);
+const BRIEFING_ONLY_LOCAL =
+  import.meta.env.DEV;
 
-  useEffect(() => {
-    setShortTitle(item.titulo_curto || "");
-    setImageOverrides(["", ""]);
-    setBanners(
-      Array.isArray(item.final_banners)
-        ? item.final_banners
-        : []
-    );
-    setError("");
-    setUpdatingPublication(null);
-  }, [
-    item.id,
-    item.titulo,
-    item.titulo_curto,
-    item.final_banners,
-  ]);
+const BRIEFING_LAB_ANIME = {
+  categoria: "anime",
 
-  async function generateBanner() {
-    setGenerating(true);
-    setError("");
-    setBanners([]);
+  titulo:
+    "Chitose Is in the Ramune Bottle Cour 2 ganha novo trailer, músicas e estreia em 13 de outubro",
 
-    try {
-      const payload = buildBannerRequest(item, { shortTitle, images: imageOverrides });
+  contexto_visual:
+    "Mostrar Saku Chitose e o elenco de Chitose Is in the Ramune Bottle. Priorizar material oficial da adaptação. Evitar personagens de outros romances escolares, fanart, imagens genéricas e close-ups extremos.",
 
-      // Em modo automatico, nenhuma imagem deve chegar preselecionada
-      // dentro dos banners. O backend escolhe as duas imagens distintas.
-      if (payload.image_mode === "automatic" && Array.isArray(payload.banners)) {
-        payload.banners = payload.banners.map((banner) => ({
-          ...banner,
-          image_url: "",
-        }));
-      }
+  image_query:
+    "Chitose Is in the Ramune Bottle Cour 2 Saku Chitose official key visual October 2026",
 
-      console.log(
-        "WIRE/GEEK: PAYLOAD REAL /api/banner",
-        JSON.stringify(payload, null, 2)
-      );
-      const response = await fetch("/api/banner", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+  fontes: [
+    {
+      nome: "Anime Corner",
+      url:
+        "https://animecorner.me/chitose-is-in-the-ramune-bottle-part-2-trailer-and-october-13-premiere-revealed-sora-amamiya-joins-cast/",
+    },
+  ],
 
-      const data = await response.json();
-      if (!response.ok || !data.success || !Array.isArray(data.banners) || data.banners.length !== 2) {
-        const details = Array.isArray(data.details) ? data.details.join("; ") : data.details;
-        throw new Error([
-          details || data.error || "Não foi possível gerar os dois banners.",
-          data.aviso,
-        ].filter(Boolean).join(" "));
-      }
+  imagens: [],
 
-      setBanners(data.banners);
-    } catch (err) {
-      console.error("WIRE/GEEK: erro ao gerar banners:", err);
-      setError(err.message || "Erro ao gerar os banners.");
-    } finally {
-      setGenerating(false);
-    }
-  }
+  banners: [
+    {
+      type: "editorial",
 
-  async function updatePublication(publicationId, acao) {
-    if (!publicationId) return;
+      banner_title:
+        "CHITOSE VOLTA EM 13 DE OUTUBRO",
 
-    setUpdatingPublication(publicationId);
-    setError("");
+      highlight:
+        "Chitose Is in the Ramune Bottle retorna em 13 de outubro, com novo trailer, Sora Amamiya e duas músicas inéditas",
 
-    try {
-      const response = await fetch("/api/publicacoes", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: publicationId,
-          acao,
-        }),
-      });
+      visual_subject:
+        "Chitose Is in the Ramune Bottle Cour 2, Saku Chitose e elenco principal",
 
-      const data = await response.json();
+      contexto_visual:
+        "Mostrar Saku Chitose ou o elenco principal da adaptação oficial. Priorizar key visual ou material promocional do novo cour.",
 
-      if (!response.ok || !data.success || !data.publicacao) {
-        throw new Error(
-          data.details ||
-          data.error ||
-          "Não foi possível atualizar a publicação."
-        );
-      }
+      image_query:
+        "Chitose Is in the Ramune Bottle Cour 2 Saku Chitose official key visual October 2026",
+    },
 
-      setBanners(current =>
-        current.map(banner =>
-          banner.publication_id === publicationId
-            ? {
-                ...banner,
-                status: data.publicacao.status,
-              }
-            : banner
-        )
-      );
-    } catch (err) {
-      console.error("WIRE/GEEK: erro ao atualizar publicação:", err);
-      setError(err.message || "Erro ao atualizar a publicação.");
-    } finally {
-      setUpdatingPublication(null);
-    }
-  }
+    {
+      type: "editorial",
 
-  async function dryRunPublication(publicationId) {
-    if (!publicationId) return;
+      banner_title:
+        "CIDER GIRL ABRE O NOVO COUR",
 
-    setUpdatingPublication(publicationId);
-    setError("");
+      highlight:
+        "Cider Girl canta a nova abertura, enquanto aruma assume o encerramento da segunda parte produzida novamente pelo estúdio feel.",
 
-    try {
-      const response = await fetch("/api/publicar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: publicationId,
-        }),
-      });
+      visual_subject:
+        "Chitose Is in the Ramune Bottle Cour 2, novo cour e personagens mostrados no trailer",
 
-      const data = await response.json();
+      contexto_visual:
+        "Usar uma segunda imagem oficial diferente do primeiro banner, ligada ao novo cour, trailer ou personagens da adaptação. Evitar close-up extremo.",
 
-      if (!response.ok || !data.success || !data.dry_run) {
-        throw new Error(
-          data?.error ||
-          data?.details ||
-          "Nao foi possivel testar a publicacao."
-        );
-      }
+      image_query:
+        "Chitose Is in the Ramune Bottle Cour 2 official trailer still new cour 2026",
+    },
+  ],
+};
 
-      setBanners((current) =>
-        current.map((banner) =>
-          banner.publication_id === publicationId
-            ? {
-                ...banner,
-                publish_dry_run: true,
-              }
-            : banner
-        )
-      );
-    } catch (err) {
-      console.error(
-        "WIRE/GEEK: erro no dry-run de publicacao:",
-        err
-      );
-      setError(
-        err.message ||
-        "Erro ao testar a publicacao."
-      );
-    } finally {
-      setUpdatingPublication(null);
-    }
-  }
+const BRIEFING_LAB_GAMES = {
+  categoria: "games",
 
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-[#263b36] bg-[#07110f] p-4">
-        <div className="mb-3">
-          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8ca39d]">
-            GERAÇÃO DE BANNERS
-          </div>
-          <h3 className="mt-1 text-lg font-bold text-white">
-            {item.briefing_source
-              ? "Banners finais do Briefing"
-              : "Gerar dois banners Wire/Geek"}
-          </h3>
-          <p className="mt-2 text-sm leading-6 text-[#a9bab5]">
-            {item.briefing_source
-              ? "Os banners desta notícia foram criados pelo Briefing Geek Diário e importados diretamente."
-              : "Dois highlights, duas imagens diferentes e o modelo visual aprovado."}
-          </p>
-        </div>
+  titulo:
+    "Onimusha: Way of the Sword alcança um milhão de unidades vendidas",
 
-        <div className={item.briefing_source ? "hidden" : ""}>
-        <label className="mb-4 block text-sm text-[#a9bab5]">
-          Título do banner
-          <input
-            value={shortTitle}
-            onChange={event => setShortTitle(event.target.value)}
-            maxLength={24}
-            disabled={generating}
-            placeholder="Nome do assunto, como One Piece"
-            className="mt-2 w-full rounded-lg border border-[#263b36] bg-[#0f1a1c] px-3 py-2 text-white"
-          />
-        </label>
+  contexto_visual:
+    "Mostrar Onimusha: Way of the Sword usando material oficial do jogo. Priorizar Musashi, combate, gameplay ou key art oficial. Evitar jogos de outras franquias da Capcom, fanart, thumbnails de terceiros e imagens genéricas de samurais.",
 
-        <details className="mb-4 text-sm text-[#a9bab5]">
-          <summary className="cursor-pointer">Escolher as duas imagens</summary>
-          <p className="my-2">
-            Deixe os campos vazios para buscar imagens. Para escolher as fotos, informe as duas URLs.
-          </p>
-          {imageOverrides.map((url, index) => (
-            <label key={index} className="mb-3 block">
-              Imagem {index + 1}
-              <input
-                type="url"
-                value={url}
-                onChange={event =>
-                  setImageOverrides(current =>
-                    current.map((value, position) =>
-                      position === index ? event.target.value : value
-                    )
-                  )
-                }
-                disabled={generating}
-                placeholder="https://.../foto.jpg"
-                className="mt-1 w-full rounded-lg border border-[#263b36] bg-[#0f1a1c] px-3 py-2 text-white"
-              />
-            </label>
-          ))}
-        </details>
+  image_query:
+    "Onimusha Way of the Sword Musashi official gameplay screenshot key art",
 
-        <button
-          type="button"
-          onClick={generateBanner}
-          disabled={generating}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#00d084] px-4 py-3 font-semibold text-black transition hover:bg-[#22e59b] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <ImageIcon size={18} />
-          {generating ? "Gerando banners..." : "Gerar dois banners"}
-        </button>
-        </div>
+  fontes: [],
 
-        {item.briefing_source && banners.length !== 2 && (
-          <div className="rounded-lg border border-[#263b36] bg-[#07110f] p-3 text-sm text-[#a9bab5]">
-            Os dois banners finais ainda não estão vinculados a esta notícia.
-          </div>
-        )}
+  imagens: [],
 
-        {error && (
-          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-            {error}
-          </div>
-        )}
+  banners: [
+    {
+      type: "editorial",
 
-        {banners.length === 2 && (
-          <div className="mt-4 space-y-4">
-            <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#5c6f6b]">
-              DOIS BANNERS GERADOS
-            </div>
+      banner_title:
+        "ONIMUSHA CHEGA A 1 MILHÃO",
 
-            {banners.map((bannerItem, index) => {
-              const source = bannerItem.banner_url ||
-                (bannerItem.data?.startsWith("data:")
-                  ? bannerItem.data
-                  : bannerItem.data
-                    ? `data:${bannerItem.mimeType};base64,${bannerItem.data}`
-                    : "");
+      highlight:
+        "Onimusha: Way of the Sword alcançou um milhão de unidades vendidas e reforçou o retorno da clássica franquia da Capcom.",
 
-              return (
-                <div
-                  key={bannerItem.banner_url || index}
-                  className="overflow-hidden rounded-lg border border-[#263b36] bg-[#0b1513]"
-                >
-                  <img
-                    src={source}
-                    alt={`${bannerItem.titulo_curto || item.titulo || "Banner"} ${index + 1}`}
-                    className="w-full"
-                  />
+      visual_subject:
+        "Onimusha Way of the Sword, Musashi e combate",
 
-                  <div className="p-3">
-                    {bannerItem.publication_id ? (
-                      <>
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#7f9690]">
-                            PUBLICAÇÃO #{bannerItem.publication_id}
-                          </span>
+      contexto_visual:
+        "Mostrar Musashi ou uma cena clara de combate de Onimusha: Way of the Sword. Priorizar imagem oficial, gameplay ou key art reconhecível.",
 
-                          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#a9bab5]">
-                            {bannerItem.status || "AGUARDANDO_APROVACAO"}
-                          </span>
-                        </div>
+      image_query:
+        "Onimusha Way of the Sword Musashi official gameplay screenshot",
+    },
 
-                        {bannerItem.status === "AGUARDANDO_APROVACAO" ? (
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updatePublication(
-                                  bannerItem.publication_id,
-                                  "aprovar"
-                                )
-                              }
-                              disabled={
-                                updatingPublication ===
-                                bannerItem.publication_id
-                              }
-                              className="rounded-lg bg-[#00d084] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#22e59b] disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {updatingPublication === bannerItem.publication_id
-                                ? "Salvando..."
-                                : "APROVAR"}
-                            </button>
+    {
+      type: "editorial",
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updatePublication(
-                                  bannerItem.publication_id,
-                                  "rejeitar"
-                                )
-                              }
-                              disabled={
-                                updatingPublication ===
-                                bannerItem.publication_id
-                              }
-                              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-bold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              REJEITAR
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="rounded-lg border border-[#263b36] bg-[#07110f] px-3 py-2 text-center text-sm font-semibold text-[#a9bab5]">
-                            {bannerItem.status === "APROVADO" ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  dryRunPublication(
-                                    bannerItem.publication_id
-                                  )
-                                }
-                                disabled={
-                                  updatingPublication ===
-                                  bannerItem.publication_id
-                                }
-                                className="w-full rounded-lg bg-[#00d084] px-3 py-2 text-sm font-bold text-black transition hover:bg-[#22e59b] disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {updatingPublication ===
-                                bannerItem.publication_id
-                                  ? "Testando..."
-                                  : bannerItem.publish_dry_run
-                                    ? "DRY-RUN OK"
-                                    : "PUBLICAR (TESTE)"}
-                              </button>
-                            ) : bannerItem.status === "REJEITADO"
-                              ? "PUBLICAÇÃO REJEITADA"
-                              : bannerItem.status}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-center text-xs text-[#7f9690]">
-                        Banner gerado sem registro de aprovação.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+      banner_title:
+        "A FRANQUIA VOLTOU COM FORÇA",
 
-// --- APP ---
+      highlight:
+        "O novo Onimusha marcou o retorno de um título inédito da série após duas décadas e encontrou forte resposta do público.",
+
+      visual_subject:
+        "Onimusha Way of the Sword, cenário, inimigos e ação",
+
+      contexto_visual:
+        "Usar uma segunda imagem oficial diferente do primeiro banner. Priorizar gameplay, inimigo, cenário ou outra composição que represente o jogo sem repetir o mesmo enquadramento.",
+
+      image_query:
+        "Onimusha Way of the Sword official gameplay enemy environment screenshot",
+    },
+  ],
+};
+
 function CopyButton({ text, label = "Copiar" }) {
   const [copied, setCopied] = useState(false);
 
@@ -547,6 +345,258 @@ function FormattedArticle({ text }) {
   );
 }
 
+const BRIEFING_LAB_CINEMA = {
+  categoria: "cinema",
+
+  titulo:
+    "Superman ganha novo material oficial com foco no herói e em Metrópolis",
+
+  contexto_visual:
+    "Mostrar Superman usando material oficial do filme. Priorizar o herói uniformizado, Metrópolis, cenas de ação ou stills oficiais. Evitar adaptações antigas, fanart, cosplay, quadrinhos e imagens de outros atores ou versões do personagem.",
+
+  image_query:
+    "Superman movie official still Metropolis Superman David Corenswet",
+
+  fontes: [],
+
+  imagens: [],
+
+  banners: [
+    {
+      type: "editorial",
+
+      banner_title:
+        "SUPERMAN VOLTA AOS CÉUS",
+
+      highlight:
+        "O novo filme coloca Superman novamente no centro da ação com uma abordagem visual focada no herói e em Metrópolis.",
+
+      visual_subject:
+        "Superman do novo filme, uniforme e Metrópolis",
+
+      contexto_visual:
+        "Mostrar Superman claramente reconhecível no novo filme. Priorizar still oficial ou material promocional cinematográfico com boa leitura do personagem.",
+
+      image_query:
+        "Superman movie David Corenswet official still flying Metropolis",
+    },
+
+    {
+      type: "editorial",
+
+      banner_title:
+        "METRÓPOLIS ENTRA EM CENA",
+
+      highlight:
+        "O material promocional também destaca a escala da cidade e reforça o contraste entre o cotidiano de Clark Kent e a ação de Superman.",
+
+      visual_subject:
+        "Superman, Metrópolis e cenas do novo filme",
+
+      contexto_visual:
+        "Usar uma segunda imagem oficial diferente do primeiro banner. Priorizar Metrópolis, ação, Lois Lane, Clark Kent ou composição ampla ligada ao filme.",
+
+      image_query:
+        "Superman movie official still Metropolis Clark Kent Lois Lane",
+    },
+  ],
+};
+
+const BRIEFING_LAB_GEEK = {
+  categoria: "geek",
+
+  titulo:
+    "Star Wars e Marvel se encontram em crossover histórico nos quadrinhos",
+
+  contexto_visual:
+    "Mostrar material oficial de Star Wars/Marvel: Hope Assembles. Priorizar arte promocional, capa oficial ou personagens de Star Wars e Marvel juntos. Evitar fanart, cosplay, brinquedos, montagens de terceiros e imagens genéricas de Star Wars.",
+
+  image_query:
+    "Star Wars Marvel Hope Assembles official cover David Marquez Kevin Smith",
+
+  fontes: [],
+
+  imagens: [],
+
+  banners: [
+    {
+      type: "editorial",
+
+      banner_title:
+        "STAR WARS ENCONTRA A MARVEL",
+
+      highlight:
+        "Lucasfilm e Marvel unem oficialmente seus universos em Hope Assembles, minissérie escrita por Kevin Smith com arte de David Marquez.",
+
+      visual_subject:
+        "Star Wars Marvel Hope Assembles, Luke Skywalker, Leia, Han Solo e heróis Marvel",
+
+      contexto_visual:
+        "Usar arte oficial de Hope Assembles que deixe evidente o crossover entre Star Wars e Marvel. Priorizar capa ou arte promocional oficial com personagens reconhecíveis.",
+
+      image_query:
+        "Star Wars Marvel Hope Assembles official cover Luke Leia Avengers David Marquez",
+    },
+
+    {
+      type: "editorial",
+
+      banner_title:
+        "DUAS GALÁXIAS NO MESMO QUADRINHO",
+
+      highlight:
+        "Luke, Leia e Han Solo cruzam o caminho de heróis da Marvel na primeira colaboração narrativa oficial entre os dois universos.",
+
+      visual_subject:
+        "Star Wars Marvel Hope Assembles, personagens dos dois universos",
+
+      contexto_visual:
+        "Usar uma segunda arte oficial diferente do primeiro banner. Priorizar outra capa, composição ou grupo de personagens que mostre claramente Star Wars e Marvel juntos.",
+
+      image_query:
+        "Star Wars Marvel Hope Assembles official comic art Avengers Spider-Man Luke Skywalker",
+    },
+  ],
+};
+
+function BriefingLab() {
+  const [inputMode, setInputMode] = useState("real");
+  const [payloadText, setPayloadText] = useState("");
+  const [realItem, setRealItem] = useState(null);
+  const [inputError, setInputError] = useState("");
+  const [loadVersion, setLoadVersion] = useState(0);
+
+  function loadRealItem(event) {
+    event.preventDefault();
+    try {
+      const nextItem = parseBriefingRealInput(payloadText);
+      setRealItem(nextItem);
+      setLoadVersion(version => version + 1);
+      setInputError("");
+    } catch (error) {
+      setRealItem(null);
+      setInputError(error.message);
+    }
+  }
+
+  const [fixtureKey, setFixtureKey] =
+    useState("anime");
+
+  const fixtures = {
+    anime: BRIEFING_LAB_ANIME,
+    games: BRIEFING_LAB_GAMES,
+    cinema: BRIEFING_LAB_CINEMA,
+    geek: BRIEFING_LAB_GEEK,
+  };
+
+  const fixture =
+    inputMode === "real"
+      ? realItem
+      : fixtures[fixtureKey] || BRIEFING_LAB_ANIME;
+
+  const options = [
+    {
+      id: "anime",
+      label: "ANIME · CHITOSE",
+    },
+    {
+      id: "games",
+      label: "GAMES · ONIMUSHA",
+    },
+    {
+      id: "cinema",
+      label: "CINEMA · SUPERMAN",
+    },
+    {
+      id: "geek",
+      label: "GEEK · STAR WARS",
+    },
+  ];
+
+  return (
+    <section className="mb-8 border border-[#00d084]/40 bg-[#07110f] p-4 sm:p-5">
+
+      <div className="mb-5 border-b border-[#263b36] pb-4">
+
+        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#00d084]">
+          BRIEFING LAB
+        </div>
+
+        <label className="mt-4 block text-sm text-[#a9bab5]">
+          Origem do teste
+          <select value={inputMode} onChange={event => setInputMode(event.target.value)} className="ml-3 rounded border border-[#263b36] bg-[#0f1a1c] p-2 text-white">
+            <option value="real">Item real do Briefing Geek Diário</option>
+            <option value="fixtures">Regressão · 4 fixtures aprovadas</option>
+          </select>
+        </label>
+
+        {inputMode === "real" && (
+          <form onSubmit={loadRealItem} className="mt-4 space-y-3">
+            <label htmlFor="briefing-real-json" className="block text-sm text-[#a9bab5]">JSON de um único item do Briefing</label>
+            <p id="briefing-real-help" className="text-sm text-[#8fa39d]">
+              Informe categoria, titulo, fontes, contexto_visual, image_query e banners com dois editoriais (banner_title e highlight).
+              imagens pode estar vazia ou ausente para busca automática. O CTA será acrescentado na geração.
+            </p>
+            <textarea id="briefing-real-json" aria-describedby="briefing-real-help" value={payloadText} onChange={event => setPayloadText(event.target.value)} rows={12} spellCheck={false} className="w-full rounded border border-[#263b36] bg-[#0f1a1c] p-3 font-mono text-xs text-white" />
+            <button type="submit" disabled={!payloadText.trim()} className="rounded border border-[#00d084] px-4 py-2 text-sm text-[#00d084] disabled:opacity-40">Carregar item e gerar 3 slides</button>
+            {inputError && <p role="alert" className="text-sm text-red-400">{inputError}</p>}
+            {realItem && <p role="status" className="text-sm text-[#8fa39d]">Item carregado abaixo. Alterações no JSON só serão aplicadas ao carregar novamente.</p>}
+          </form>
+        )}
+
+        {inputMode === "fixtures" && <div className="mt-4 grid gap-2 sm:grid-cols-2">
+
+          {options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() =>
+                setFixtureKey(
+                  option.id
+                )
+              }
+              className={`rounded-lg border px-3 py-2 font-mono text-[10px] font-bold tracking-wider transition ${
+                fixtureKey === option.id
+                  ? "border-[#00d084] bg-[#00d084]/10 text-[#00d084]"
+                  : "border-[#263b36] text-[#8ca39d]"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+
+        </div>}
+
+        <h2 className="mt-4 text-xl font-black leading-tight text-[#f4f0e8]">
+          {fixture?.titulo || "Nenhum item real carregado"}
+        </h2>
+
+        <div className="mt-2 flex items-center gap-2">
+          <span className="border border-[#263b36] px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[#8ca39d]">
+            {fixture?.categoria || "BRIEFING"}
+          </span>
+
+          <span className="font-mono text-[9px] uppercase tracking-wider text-[#5c6f6b]">
+            {inputMode === "fixtures" ? "IMAGENS 100% AUTOMÁTICAS" : "TESTE COM ITEM REAL"}
+          </span>
+        </div>
+
+        <p className="mt-3 text-sm leading-6 text-[#8fa39d]">
+          Teste isolado do pipeline Briefing:
+          2 banners editoriais + CTA.
+        </p>
+
+      </div>
+
+      {fixture && <BriefingBannerSection deriveShortTitle={deriveShortTitle}
+        key={inputMode === "real" ? `real-${loadVersion}` : fixtureKey}
+        item={fixture}
+      />}
+
+    </section>
+  );
+}
+
 function DispatchCard({ item, index }) {
   const [tab, setTab] = useState("materia");
   const { words, minutes } = estimateReading(item.materia);
@@ -556,7 +606,15 @@ function DispatchCard({ item, index }) {
     { id: "materia", label: "Matéria", icon: Newspaper },
     { id: "highlights", label: "Highlights", icon: Zap },
     { id: "hashtags", label: "Hashtags", icon: Hash },
-    { id: "banner", label: "Banner", icon: ImageIcon },
+    ...(BRIEFING_ONLY_LOCAL
+      ? []
+      : [
+          {
+            id: "banner",
+            label: "Banner",
+            icon: ImageIcon,
+          },
+        ]),
   ];
 
   return (
@@ -774,9 +832,10 @@ function DispatchCard({ item, index }) {
           </div>
         )}
 
-                {tab === "banner" && (
-          <BannerSection item={item} />
-        )}
+                {tab === "banner" &&
+          !BRIEFING_ONLY_LOCAL && (
+            <BriefingBannerSection deriveShortTitle={deriveShortTitle} item={item} />
+          )}
 
       </div>
     </article>
@@ -862,8 +921,7 @@ export default function GeekNewsWire() {
   const [briefingText, setBriefingText] = useState("");
   const [briefingImporting, setBriefingImporting] = useState(false);
   const [briefingError, setBriefingError] = useState("");
-  const [briefingBannerFiles, setBriefingBannerFiles] = useState([]);
-  const [edition,  setEdition]  = useState(null);
+const [edition,  setEdition]  = useState(null);
   const [ticker,   setTicker]   = useState("PREPARANDO TRANSMISSAO");
   const [schedulerEnabled, setSchedulerEnabled] = useState(false);
   const [nextRun,  setNextRun]  = useState("");
@@ -993,25 +1051,47 @@ export default function GeekNewsWire() {
       return;
     }
 
-    if (briefingBannerFiles.length !== 10) {
+    /*
+     * O JSON original é a fonte de verdade do contrato visual.
+     * /api/briefing-import continua responsável pela persistência
+     * e pelos IDs das notícias.
+     */
+    let originalBriefing;
+
+    try {
+      const jsonStart = payload.indexOf("{");
+      const jsonEnd = payload.lastIndexOf("}");
+
+      if (
+        jsonStart < 0 ||
+        jsonEnd < jsonStart
+      ) {
+        throw new Error(
+          "Bloco JSON não encontrado."
+        );
+      }
+
+      originalBriefing = JSON.parse(
+        payload.slice(
+          jsonStart,
+          jsonEnd + 1
+        )
+      );
+    } catch (error) {
       setBriefingError(
-        "Selecione exatamente os 10 banners finais do Briefing Geek Diário."
+        "Não foi encontrado JSON válido no bloco do Briefing Geek Diário."
       );
       return;
     }
 
-    const invalidFile =
-      briefingBannerFiles.find(
-        file =>
-          !/^image\/(png|jpeg|webp)$/i.test(
-            file.type || ""
-          ) ||
-          file.size > 10 * 1024 * 1024
-      );
+    const originalNews =
+      Array.isArray(originalBriefing?.news)
+        ? originalBriefing.news
+        : [];
 
-    if (invalidFile) {
+    if (!originalNews.length) {
       setBriefingError(
-        "Todos os banners devem ser PNG, JPEG ou WebP e ter no máximo 10 MB."
+        "O Briefing não contém notícias em news."
       );
       return;
     }
@@ -1019,11 +1099,17 @@ export default function GeekNewsWire() {
     setBriefingImporting(true);
     setBriefingError("");
     setErrorMsg("");
+
     setTicker(
       "IMPORTANDO BRIEFING GEEK DIÁRIO"
     );
 
     try {
+      /*
+       * ETAPA 1
+       * Mantém o importador existente responsável por
+       * validar/salvar a edição e devolver as notícias com ID.
+       */
       const response = await fetch(
         "/api/briefing-import",
         {
@@ -1054,10 +1140,97 @@ export default function GeekNewsWire() {
         );
       }
 
-      const news =
+      const persistedNews =
         data.edition.news.map(
           normalizeNewsItem
         );
+
+      if (
+        persistedNews.length !==
+        originalNews.length
+      ) {
+        throw new Error(
+          `O Briefing possui ${originalNews.length} notícias, mas o importador retornou ${persistedNews.length}.`
+        );
+      }
+
+      /*
+       * A resposta persistida fornece ID e dados canônicos.
+       * O JSON original fornece o contrato visual aprovado.
+       *
+       * Não deixar /api/briefing-import apagar:
+       * - fontes
+       * - contexto_visual
+       * - image_query
+       * - imagens
+       * - banners
+       */
+      const news =
+        persistedNews.map(
+          (persistedItem, index) => {
+            const originalItem =
+              normalizeNewsItem(
+                originalNews[index] || {}
+              );
+
+            return {
+              ...persistedItem,
+
+              fontes:
+                originalItem.fontes,
+
+              contexto_visual:
+                originalItem.contexto_visual,
+
+              image_query:
+                originalItem.image_query,
+
+              image_url:
+                originalItem.image_url,
+
+              imagens:
+                originalItem.imagens,
+
+              banners:
+                originalItem.banners,
+
+              /*
+               * Os dois highlights também fazem parte
+               * do contrato editorial do Briefing.
+               */
+              highlights:
+                originalItem.highlights.length
+                  ? originalItem.highlights
+                  : persistedItem.highlights,
+            };
+          }
+        );
+
+      console.log(
+        "WIRE/GEEK: CONTRATO VISUAL DO BRIEFING PRESERVADO",
+        news.map((item, index) => ({
+          noticia: index + 1,
+          id: item.id || null,
+          categoria: item.categoria,
+          titulo: item.titulo,
+          fontes:
+            Array.isArray(item.fontes)
+              ? item.fontes.length
+              : 0,
+          banners:
+            Array.isArray(item.banners)
+              ? item.banners.length
+              : 0,
+          imagens:
+            Array.isArray(item.imagens)
+              ? item.imagens.length
+              : 0,
+          image_query:
+            Boolean(item.image_query),
+          contexto_visual:
+            Boolean(item.contexto_visual),
+        }))
+      );
 
       const validationError =
         validateEdition(news);
@@ -1066,16 +1239,14 @@ export default function GeekNewsWire() {
         throw new Error(validationError);
       }
 
-      if (news.length !== 5) {
-        throw new Error(
-          `O Briefing deve conter exatamente 5 notícias. Foram recebidas ${news.length}.`
-        );
-      }
-
-      const importedBanners =
-        news.map(() => []);
-
-      let uploadedCount = 0;
+      /*
+       * ETAPA 2
+       * Cada notícia agora usa o pipeline Briefing aprovado.
+       *
+       * NÃO recebe arquivos prontos.
+       * Usa exclusivamente o pipeline do Briefing.
+       */
+      const newsWithGeneratedBanners = [];
 
       for (
         let newsIndex = 0;
@@ -1083,140 +1254,150 @@ export default function GeekNewsWire() {
         newsIndex++
       ) {
         const item = news[newsIndex];
-        const noticiaId = Number(item.id);
 
-        if (
-          !Number.isInteger(noticiaId) ||
-          noticiaId <= 0
-        ) {
+        const noticiaId = String(
+          item?.id || ""
+        ).trim();
+
+        if (!noticiaId) {
           throw new Error(
-            `A notícia ${newsIndex + 1} não recebeu um noticia_id válido.`
+            `A notícia ${newsIndex + 1} foi importada sem noticia_id.`
           );
         }
 
-        for (
-          let bannerIndex = 0;
-          bannerIndex < 2;
-          bannerIndex++
-        ) {
-          const fileIndex =
-            newsIndex * 2 + bannerIndex;
-
-          const file =
-            briefingBannerFiles[fileIndex];
-
-          const bannerSpec =
-            Array.isArray(item.banners)
-              ? item.banners[bannerIndex]
-              : null;
-
-          const headline = String(
-            bannerSpec?.banner_title ||
-            item.highlights?.[bannerIndex] ||
-            item.titulo_curto ||
-            item.titulo ||
-            ""
-          ).trim();
-
-          if (!file) {
-            throw new Error(
-              `Banner ${fileIndex + 1} não encontrado.`
-            );
-          }
-
-          if (!headline) {
-            throw new Error(
-              `Headline ausente para o banner ${fileIndex + 1}.`
-            );
-          }
-
-          setTicker(
-            `IMPORTANDO BANNER ${fileIndex + 1}/10 · NOTÍCIA ${newsIndex + 1}/5`
+        if (!hasBriefingBannerSpecs(item)) {
+          throw new Error(
+            `A notícia ${newsIndex + 1} não possui os dois banners editoriais exigidos pelo modo Briefing.`
           );
+        }
 
-          const url =
-            "/api/banner" +
-            "?mode=briefing-final" +
-            "&noticia_id=" +
-            encodeURIComponent(noticiaId) +
-            "&headline=" +
-            encodeURIComponent(headline);
+        setTicker(
+          `GERANDO 3 SLIDES · NOTÍCIA ${newsIndex + 1}/${news.length}`
+        );
 
-          const bannerResponse =
-            await fetch(url, {
+        const briefingPayload =
+          buildBriefingClientPayload(item);
+
+        console.log(
+          "WIRE/GEEK: GERANDO BRIEFING IMPORTADO",
+          {
+            noticia_id: noticiaId,
+            noticia: newsIndex + 1,
+            total: news.length,
+            titulo: item.titulo,
+            banners:
+              briefingPayload?.banners?.length || 0,
+          }
+        );
+
+        const bannerResponse =
+          await fetch(
+            "/api/banner-briefing",
+            {
               method: "POST",
               headers: {
                 "Content-Type":
-                  file.type ||
-                  "image/png",
+                  "application/json",
               },
               credentials: "include",
-              body: file,
-            });
+              body: JSON.stringify({
+                ...briefingPayload,
+                noticia_id: noticiaId,
+                mode: "briefing",
+              }),
+            }
+          );
 
-          const bannerData =
-            await bannerResponse
-              .json()
-              .catch(() => ({}));
+        const bannerData =
+          await bannerResponse
+            .json()
+            .catch(() => ({}));
 
-          if (
-            !bannerResponse.ok ||
-            !bannerData?.success
-          ) {
-            throw new Error(
-              [
-                `Falha ao importar o banner ${fileIndex + 1}/10.`,
-                bannerData?.details ||
-                  bannerData?.error,
-                uploadedCount
-                  ? `${uploadedCount} banner(s) já foram salvos antes da falha.`
-                  : "",
-              ]
-                .filter(Boolean)
-                .join(" ")
-            );
-          }
-
-          importedBanners[
-            newsIndex
-          ].push(bannerData);
-
-          uploadedCount += 1;
+        if (
+          !bannerResponse.ok ||
+          !bannerData?.success
+        ) {
+          throw new Error(
+            bannerData?.details ||
+            bannerData?.error ||
+            `Falha ao gerar banners da notícia ${newsIndex + 1}. HTTP ${bannerResponse.status}.`
+          );
         }
+
+        if (
+          !Array.isArray(bannerData?.banners) ||
+          bannerData.banners.length !== 3
+        ) {
+          throw new Error(
+            `A notícia ${newsIndex + 1} não retornou os 3 slides esperados.`
+          );
+        }
+
+        const editorialSlides =
+          bannerData.banners.filter(
+            banner =>
+              banner?.type === "editorial"
+          );
+
+        const ctaSlides =
+          bannerData.banners.filter(
+            banner =>
+              banner?.type === "cta"
+          );
+
+        if (
+          editorialSlides.length !== 2 ||
+          ctaSlides.length !== 1
+        ) {
+          throw new Error(
+            `A notícia ${newsIndex + 1} retornou uma composição inválida. Esperado: 2 editoriais + 1 CTA.`
+          );
+        }
+
+        newsWithGeneratedBanners.push({
+          ...item,
+
+          /*
+           * Mantemos item.banners intacto:
+           * ele continua sendo o contrato editorial.
+           */
+          briefing_source: true,
+
+          /*
+           * Resultado materializado do Wire/Geek.
+           */
+          briefing_generated_banners:
+            bannerData.banners,
+        });
       }
 
-      const newsWithFinalBanners =
-        news.map(
-          (item, index) => ({
-            ...item,
-            final_banners:
-              importedBanners[index],
-          })
-        );
-
       const newEdition = {
+        ...data.edition,
+
         title:
           data.edition.title ||
+          data.edition.titulo ||
           "Briefing Geek Diário",
 
         generatedAt:
           data.edition.generatedAt ||
+          data.edition.generated_at ||
+          data.edition.data_edicao ||
           new Date().toISOString(),
 
-        news: newsWithFinalBanners,
+        news: newsWithGeneratedBanners,
       };
 
       setEdition(newEdition);
       setStatus("done");
 
       setTicker(
-        `BRIEFING IMPORTADO · ${newsWithFinalBanners.length} DESPACHOS · 10 BANNERS`
+        `BRIEFING IMPORTADO · ${newsWithGeneratedBanners.length} DESPACHOS · ${newsWithGeneratedBanners.length * 3} SLIDES`
       );
 
       setActiveFilter("all");
       setBriefingImportOpen(false);
       setBriefingText("");
-      setBriefingBannerFiles([]);
 
       try {
         localStorage.setItem(
@@ -1224,20 +1405,34 @@ export default function GeekNewsWire() {
           JSON.stringify(newEdition)
         );
       } catch {}
+
+      console.log(
+        "WIRE/GEEK: BRIEFING COMPLETO GERADO",
+        {
+          noticias:
+            newsWithGeneratedBanners.length,
+          slides:
+            newsWithGeneratedBanners.length * 3,
+        }
+      );
     } catch (error) {
+      console.error(
+        "WIRE/GEEK: falha no Briefing automático:",
+        error
+      );
+
       setBriefingError(
         error?.message ||
-        "Não foi possível importar o Briefing Geek Diário."
+        "Não foi possível importar e gerar o Briefing Geek Diário."
       );
 
       setTicker(
-        "FALHA NA IMPORTAÇÃO DO BRIEFING"
+        "FALHA NA GERAÇÃO DO BRIEFING"
       );
     } finally {
       setBriefingImporting(false);
     }
   }
-
   async function generate() {
   if (status === "loading") return;
 
@@ -1554,97 +1749,45 @@ export default function GeekNewsWire() {
               <div className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#e0452f]">
                 IMPORTAR BRIEFING GEEK DIÁRIO
               </div>
+
               <p className="mt-2 text-[12px] leading-5 text-[#8fa39d]">
-                Cole o WIREGEEK_JSON e selecione os 10 banners finais. O WireGeek salvará 2 banners para cada uma das 5 notícias e enviará tudo para aprovação.
+                Cole o WIREGEEK_JSON. O Wire/Geek usará o contrato editorial do Briefing,
+                buscará e validará automaticamente as imagens e gerará 2 banners editoriais
+                + 1 CTA para cada notícia.
               </p>
             </div>
 
             <div className="space-y-3 p-4">
               <textarea
                 value={briefingText}
-                onChange={(event) => setBriefingText(event.target.value)}
+                onChange={(event) =>
+                  setBriefingText(event.target.value)
+                }
                 disabled={briefingImporting}
-                rows={12}
+                rows={14}
                 spellCheck={false}
-                placeholder={'WIREGEEK_JSON\n{\n  "title": "Briefing Geek Diário",\n  "news": [...]\n}'}
+                placeholder={'WIREGEEK_JSON\n{\n  "title": "Briefing Geek Diário",\n  "news": [\n    {\n      "categoria": "anime",\n      "titulo": "...",\n      "contexto_visual": "...",\n      "image_query": "...",\n      "imagens": [],\n      "banners": [...]\n    }\n  ]\n}'}
                 className="w-full resize-y border border-[#3a4a4d] bg-[#07110f] px-3 py-3 font-mono text-[11px] leading-5 text-[#d8dfd9] outline-none transition focus:border-[#e0452f] disabled:opacity-60"
               />
 
-              <div className="border border-[#3a4a4d] bg-[#07110f] p-3">
-                <label className="block font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8dfd9]">
-                  10 banners finais
-                </label>
-
-                <p className="mt-1 text-[11px] leading-5 text-[#7a8f8a]">
-                  Selecione os 10 arquivos de uma vez. Eles serão ordenados pelo nome: 1–2 para a notícia 1, 3–4 para a notícia 2, até 9–10 para a notícia 5.
-                </p>
-
-                <input
-                  type="file"
-                  multiple
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={briefingImporting}
-                  onChange={(event) => {
-                    const selected =
-                      Array.from(
-                        event.target.files || []
-                      ).sort((a, b) =>
-                        a.name.localeCompare(
-                          b.name,
-                          undefined,
-                          {
-                            numeric: true,
-                            sensitivity: "base",
-                          }
-                        )
-                      );
-
-                    setBriefingBannerFiles(
-                      selected
-                    );
-
-                    if (
-                      selected.length !== 10
-                    ) {
-                      setBriefingError(
-                        `Selecione exatamente 10 banners. Selecionados: ${selected.length}.`
-                      );
-                    } else {
-                      setBriefingError("");
-                    }
-                  }}
-                  className="mt-3 block w-full text-[11px] text-[#8fa39d] file:mr-3 file:border-0 file:bg-[#243436] file:px-3 file:py-2 file:font-mono file:text-[10px] file:font-bold file:uppercase file:text-[#f4f0e8]"
-                />
-
-                <div className="mt-2 font-mono text-[10px] text-[#8fa39d]">
-                  {briefingBannerFiles.length}/10 selecionados
+              <div className="border border-[#263b36] bg-[#07110f] px-3 py-3">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#5fbf7a]">
+                  GERAÇÃO AUTOMÁTICA
                 </div>
 
-                {briefingBannerFiles.length > 0 && (
-                  <div className="mt-2 max-h-32 overflow-y-auto border-t border-[#243436] pt-2">
-                    {briefingBannerFiles.map(
-                      (file, index) => (
-                        <div
-                          key={`${file.name}-${file.size}-${index}`}
-                          className="font-mono text-[9px] leading-5 text-[#5c6f6b]"
-                        >
-                          {String(
-                            index + 1
-                          ).padStart(
-                            2,
-                            "0"
-                          )}{" · "}
-                          {file.name}
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
+                <p className="mt-1 text-[11px] leading-5 text-[#8fa39d]">
+                  Não é necessário selecionar imagens prontas.
+                  Cada notícia será enviada ao modo Briefing aprovado:
+                  busca real de imagens, validação visual, 2 banners editoriais e CTA.
+                </p>
               </div>
 
               {briefingError && (
                 <div className="flex items-start gap-2 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[12px] text-[#f0a89a]">
-                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                  <AlertCircle
+                    size={15}
+                    className="mt-0.5 shrink-0"
+                  />
                   <span>{briefingError}</span>
                 </div>
               )}
@@ -1655,13 +1798,15 @@ export default function GeekNewsWire() {
                   onClick={importBriefing}
                   disabled={
                     briefingImporting ||
-                    !briefingText.trim() ||
-                    briefingBannerFiles.length !== 10
+                    !briefingText.trim()
                   }
                   className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Newspaper size={14}/>
-                  {briefingImporting ? "Importando..." : "Importar e salvar"}
+
+                  {briefingImporting
+                    ? "Gerando..."
+                    : "Importar e gerar banners"}
                 </button>
 
                 <button
@@ -1669,7 +1814,7 @@ export default function GeekNewsWire() {
                   onClick={() => {
                     setBriefingImportOpen(false);
                     setBriefingError("");
-                    setBriefingBannerFiles([]);
+                    setBriefingText("");
                   }}
                   disabled={briefingImporting}
                   className="border border-[#3a4a4d] px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider text-[#7a8f8a] transition-colors hover:border-[#e0452f] hover:text-[#e0452f] disabled:cursor-not-allowed disabled:opacity-50"
@@ -1680,7 +1825,6 @@ export default function GeekNewsWire() {
             </div>
           </section>
         )}
-
         {archiveOpen && (
           <section className="mb-6 border border-[#243436] bg-[#0c1618]">
             <div className="flex items-center justify-between border-b border-[#243436] px-4 py-3">
@@ -1800,6 +1944,10 @@ export default function GeekNewsWire() {
                 );
               })}
             </div>
+            {BRIEFING_ONLY_LOCAL && (
+              <BriefingLab />
+            )}
+
             <div className="space-y-5">
               {filteredNews.map((item,index)=>(
                 <DispatchCard key={`${item.categoria}-${index}`} item={item} index={edition.news.indexOf(item)}/>

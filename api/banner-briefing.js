@@ -71,6 +71,50 @@ async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {
     .filter(Boolean)
     .join(" ");
 
+  const { data: existing, error: existingError } = await supabase
+    .from("publicacoes")
+    .select("id,status,banner_url")
+    .eq("noticia_id", noticiaId)
+    .eq("caption", headline)
+    .eq("status", "AGUARDANDO_APROVACAO")
+    .is("published_at", null)
+    .order("criado_em", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(
+      `Nao foi possivel verificar publicacao pendente: ${existingError.message}`
+    );
+  }
+
+  if (existing) {
+    const { data: publication, error: updateError } = await supabase
+      .from("publicacoes")
+      .update({
+        banner_url: bannerUrl,
+        caption: headline,
+        hashtags,
+        source_image_url: sourceImage.url || null,
+        source_image_full_hash: sourceImage.fullHash || null,
+        source_image_crop_hash: sourceImage.cropHash || null,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .eq("status", "AGUARDANDO_APROVACAO")
+      .is("published_at", null)
+      .select("id,status,banner_url")
+      .single();
+
+    if (updateError) {
+      throw new Error(
+        `Nao foi possivel atualizar a publicacao pendente: ${updateError.message}`
+      );
+    }
+
+    return publication;
+  }
+
   const { data: publication, error } = await supabase
     .from("publicacoes")
     .insert({

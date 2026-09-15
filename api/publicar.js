@@ -527,7 +527,7 @@ export default async function handler(req, res) {
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
-      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags")
+      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at")
       .eq("publication_group_id", selected.publication_group_id)
       .order("carousel_position", { ascending: true });
 
@@ -648,6 +648,9 @@ export default async function handler(req, res) {
     let instagramContainersResult = null;
 
     if (wantsInstagramContainers) {
+      const config =
+        getInstagramConfig();
+
       const selectedPublication =
         group.find(
           (item) =>
@@ -668,11 +671,427 @@ export default async function handler(req, res) {
         ).trim(),
       ].filter(Boolean);
 
-      instagramContainersResult =
-        await createInstagramCarouselContainers(
-          instagramImages,
-          captionParts.join("\n\n")
+      /*
+       * ======================================================
+       * IDEMPOTENCIA
+       * ======================================================
+       *
+       * Se o grupo ja possui os mesmos IDs persistidos nos
+       * dois editoriais, primeiro verificamos esses containers
+       * na API do Instagram.
+       *
+       * Se ainda estiverem validos, REUTILIZAMOS.
+       * Nenhum novo /media e criado.
+       */
+
+      const persistedParents =
+        [
+          ...new Set(
+            group
+              .map(
+                (item) =>
+                  String(
+                    item
+                      ?.instagram_parent_container_id ||
+                    ""
+                  ).trim()
+              )
+              .filter(Boolean)
+          ),
+        ];
+
+      const childVariants =
+        [
+          ...new Set(
+            group
+              .map((item) =>
+                JSON.stringify(
+                  Array.isArray(
+                    item
+                      ?.instagram_child_container_ids
+                  )
+                    ? item
+                        .instagram_child_container_ids
+                        .map((value) =>
+                          String(
+                            value || ""
+                          ).trim()
+                        )
+                        .filter(Boolean)
+                    : []
+                )
+              )
+          ),
+        ];
+
+      const hasAnyPersistedContainer =
+        persistedParents.length > 0 ||
+        group.some(
+          (item) =>
+            Array.isArray(
+              item
+                ?.instagram_child_container_ids
+            ) &&
+            item
+              .instagram_child_container_ids
+              .length > 0
         );
+
+      let persistedChildIds = [];
+
+      if (
+        childVariants.length === 1
+      ) {
+        try {
+          persistedChildIds =
+            JSON.parse(
+              childVariants[0]
+            );
+        }
+        catch {
+          persistedChildIds = [];
+        }
+      }
+
+      const persistedMetadataIsComplete =
+        persistedParents.length === 1 &&
+        childVariants.length === 1 &&
+        Array.isArray(
+          persistedChildIds
+        ) &&
+        persistedChildIds.length === 3;
+
+      if (
+        hasAnyPersistedContainer &&
+        !persistedMetadataIsComplete
+      ) {
+        throw new Error(
+          "Os metadados persistidos dos containers Instagram estao incompletos ou inconsistentes entre os dois editoriais."
+        );
+      }
+
+      /*
+       * ======================================================
+       * TENTAR REUTILIZAR
+       * ======================================================
+       */
+
+      let persistedContainersInvalid =
+        false;
+
+      if (
+        persistedMetadataIsComplete
+      ) {
+        const childContainers = [];
+
+        for (
+          let index = 0;
+          index < persistedChildIds.length;
+          index++
+        ) {
+          const containerId =
+            persistedChildIds[index];
+
+          let status =
+            await callInstagramApi(
+              config,
+              containerId,
+              {
+                method:
+                  "GET",
+
+                body: {
+                  fields:
+                    "id,status_code,status",
+                },
+              }
+            );
+
+          if (
+            status?.status_code ===
+            "PUBLISHED"
+          ) {
+            throw new Error(
+              `O container filho ${containerId} ja consta como PUBLISHED. Publicacao automatica bloqueada para evitar duplicidade.`
+            );
+          }
+
+          if (
+            status?.status_code ===
+              "ERROR" ||
+            status?.status_code ===
+              "EXPIRED"
+          ) {
+            persistedContainersInvalid =
+              true;
+
+            break;
+          }
+
+          if (
+            status?.status_code !==
+            "FINISHED"
+          ) {
+            status =
+              await waitForInstagramContainer(
+                config,
+                containerId
+              );
+          }
+
+          childContainers.push({
+            position:
+              index + 1,
+
+            id:
+              containerId,
+
+            image_url:
+              instagramImages[index],
+
+            status_code:
+              status.status_code,
+          });
+        }
+
+        if (
+          !persistedContainersInvalid
+        ) {
+          const parentId =
+            persistedParents[0];
+
+          let parentStatus =
+            await callInstagramApi(
+              config,
+              parentId,
+              {
+                method:
+                  "GET",
+
+                body: {
+                  fields:
+                    "id,status_code,status",
+                },
+              }
+            );
+
+          if (
+            parentStatus?.status_code ===
+            "PUBLISHED"
+          ) {
+            throw new Error(
+              `O container pai ${parentId} ja consta como PUBLISHED. Publicacao automatica bloqueada para evitar duplicidade.`
+            );
+          }
+
+          if (
+            parentStatus?.status_code ===
+              "ERROR" ||
+            parentStatus?.status_code ===
+              "EXPIRED"
+          ) {
+            persistedContainersInvalid =
+              true;
+          }
+          else {
+            if (
+              parentStatus
+                ?.status_code !==
+              "FINISHED"
+            ) {
+              parentStatus =
+                await waitForInstagramContainer(
+                  config,
+                  parentId
+                );
+            }
+
+            instagramContainersResult = {
+              api_version:
+                config.apiVersion,
+
+              graph_base_url:
+                config.baseUrl,
+
+              child_containers:
+                childContainers,
+
+              parent_container_id:
+                parentId,
+
+              parent_status_code:
+                parentStatus.status_code,
+
+              reused:
+                true,
+
+              persisted:
+                true,
+            };
+          }
+        }
+      }
+
+      /*
+       * ======================================================
+       * INVALIDOS/EXPIRADOS
+       * ======================================================
+       *
+       * Somente ERROR/EXPIRED limpa a persistencia e permite
+       * gerar outro conjunto.
+       *
+       * Erros de rede/token NAO chegam aqui como invalidos:
+       * eles interrompem o fluxo e preservam os IDs existentes.
+       */
+
+      if (
+        persistedContainersInvalid
+      ) {
+        const {
+          data: clearedRows,
+          error: clearError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .update({
+              instagram_parent_container_id:
+                null,
+
+              instagram_child_container_ids:
+                null,
+
+              instagram_containers_created_at:
+                null,
+
+              atualizado_em:
+                new Date().toISOString(),
+            })
+            .eq(
+              "publication_group_id",
+              selected.publication_group_id
+            )
+            .is(
+              "published_at",
+              null
+            )
+            .select("id");
+
+        if (
+          clearError ||
+          !Array.isArray(
+            clearedRows
+          ) ||
+          clearedRows.length !== 2
+        ) {
+          throw new Error(
+            `Nao foi possivel limpar containers Instagram invalidos: ${
+              clearError?.message ||
+              "grupo incompleto"
+            }`
+          );
+        }
+      }
+
+      /*
+       * ======================================================
+       * CRIAR NOVOS SOMENTE SE NAO HOUVER REUTILIZAVEIS
+       * ======================================================
+       */
+
+      if (
+        !instagramContainersResult
+      ) {
+        const created =
+          await createInstagramCarouselContainers(
+            instagramImages,
+            captionParts.join("\n\n")
+          );
+
+        const childIds =
+          created
+            .child_containers
+            .map(
+              (item) =>
+                String(
+                  item.id
+                )
+            );
+
+        if (
+          childIds.length !== 3 ||
+          !created
+            .parent_container_id
+        ) {
+          throw new Error(
+            "O Instagram nao retornou o conjunto completo de containers."
+          );
+        }
+
+        /*
+         * Persistimos IMEDIATAMENTE depois da criacao.
+         *
+         * A proxima chamada encontrara esses IDs e nao criara
+         * outro conjunto.
+         */
+
+        const {
+          data: persistedRows,
+          error: persistError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .update({
+              instagram_parent_container_id:
+                created
+                  .parent_container_id,
+
+              instagram_child_container_ids:
+                childIds,
+
+              instagram_containers_created_at:
+                new Date().toISOString(),
+
+              atualizado_em:
+                new Date().toISOString(),
+            })
+            .eq(
+              "publication_group_id",
+              selected.publication_group_id
+            )
+            .is(
+              "published_at",
+              null
+            )
+            .select("id");
+
+        if (
+          persistError ||
+          !Array.isArray(
+            persistedRows
+          ) ||
+          persistedRows.length !== 2
+        ) {
+          throw new Error(
+            `Os containers foram criados no Instagram, mas nao foi possivel persisti-los no Supabase: ${
+              persistError?.message ||
+              "grupo incompleto"
+            }. Parent container: ${
+              created
+                .parent_container_id
+            }`
+          );
+        }
+
+        instagramContainersResult = {
+          ...created,
+
+          reused:
+            false,
+
+          persisted:
+            true,
+        };
+      }
     }
     return res.status(200).json({
       success: true,

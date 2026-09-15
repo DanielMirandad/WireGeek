@@ -506,6 +506,13 @@ export default async function handler(req, res) {
       )
         .trim()
         .toLowerCase() === "true";
+    const wantsInstagramPublish =
+      req.body?.instagram_publish === true ||
+      String(
+        req.body?.instagram_publish || ""
+      )
+        .trim()
+        .toLowerCase() === "true";
     const id = Number(req.body?.id);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -534,7 +541,7 @@ export default async function handler(req, res) {
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
-      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url")
+      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key")
       .eq("publication_group_id", selected.publication_group_id)
       .order("carousel_position", { ascending: true });
 
@@ -888,6 +895,974 @@ export default async function handler(req, res) {
       });
     }
 
+    if (wantsInstagramPublish) {
+      if (
+        wantsInstagramContainers ||
+        wantsInstagramPublishPreflight
+      ) {
+        return res.status(400).json({
+          error:
+            "instagram_publish nao pode ser combinado com outros modos.",
+          publish_called:
+            false,
+        });
+      }
+
+      const publishConfirmation =
+        String(
+          req.body?.publish_confirmation ||
+          ""
+        ).trim();
+
+      if (
+        publishConfirmation !==
+        `PUBLICAR_INSTAGRAM_${id}`
+      ) {
+        return res.status(400).json({
+          error:
+            "Confirmacao explicita de publicacao invalida.",
+          publish_called:
+            false,
+        });
+      }
+
+      const expectedParentId =
+        String(
+          req.body?.expected_parent_container_id ||
+          ""
+        ).trim();
+
+      const expectedGroupId =
+        String(
+          req.body?.expected_publication_group_id ||
+          ""
+        ).trim();
+
+      const expectedAccountId =
+        String(
+          req.body?.expected_account_id ||
+          ""
+        ).trim();
+
+      if (
+        !Array.isArray(group) ||
+        group.length !== 2 ||
+        !group.some(
+          (item) =>
+            String(item.id) ===
+            String(id)
+        ) ||
+        group[0].carousel_position !== 1 ||
+        group[1].carousel_position !== 2
+      ) {
+        return res.status(409).json({
+          error:
+            "O grupo do carrossel esta incompleto ou inconsistente.",
+          publish_called:
+            false,
+        });
+      }
+
+      if (
+        String(
+          selected.publication_group_id
+        ) !== expectedGroupId
+      ) {
+        return res.status(409).json({
+          error:
+            "O publication_group_id nao corresponde ao grupo autorizado.",
+          publish_called:
+            false,
+        });
+      }
+
+      if (
+        group.some(
+          (item) =>
+            item.published_at !== null ||
+            String(
+              item.instagram_post_id ||
+              ""
+            ).trim()
+        )
+      ) {
+        return res.status(409).json({
+          error:
+            "O carrossel ja possui evidencia de publicacao.",
+          already_published:
+            true,
+          publish_called:
+            false,
+        });
+      }
+
+      if (
+        group.some(
+          (item) =>
+            item.status !== "APROVADO"
+        )
+      ) {
+        return res.status(409).json({
+          error:
+            "Os dois editoriais precisam estar APROVADOS.",
+          publish_called:
+            false,
+        });
+      }
+
+      const parentIds = [
+        ...new Set(
+          group
+            .map(
+              (item) =>
+                String(
+                  item?.instagram_parent_container_id ||
+                  ""
+                ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      const childVariants = [
+        ...new Set(
+          group.map(
+            (item) =>
+              JSON.stringify(
+                Array.isArray(
+                  item?.instagram_child_container_ids
+                )
+                  ? item.instagram_child_container_ids
+                      .map(
+                        (value) =>
+                          String(
+                            value || ""
+                          ).trim()
+                      )
+                      .filter(Boolean)
+                  : []
+              )
+          )
+        ),
+      ];
+
+      let childIds = [];
+
+      if (
+        childVariants.length === 1
+      ) {
+        try {
+          childIds =
+            JSON.parse(
+              childVariants[0]
+            );
+        }
+        catch {
+          childIds = [];
+        }
+      }
+
+      if (
+        parentIds.length !== 1 ||
+        childVariants.length !== 1 ||
+        !Array.isArray(childIds) ||
+        childIds.length !== 3
+      ) {
+        return res.status(409).json({
+          error:
+            "Os containers persistidos estao incompletos ou inconsistentes.",
+          publish_called:
+            false,
+        });
+      }
+
+      const parentId =
+        parentIds[0];
+
+      if (
+        parentId !== expectedParentId
+      ) {
+        return res.status(409).json({
+          error:
+            "O parent container nao corresponde ao parent autorizado.",
+          expected:
+            expectedParentId,
+          received:
+            parentId,
+          publish_called:
+            false,
+        });
+      }
+
+      const config =
+        getInstagramConfig();
+
+      if (
+        config.userId !==
+        expectedAccountId
+      ) {
+        return res.status(409).json({
+          error:
+            "A conta Instagram configurada nao corresponde a conta autorizada.",
+          publish_called:
+            false,
+        });
+      }
+
+      /*
+       * PREFLIGHT FINAL DOS 3 FILHOS
+       */
+
+      for (
+        let index = 0;
+        index < childIds.length;
+        index++
+      ) {
+        const status =
+          await callInstagramApi(
+            config,
+            childIds[index],
+            {
+              method:
+                "GET",
+
+              body: {
+                fields:
+                  "id,status_code,status",
+              },
+            }
+          );
+
+        if (
+          status?.status_code !==
+          "FINISHED"
+        ) {
+          return res.status(409).json({
+            error:
+              `O container filho ${index + 1} nao esta FINISHED.`,
+            status_code:
+              status?.status_code ||
+              null,
+            publish_called:
+              false,
+          });
+        }
+      }
+
+      /*
+       * PREFLIGHT FINAL DO PARENT
+       */
+
+      const parentStatus =
+        await callInstagramApi(
+          config,
+          parentId,
+          {
+            method:
+              "GET",
+
+            body: {
+              fields:
+                "id,status_code,status",
+            },
+          }
+        );
+
+      if (
+        parentStatus?.status_code !==
+        "FINISHED"
+      ) {
+        return res.status(409).json({
+          error:
+            "O parent container nao esta FINISHED.",
+          parent_status_code:
+            parentStatus?.status_code ||
+            null,
+          publish_called:
+            false,
+        });
+      }
+
+      /*
+       * RESERVA ATOMICA
+       */
+
+      const {
+        data: reservedGroup,
+        error: reserveError,
+      } =
+        await supabase.rpc(
+          "reserve_publication_group",
+          {
+            p_group_id:
+              selected.publication_group_id,
+          }
+        );
+
+      if (
+        reserveError ||
+        !Array.isArray(reservedGroup) ||
+        reservedGroup.length !== 2
+      ) {
+        return res.status(409).json({
+          error:
+            `Nao foi possivel reservar atomicamente o carrossel: ${
+              reserveError?.message ||
+              "grupo indisponivel"
+            }`,
+          publish_called:
+            false,
+        });
+      }
+
+      const nextAttempt =
+        Math.max(
+          0,
+          ...group.map(
+            (item) =>
+              Number(
+                item.publish_attempts ||
+                0
+              )
+          )
+        ) + 1;
+
+      const idempotencyKey =
+        `instagram:${selected.publication_group_id}:${parentId}`;
+
+      /*
+       * A idempotency_key possui indice UNIQUE por registro.
+       *
+       * Como este carrossel possui dois registros em publicacoes,
+       * a chave do GRUPO fica somente no registro ancora:
+       * carousel_position = 1.
+       *
+       * O segundo editorial permanece sem idempotency_key.
+       */
+
+      const idempotencyAnchor =
+        group.find(
+          (item) =>
+            item.carousel_position === 1
+        );
+
+      if (!idempotencyAnchor?.id) {
+        await supabase
+          .from("publicacoes")
+          .update({
+            status:
+              "APROVADO",
+
+            atualizado_em:
+              new Date().toISOString(),
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          );
+
+        return res.status(500).json({
+          error:
+            "Nao foi possivel identificar o registro ancora do carrossel.",
+          publish_called:
+            false,
+        });
+      }
+
+      const attemptAt =
+        new Date().toISOString();
+
+      /*
+       * Primeiro reservamos a idempotency_key SOMENTE no anchor.
+       *
+       * A Meta ainda NAO foi chamada neste ponto.
+       */
+
+      const {
+        data: idempotencyRows,
+        error: idempotencyError,
+      } =
+        await supabase
+          .from("publicacoes")
+          .update({
+            idempotency_key:
+              idempotencyKey,
+
+            atualizado_em:
+              attemptAt,
+          })
+          .eq(
+            "id",
+            idempotencyAnchor.id
+          )
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          )
+          .select(
+            "id,idempotency_key"
+          );
+
+      if (
+        idempotencyError ||
+        !Array.isArray(idempotencyRows) ||
+        idempotencyRows.length !== 1
+      ) {
+        await supabase
+          .from("publicacoes")
+          .update({
+            status:
+              "APROVADO",
+
+            instagram_status:
+              "NAO_SELECIONADO",
+
+            idempotency_key:
+              null,
+
+            last_error:
+              idempotencyError?.message ||
+              "Nao foi possivel reservar a chave de idempotencia.",
+
+            atualizado_em:
+              new Date().toISOString(),
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          );
+
+        return res.status(500).json({
+          error:
+            "Nao foi possivel reservar a chave de idempotencia.",
+          details:
+            idempotencyError?.message ||
+            "registro ancora indisponivel",
+          publish_called:
+            false,
+        });
+      }
+
+      /*
+       * Agora marcamos os DOIS registros como PUBLICANDO.
+       * Nao repetimos a idempotency_key aqui.
+       */
+
+      const {
+        data: markedRows,
+        error: markError,
+      } =
+        await supabase
+          .from("publicacoes")
+          .update({
+            instagram_status:
+              "PUBLICANDO",
+
+            publish_attempts:
+              nextAttempt,
+
+            last_error:
+              null,
+
+            atualizado_em:
+              attemptAt,
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          )
+          .select("id");
+
+      if (
+        markError ||
+        !Array.isArray(markedRows) ||
+        markedRows.length !== 2
+      ) {
+        /*
+         * Meta ainda NAO foi chamada.
+         * Podemos restaurar tudo com seguranca.
+         */
+
+        await supabase
+          .from("publicacoes")
+          .update({
+            status:
+              "APROVADO",
+
+            instagram_status:
+              "NAO_SELECIONADO",
+
+            idempotency_key:
+              null,
+
+            publish_attempts:
+              Math.max(
+                0,
+                nextAttempt - 1
+              ),
+
+            last_error:
+              markError?.message ||
+              "Falha preparando a tentativa de publicacao.",
+
+            atualizado_em:
+              new Date().toISOString(),
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          );
+
+        return res.status(500).json({
+          error:
+            "Nao foi possivel preparar o estado antes da publicacao.",
+          details:
+            markError?.message ||
+            "grupo incompleto",
+          publish_called:
+            false,
+        });
+      }
+
+      /*
+       * ======================================================
+       * PONTO SEM RETORNO
+       * ======================================================
+       *
+       * A proxima chamada PUBLICA.
+       */
+
+      let publishedMedia;
+
+      try {
+        publishedMedia =
+          await callInstagramApi(
+            config,
+            `${config.userId}/media_publish`,
+            {
+              method:
+                "POST",
+
+              body: {
+                creation_id:
+                  parentId,
+              },
+            }
+          );
+      }
+      catch (publishError) {
+        const errorMessage =
+          publishError?.message ||
+          "Erro desconhecido durante media_publish.";
+
+        await supabase
+          .from("publicacoes")
+          .update({
+            instagram_status:
+              "VERIFICAR_MANUALMENTE",
+
+            last_error:
+              errorMessage,
+
+            atualizado_em:
+              new Date().toISOString(),
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          );
+
+        return res.status(502).json({
+          success:
+            false,
+
+          mode:
+            "instagram_publish",
+
+          publish_called:
+            true,
+
+          publish_succeeded:
+            "unknown",
+
+          do_not_retry:
+            true,
+
+          error:
+            errorMessage,
+
+          instagram: {
+            account_id:
+              config.userId,
+
+            parent_container_id:
+              parentId,
+          },
+
+          next_action:
+            "verify_instagram_before_any_retry",
+        });
+      }
+
+      const mediaId =
+        String(
+          publishedMedia?.id ||
+          ""
+        ).trim();
+
+      if (!mediaId) {
+        const errorMessage =
+          "A Meta respondeu ao media_publish sem retornar media ID.";
+
+        await supabase
+          .from("publicacoes")
+          .update({
+            instagram_status:
+              "VERIFICAR_MANUALMENTE",
+
+            last_error:
+              errorMessage,
+
+            atualizado_em:
+              new Date().toISOString(),
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          );
+
+        return res.status(502).json({
+          success:
+            false,
+
+          mode:
+            "instagram_publish",
+
+          publish_called:
+            true,
+
+          publish_succeeded:
+            "unknown",
+
+          do_not_retry:
+            true,
+
+          error:
+            errorMessage,
+        });
+      }
+
+      /*
+       * META CONFIRMOU A PUBLICACAO.
+       */
+
+      const publishedAt =
+        new Date().toISOString();
+
+      const {
+        data: publishedRows,
+        error: persistPublishError,
+      } =
+        await supabase
+          .from("publicacoes")
+          .update({
+            status:
+              "PUBLICADO",
+
+            instagram_status:
+              "PUBLICADO",
+
+            instagram_post_id:
+              mediaId,
+
+            published_at:
+              publishedAt,
+
+            last_error:
+              null,
+
+            atualizado_em:
+              publishedAt,
+          })
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .eq(
+            "status",
+            "PUBLICANDO"
+          )
+          .is(
+            "published_at",
+            null
+          )
+          .select(`
+            id,
+            status,
+            published_at,
+            instagram_status,
+            instagram_post_id,
+            instagram_url
+          `);
+
+      if (
+        persistPublishError ||
+        !Array.isArray(publishedRows) ||
+        publishedRows.length !== 2
+      ) {
+        /*
+         * A Meta JA PUBLICOU.
+         * NUNCA repetir media_publish.
+         */
+
+        return res.status(500).json({
+          success:
+            false,
+
+          mode:
+            "instagram_publish",
+
+          publish_called:
+            true,
+
+          publish_succeeded:
+            true,
+
+          do_not_retry:
+            true,
+
+          error:
+            "O Instagram confirmou a publicacao, mas a persistencia local falhou.",
+
+          details:
+            persistPublishError?.message ||
+            "grupo incompleto",
+
+          instagram: {
+            post_id:
+              mediaId,
+
+            parent_container_id:
+              parentId,
+          },
+
+          next_action:
+            "repair_database_do_not_republish",
+        });
+      }
+
+      /*
+       * CONSULTAR PERMALINK
+       */
+
+      let permalink = null;
+      let mediaType = null;
+      let instagramTimestamp = null;
+      let permalinkWarning = null;
+
+      for (
+        let attempt = 1;
+        attempt <= 5;
+        attempt++
+      ) {
+        try {
+          const mediaInfo =
+            await callInstagramApi(
+              config,
+              mediaId,
+              {
+                method:
+                  "GET",
+
+                body: {
+                  fields:
+                    "id,permalink,media_type,timestamp",
+                },
+              }
+            );
+
+          permalink =
+            String(
+              mediaInfo?.permalink ||
+              ""
+            ).trim() ||
+            null;
+
+          mediaType =
+            mediaInfo?.media_type ||
+            null;
+
+          instagramTimestamp =
+            mediaInfo?.timestamp ||
+            null;
+
+          break;
+        }
+        catch (permalinkError) {
+          permalinkWarning =
+            permalinkError?.message ||
+            "Nao foi possivel consultar o permalink.";
+
+          if (attempt < 5) {
+            await new Promise(
+              (resolve) =>
+                setTimeout(
+                  resolve,
+                  1000
+                )
+            );
+          }
+        }
+      }
+
+      if (permalink) {
+        const {
+          error: urlUpdateError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .update({
+              instagram_url:
+                permalink,
+
+              atualizado_em:
+                new Date().toISOString(),
+            })
+            .eq(
+              "publication_group_id",
+              selected.publication_group_id
+            )
+            .eq(
+              "instagram_post_id",
+              mediaId
+            );
+
+        if (urlUpdateError) {
+          permalinkWarning =
+            `Post publicado, mas nao foi possivel salvar o permalink: ${urlUpdateError.message}`;
+        }
+      }
+
+      return res.status(200).json({
+        success:
+          true,
+
+        mode:
+          "instagram_publish",
+
+        publish_called:
+          true,
+
+        published:
+          true,
+
+        do_not_retry:
+          true,
+
+        publication_group_id:
+          selected.publication_group_id,
+
+        publication_ids:
+          group.map(
+            (item) => item.id
+          ),
+
+        instagram: {
+          account_id:
+            config.userId,
+
+          parent_container_id:
+            parentId,
+
+          post_id:
+            mediaId,
+
+          permalink,
+
+          media_type:
+            mediaType,
+
+          timestamp:
+            instagramTimestamp,
+        },
+
+        database: {
+          status:
+            "PUBLICADO",
+
+          instagram_status:
+            "PUBLICADO",
+
+          published_at:
+            publishedAt,
+
+          rows:
+            publishedRows.length,
+        },
+
+        warning:
+          permalinkWarning,
+
+        next_action:
+          "verify_publication_and_checkpoint",
+      });
+    }
     if (
       group?.length !== 2 ||
       !group.some((item) => String(item.id) === String(id)) ||

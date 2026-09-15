@@ -33,6 +33,121 @@ export default async function handler(req, res) {
     const supabase = getSupabase();
 
     if (req.method === "GET") {
+      const requestedId =
+        Number(req.query?.id);
+
+      /*
+       * Consulta detalhada de um grupo.
+       *
+       * Usada pela interface depois que o Briefing
+       * devolve publication_id.
+       *
+       * Sem ?id=..., o comportamento historico
+       * permanece exatamente igual.
+       */
+      if (
+        Number.isInteger(requestedId) &&
+        requestedId > 0
+      ) {
+        const {
+          data: selected,
+          error: selectedError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .select(
+              "id,publication_group_id"
+            )
+            .eq("id", requestedId)
+            .maybeSingle();
+
+        if (selectedError) {
+          throw new Error(
+            `Nao foi possivel localizar a publicacao: ${selectedError.message}`
+          );
+        }
+
+        if (!selected) {
+          return res.status(404).json({
+            error:
+              "Publicacao nao encontrada.",
+          });
+        }
+
+        if (
+          !selected.publication_group_id
+        ) {
+          return res.status(409).json({
+            error:
+              "A publicacao nao possui publication_group_id.",
+          });
+        }
+
+        const {
+          data: group,
+          error: groupError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .select(`
+              id,
+              noticia_id,
+              banner_url,
+              caption,
+              hashtags,
+              status,
+              approved_at,
+              rejected_at,
+              published_at,
+              criado_em,
+              atualizado_em,
+              publication_group_id,
+              carousel_position,
+              cta_url,
+              selected_channels,
+              instagram_status,
+              instagram_post_id,
+              instagram_url,
+              instagram_parent_container_id,
+              instagram_child_container_ids,
+              instagram_containers_created_at,
+              publish_attempts,
+              last_error,
+              noticias (
+                id,
+                titulo,
+                categoria
+              )
+            `)
+            .eq(
+              "publication_group_id",
+              selected.publication_group_id
+            )
+            .order(
+              "carousel_position",
+              { ascending: true }
+            );
+
+        if (groupError) {
+          throw new Error(
+            `Nao foi possivel carregar o grupo da publicacao: ${groupError.message}`
+          );
+        }
+
+        return res.status(200).json({
+          success: true,
+
+          publication_group_id:
+            selected.publication_group_id,
+
+          quantidade:
+            group?.length || 0,
+
+          publicacoes:
+            group || [],
+        });
+      }
+
       const { data, error } = await supabase
         .from("publicacoes")
         .select(`

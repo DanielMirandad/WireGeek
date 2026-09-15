@@ -499,6 +499,13 @@ export default async function handler(req, res) {
       )
         .trim()
         .toLowerCase() === "true";
+    const wantsInstagramPublishPreflight =
+      req.body?.instagram_publish_preflight === true ||
+      String(
+        req.body?.instagram_publish_preflight || ""
+      )
+        .trim()
+        .toLowerCase() === "true";
     const id = Number(req.body?.id);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -527,12 +534,358 @@ export default async function handler(req, res) {
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
-      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at")
+      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url")
       .eq("publication_group_id", selected.publication_group_id)
       .order("carousel_position", { ascending: true });
 
     if (groupError) {
       throw new Error(`Nao foi possivel carregar o carrossel: ${groupError.message}`);
+    }
+    if (wantsInstagramPublishPreflight) {
+      /*
+       * ======================================================
+       * INSTAGRAM PUBLISH PREFLIGHT
+       * ======================================================
+       *
+       * SOMENTE LEITURA:
+       * - nao gera JPEG
+       * - nao reserva grupo
+       * - nao altera Supabase
+       * - nao cria container
+       * - nao publica
+       */
+
+      if (wantsInstagramContainers) {
+        return res.status(400).json({
+          error:
+            "instagram_publish_preflight e instagram_containers nao podem ser usados juntos.",
+        });
+      }
+
+      if (
+        !Array.isArray(group) ||
+        group.length !== 2 ||
+        !group.some(
+          (item) =>
+            String(item.id) ===
+            String(id)
+        ) ||
+        group[0].carousel_position !== 1 ||
+        group[1].carousel_position !== 2
+      ) {
+        return res.status(409).json({
+          success: false,
+          mode:
+            "instagram_publish_preflight",
+          ready_to_publish:
+            false,
+          publish_called:
+            false,
+          error:
+            "O grupo do carrossel esta incompleto ou inconsistente.",
+        });
+      }
+
+      if (
+        group.some(
+          (item) =>
+            item.status !== "APROVADO"
+        )
+      ) {
+        return res.status(409).json({
+          success: false,
+          mode:
+            "instagram_publish_preflight",
+          ready_to_publish:
+            false,
+          publish_called:
+            false,
+          error:
+            "Os dois editoriais precisam permanecer APROVADOS antes da publicacao.",
+        });
+      }
+
+      const alreadyPublished =
+        group.some(
+          (item) =>
+            item.published_at !== null ||
+            String(
+              item.instagram_post_id ||
+              ""
+            ).trim()
+        );
+
+      if (alreadyPublished) {
+        return res.status(409).json({
+          success: false,
+          mode:
+            "instagram_publish_preflight",
+          ready_to_publish:
+            false,
+          publish_called:
+            false,
+          already_published:
+            true,
+          error:
+            "O grupo ja possui evidencia de publicacao no Instagram.",
+        });
+      }
+
+      const parentIds = [
+        ...new Set(
+          group
+            .map(
+              (item) =>
+                String(
+                  item
+                    ?.instagram_parent_container_id ||
+                  ""
+                ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      const childVariants = [
+        ...new Set(
+          group.map(
+            (item) =>
+              JSON.stringify(
+                Array.isArray(
+                  item
+                    ?.instagram_child_container_ids
+                )
+                  ? item
+                      .instagram_child_container_ids
+                      .map(
+                        (value) =>
+                          String(
+                            value || ""
+                          ).trim()
+                      )
+                      .filter(Boolean)
+                  : []
+              )
+          )
+        ),
+      ];
+
+      let childIds = [];
+
+      if (
+        childVariants.length === 1
+      ) {
+        try {
+          childIds =
+            JSON.parse(
+              childVariants[0]
+            );
+        }
+        catch {
+          childIds = [];
+        }
+      }
+
+      if (
+        parentIds.length !== 1 ||
+        childVariants.length !== 1 ||
+        !Array.isArray(childIds) ||
+        childIds.length !== 3
+      ) {
+        return res.status(409).json({
+          success: false,
+          mode:
+            "instagram_publish_preflight",
+          ready_to_publish:
+            false,
+          publish_called:
+            false,
+          error:
+            "Os containers persistidos estao ausentes ou inconsistentes.",
+        });
+      }
+
+      const config =
+        getInstagramConfig();
+
+      const childContainers = [];
+
+      for (
+        let index = 0;
+        index < childIds.length;
+        index++
+      ) {
+        const containerId =
+          String(
+            childIds[index]
+          );
+
+        const status =
+          await callInstagramApi(
+            config,
+            containerId,
+            {
+              method:
+                "GET",
+
+              body: {
+                fields:
+                  "id,status_code,status",
+              },
+            }
+          );
+
+        if (
+          status?.status_code !==
+          "FINISHED"
+        ) {
+          return res.status(409).json({
+            success: false,
+            mode:
+              "instagram_publish_preflight",
+            ready_to_publish:
+              false,
+            publish_called:
+              false,
+            error:
+              `O container filho ${index + 1} nao esta FINISHED.`,
+            instagram: {
+              container_id:
+                containerId,
+              status_code:
+                status?.status_code ||
+                null,
+              status:
+                status?.status ||
+                null,
+            },
+          });
+        }
+
+        childContainers.push({
+          position:
+            index + 1,
+          id:
+            containerId,
+          status_code:
+            status.status_code,
+        });
+      }
+
+      const parentId =
+        parentIds[0];
+
+      const parentStatus =
+        await callInstagramApi(
+          config,
+          parentId,
+          {
+            method:
+              "GET",
+
+            body: {
+              fields:
+                "id,status_code,status",
+            },
+          }
+        );
+
+      if (
+        parentStatus?.status_code !==
+        "FINISHED"
+      ) {
+        return res.status(409).json({
+          success: false,
+          mode:
+            "instagram_publish_preflight",
+          ready_to_publish:
+            false,
+          publish_called:
+            false,
+          error:
+            "O container pai nao esta FINISHED.",
+          instagram: {
+            parent_container_id:
+              parentId,
+            parent_status_code:
+              parentStatus?.status_code ||
+              null,
+            parent_status:
+              parentStatus?.status ||
+              null,
+          },
+        });
+      }
+
+      return res.status(200).json({
+        success:
+          true,
+
+        mode:
+          "instagram_publish_preflight",
+
+        ready_to_publish:
+          true,
+
+        publish_called:
+          false,
+
+        publication_group_id:
+          selected.publication_group_id,
+
+        publication_ids:
+          group.map(
+            (item) => item.id
+          ),
+
+        instagram: {
+          api_version:
+            config.apiVersion,
+
+          account_id:
+            config.userId,
+
+          child_containers:
+            childContainers,
+
+          parent_container_id:
+            parentId,
+
+          parent_status_code:
+            parentStatus.status_code,
+
+          persisted:
+            true,
+
+          reused:
+            true,
+        },
+
+        database: {
+          statuses:
+            group.map(
+              (item) => ({
+                id:
+                  item.id,
+
+                status:
+                  item.status,
+
+                published_at:
+                  item.published_at,
+
+                instagram_status:
+                  item.instagram_status,
+
+                instagram_post_id:
+                  item.instagram_post_id,
+              })
+            ),
+        },
+
+        next_action:
+          "explicit_publish_confirmation_required",
+      });
     }
 
     if (

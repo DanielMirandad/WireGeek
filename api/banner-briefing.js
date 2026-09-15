@@ -39,7 +39,7 @@ async function uploadBanner(png, noticiaId) {
   return data.publicUrl;
 }
 
-async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {}) {
+async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {}, carousel) {
   if (!noticiaId) {
     return null;
   }
@@ -93,6 +93,9 @@ async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {
       .from("publicacoes")
       .update({
         banner_url: bannerUrl,
+        publication_group_id: carousel.publicationGroupId,
+        carousel_position: carousel.position,
+        cta_url: carousel.ctaUrl,
         caption: headline,
         hashtags,
         source_image_url: sourceImage.url || null,
@@ -120,6 +123,9 @@ async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {
     .insert({
       noticia_id: noticiaId,
       banner_url: bannerUrl,
+      publication_group_id: carousel.publicationGroupId,
+      carousel_position: carousel.position,
+      cta_url: carousel.ctaUrl,
       caption: headline,
       hashtags,
       status: "AGUARDANDO_APROVACAO",
@@ -442,7 +448,7 @@ async function handleBriefingGeneratedBanners(
   const generationId =
     randomUUID();
 
-  const completed = [];
+  const uploaded = [];
 
   for (
     let index = 0;
@@ -468,6 +474,21 @@ async function handleBriefingGeneratedBanners(
         item.png,
         storageId
       );
+
+    uploaded.push({ item, storageId, bannerUrl });
+  }
+
+  // Os três uploads precisam terminar antes de salvar os editoriais.
+  const ctaUrl = uploaded.find(({ item }) => item.type === "cta")?.bannerUrl;
+
+  if (!ctaUrl) {
+    throw new Error("O Briefing nao conseguiu salvar a URL do terceiro banner CTA.");
+  }
+
+  const completed = [];
+
+  for (let index = 0; index < uploaded.length; index++) {
+    const { item, storageId, bannerUrl } = uploaded[index];
 
     /*
      * Os banners editoriais continuam
@@ -512,6 +533,11 @@ async function handleBriefingGeneratedBanners(
                 ?.fingerprint
                 ?.cropHash ||
               "",
+          },
+          {
+            publicationGroupId: generationId,
+            position: item.bannerIndex + 1,
+            ctaUrl,
           }
         );
     }

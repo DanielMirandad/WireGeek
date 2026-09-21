@@ -112,25 +112,85 @@ function deriveShortTitle(value) {
   const first = words[0];
   const second = words[1] || "";
 
+  /*
+   * Siglas/franquias que normalmente usam
+   * um segundo token numerico ou nominal.
+   */
   if (
     /^(?:nhl|nba|fifa|fc|gta|ufc|f1)$/i.test(first) &&
     second
   ) {
-    return `${first} ${second}`.slice(0, 24);
+    return `${first} ${second}`.slice(0, 40);
   }
 
-  if (
-    second &&
-    first.length + second.length + 1 <= 24 &&
-    /^[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ]/.test(second) &&
-    !/^(?:terá|tem|ganha|recebe|chega|lança|anuncia|revela|confirma|é|vai)$/i.test(second)
-  ) {
-    return `${first} ${second}`;
+  /*
+   * Preservar nomes proprios compostos no inicio
+   * do titulo da noticia.
+   *
+   * Exemplos:
+   *
+   * Minha Melhor Amiga lidera...
+   * -> Minha Melhor Amiga
+   *
+   * Slow Horses é renovada...
+   * -> Slow Horses
+   *
+   * Kingdom Hearts em Fortnite...
+   * -> Kingdom Hearts
+   *
+   * Kia revela...
+   * -> Kia
+   */
+  const titleWords = [];
+
+  for (const word of words) {
+    const token = String(word)
+      .replace(
+        /^[("'“‘]+|[)"'”’.,;:!?]+$/g,
+        ""
+      )
+      .trim();
+
+    if (!token) {
+      continue;
+    }
+
+    if (titleWords.length === 0) {
+      titleWords.push(word);
+      continue;
+    }
+
+    const startsAsProperName =
+      /^[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ0-9]/u.test(
+        token
+      );
+
+    if (!startsAsProperName) {
+      break;
+    }
+
+    const candidate =
+      [...titleWords, word]
+        .join(" ");
+
+    /*
+     * Nunca cortar uma entidade no meio.
+     * Se a entidade inteira ultrapassar esse
+     * limite, o renderer cuidara do layout.
+     */
+    if (candidate.length > 60) {
+      break;
+    }
+
+    titleWords.push(word);
   }
 
-  return first.slice(0, 24);
+  if (titleWords.length >= 2) {
+    return titleWords.join(" ");
+  }
+
+  return first.slice(0, 40);
 }
-
 function buildAutomaticBannerTitle(text = "", fallback = "") {
   const source = String(text || fallback || "")
     .replace(/\s+/g, " ")

@@ -9,6 +9,8 @@ import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 
 
+const BRIEFING_BANNER_MODEL_VERSION = "briefing-approved-2026-09-21-v2";
+
 async function uploadBanner(png, noticiaId) {
   const supabase = createClient(
     String(process.env.SUPABASE_URL || "").trim(),
@@ -78,6 +80,7 @@ async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {
     .select("id,status,banner_url")
     .eq("noticia_id", noticiaId)
     .eq("caption", headline)
+    .eq("banner_model_version", BRIEFING_BANNER_MODEL_VERSION)
     .eq("status", "AGUARDANDO_APROVACAO")
     .is("published_at", null)
     .order("criado_em", { ascending: false })
@@ -96,6 +99,7 @@ async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {
       .update({
         banner_url: bannerUrl,
         publication_group_id: carousel.publicationGroupId,
+        banner_model_version: BRIEFING_BANNER_MODEL_VERSION,
         carousel_position: carousel.position,
         cta_url: carousel.ctaUrl,
         caption: headline,
@@ -126,6 +130,7 @@ async function createPublication(noticiaId, bannerUrl, headline, sourceImage = {
       noticia_id: noticiaId,
       banner_url: bannerUrl,
       publication_group_id: carousel.publicationGroupId,
+        banner_model_version: BRIEFING_BANNER_MODEL_VERSION,
       carousel_position: carousel.position,
       cta_url: carousel.ctaUrl,
       caption: headline,
@@ -370,11 +375,7 @@ async function handleBriefingGeneratedBanners(
          * como headline final.
          */
         titulo_curto:
-          body.titulo_curto ||
-          briefing.titulo_curto ||
-          banner.titulo_curto ||
-          banner.short_title ||
-          banner.shortTitle,
+          briefing.titulo_curto,
 
         contexto_visual:
           banner.contexto_visual ||

@@ -36,3 +36,9 @@ sameStory.tmp.js
 backup-*/
 .vercel
 .env*
+
+# Artefatos locais WireGeek
+backup/
+tmp/
+supabase/.temp/
+renderer-briefing-atual.txt

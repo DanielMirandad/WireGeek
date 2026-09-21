@@ -172,8 +172,52 @@ setShortTitle(item.titulo_curto || "");
         );
       }
 
+      /*
+       * O resultado materializado precisa existir tambem
+       * no item compartilhado pelas abas.
+       *
+       * PublicationPanel le briefing_generated_banners
+       * diretamente deste item.
+       */
+      const generatedBanners =
+        data.banners.map(
+          (banner) => ({
+            ...banner,
+          })
+        );
+
+      item.briefing_generated_banners =
+        generatedBanners;
+
+      item.final_banners =
+        generatedBanners;
+
+      item.briefing_source =
+        true;
+
+      console.log(
+        "WIRE/GEEK: Briefing sincronizado com Publicacao",
+        {
+          noticia_id:
+            item.id || null,
+
+          publication_ids:
+            generatedBanners
+              .map(
+                banner =>
+                  Number(
+                    banner?.publication_id ||
+                    0
+                  )
+              )
+              .filter(
+                id => id > 0
+              ),
+        }
+      );
+
       setBanners(
-        data.banners
+        generatedBanners
       );
     }
     catch (err) {

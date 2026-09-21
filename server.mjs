@@ -5,6 +5,7 @@ import newsHandler from "./api/news.js";
 import authHandler from "./api/auth.js";
 import edicoesHandler from "./api/edicoes.js";
 import bannerHandler from "./api/banner.js";
+import briefingBannerHandler from "./api/banner-briefing.js";
 import publicacoesHandler from "./api/publicacoes.js";
 import publicarHandler from "./api/publicar.js";
 import briefingImportHandler from "./api/briefing-import.js";
@@ -100,6 +101,19 @@ app.post("/api/briefing-import", async (req, res) => {
     }
   }
 });
+app.post("/api/banner-briefing", async (req, res) => {
+  try {
+    await briefingBannerHandler(req, res);
+  } catch (error) {
+    console.error("WIRE/GEEK: erro no banner briefing:", error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Erro no backend de banner briefing.",
+      });
+    }
+  }
+});
+
 app.post("/api/banner", async (req, res) => {
   console.log("WIRE/GEEK: POST /api/banner recebido.");
 

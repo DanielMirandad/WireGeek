@@ -9,6 +9,23 @@ export function parseBriefingRealInput(text) {
     return value.trim();
   };
   if (!object(item)) throw new Error("Carregue um único objeto, sem lista ou edição completa.");
+  const parseNewsId = (value) => {
+    if (
+      (typeof value !== "number" && typeof value !== "string") ||
+      (typeof value === "string" && !/^[0-9]+$/.test(value.trim()))
+    ) {
+      throw new Error("Informe id ou noticia_id de uma notícia existente, como inteiro positivo.");
+    }
+    const id = Number(value);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error("Informe id ou noticia_id de uma notícia existente, como inteiro positivo.");
+    }
+    return id;
+  };
+  const id = parseNewsId(item.id ?? item.noticia_id);
+  if (item.id != null && item.noticia_id != null && id !== parseNewsId(item.noticia_id)) {
+    throw new Error("id e noticia_id devem identificar a mesma notícia.");
+  }
   const categoria = required(item.categoria, "categoria").toLowerCase();
   if (!["anime", "games", "cinema", "geek"].includes(categoria)) throw new Error("Categoria deve ser anime, games, cinema ou geek.");
   if (!Array.isArray(item.fontes)) throw new Error("fontes deve ser uma lista.");
@@ -31,6 +48,7 @@ export function parseBriefingRealInput(text) {
     return result;
   });
   return {
+    id,
     categoria,
     titulo: required(item.titulo, "titulo"),
     fontes: item.fontes,

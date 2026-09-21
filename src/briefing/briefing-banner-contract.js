@@ -7,6 +7,13 @@
  * Contrato exclusivo do Briefing Geek Diário.
  */
 export function hasBriefingBannerSpecs(item = {}) {
+  const shortTitle =
+    String(
+      item.titulo_curto ||
+      item.short_title ||
+      ""
+    ).trim();
+
   const editorial =
     Array.isArray(item.banners)
       ? item.banners
@@ -24,6 +31,7 @@ export function hasBriefingBannerSpecs(item = {}) {
       : [];
 
   return (
+    Boolean(shortTitle) &&
     editorial.length === 2 &&
     editorial.every((banner) => {
       const title = String(
@@ -49,6 +57,19 @@ export function hasBriefingBannerSpecs(item = {}) {
 export function buildBriefingClientPayload(
   item = {}
 ) {
+  const shortTitle =
+    String(
+      item.titulo_curto ||
+      item.short_title ||
+      ""
+    ).trim();
+
+  if (!shortTitle) {
+    throw new Error(
+      "Esta noticia nao possui titulo_curto para o modelo Briefing."
+    );
+  }
+
   const editorial =
     Array.isArray(item.banners)
       ? item.banners
@@ -90,6 +111,9 @@ export function buildBriefingClientPayload(
       (banner) => ({
         type:
           "editorial",
+
+        titulo_curto:
+          shortTitle,
 
         banner_title:
           String(
@@ -159,6 +183,9 @@ export function buildBriefingClientPayload(
     titulo:
       item.titulo ||
       "",
+
+    titulo_curto:
+      shortTitle,
 
     fontes:
       Array.isArray(item.fontes)

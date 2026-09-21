@@ -7,6 +7,8 @@ import { buildBriefingBannerRequest } from "../lib/banner-request-briefing.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
+
+
 async function uploadBanner(png, noticiaId) {
   const supabase = createClient(
     String(process.env.SUPABASE_URL || "").trim(),
@@ -368,7 +370,23 @@ async function handleBriefingGeneratedBanners(
          * como headline final.
          */
         titulo_curto:
-          banner.banner_title,
+          body.titulo_curto ||
+          briefing.titulo_curto ||
+          banner.titulo_curto ||
+          banner.short_title ||
+          banner.shortTitle,
+
+        contexto_visual:
+          banner.contexto_visual ||
+          banner.visual_subject ||
+          body.contexto_visual ||
+          body.visual_subject ||
+          "",
+
+        image_position:
+          banner.image_position ||
+          body.image_position ||
+          "",
 
         image_url:
           image.url,

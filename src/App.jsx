@@ -130,6 +130,104 @@ function deriveShortTitle(value) {
   return first.slice(0, 24);
 }
 
+function buildAutomaticBannerTitle(text = "", fallback = "") {
+  const source = String(text || fallback || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!source) {
+    return "NOVA ATUALIZAÇÃO";
+  }
+
+  return source
+    .split(" ")
+    .slice(0, 7)
+    .join(" ")
+    .replace(/[.,;:!?]+$/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function buildAutomaticBriefingBanners(item = {}) {
+  const highlights =
+    Array.isArray(item.highlights)
+      ? item.highlights
+          .map((value) =>
+            String(value || "").trim()
+          )
+          .filter(Boolean)
+          .slice(0, 2)
+      : [];
+
+  if (highlights.length !== 2) {
+    throw new Error(
+      `"${item?.titulo || "Notícia"}" precisa de exatamente 2 highlights para gerar os banners automaticamente.`
+    );
+  }
+
+  const baseContext =
+    String(
+      item.contexto_visual ||
+      item.titulo ||
+      ""
+    ).trim();
+
+  const baseQuery =
+    String(
+      item.image_query ||
+      item.titulo ||
+      ""
+    ).trim();
+
+  return highlights.map(
+    (highlight, index) => ({
+      type: "editorial",
+
+      banner_title:
+        buildAutomaticBannerTitle(
+          highlight,
+          item.titulo_curto ||
+          item.titulo
+        ),
+
+      highlight,
+
+      visual_subject:
+        baseContext ||
+        item.titulo ||
+        "",
+
+      contexto_visual:
+        index === 0
+          ? baseContext
+          : [
+              baseContext,
+              "Usar uma segunda imagem oficial claramente diferente do primeiro banner.",
+              "Priorizar outro enquadramento, cena, personagem, composição ou material promocional oficial relacionado ao mesmo assunto.",
+            ]
+              .filter(Boolean)
+              .join(" "),
+
+      image_query:
+        index === 0
+          ? baseQuery
+          : `${baseQuery} official alternate image still promotional`,
+    })
+  );
+}
+
+function prepareAutomaticBriefingItem(item = {}) {
+  if (hasBriefingBannerSpecs(item)) {
+    return item;
+  }
+
+  return {
+    ...item,
+    banners:
+      buildAutomaticBriefingBanners(item),
+  };
+}
+
 function normalizeNewsItem(item={}) {
   return {
     id:             item.id,
@@ -154,6 +252,9 @@ function normalizeNewsItem(item={}) {
     imagens:        Array.isArray(item.imagens)?item.imagens:[],
     banners:        Array.isArray(item.banners)?item.banners.slice(0,2):[],
     final_banners:  Array.isArray(item.final_banners)?item.final_banners.slice(0,3):[],
+    briefing_generated_banners: Array.isArray(item.briefing_generated_banners)
+      ? item.briefing_generated_banners.slice(0,3)
+      : [],
     briefing_source: item.briefing_source === true,
   };
 }
@@ -1028,7 +1129,331 @@ const [edition,  setEdition]  = useState(null);
     return edition.news.filter(n=>n.categoria===activeFilter);
   },[edition,activeFilter]);
 
-  async function importBriefing() {
+  async function generateCurrentEditionBriefing() {
+    if (briefingImporting) return;
+
+    const currentNews =
+      Array.isArray(edition?.news)
+        ? edition.news
+        : [];
+
+    if (!currentNews.length) {
+      setBriefingError(
+        "Gere ou carregue uma edição antes de gerar os banners."
+      );
+      return;
+    }
+
+    setBriefingImporting(true);
+    setBriefingError("");
+    setErrorMsg("");
+
+    /*
+     * Mantém a edição inteira na mesma ordem.
+     *
+     * Cada notícia bem-sucedida substitui
+     * somente sua própria posição.
+     */
+    const resultNews =
+      [...currentNews];
+
+    const failures = [];
+
+    let successCount = 0;
+
+    try {
+      for (
+        let newsIndex = 0;
+        newsIndex < currentNews.length;
+        newsIndex++
+      ) {
+        try {
+          const item =
+            prepareAutomaticBriefingItem(
+              currentNews[newsIndex]
+            );
+
+          const noticiaId =
+            String(item?.id || "").trim();
+
+          if (!noticiaId) {
+            throw new Error(
+              `A notícia ${newsIndex + 1} não possui noticia_id.`
+            );
+          }
+
+          setTicker(
+            `GERANDO 3 SLIDES · NOTÍCIA ${newsIndex + 1}/${currentNews.length}`
+          );
+
+          const briefingPayload =
+            buildBriefingClientPayload(item);
+
+          const bannerResponse =
+            await fetch(
+              "/api/banner-briefing",
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json",
+                },
+
+                credentials: "include",
+
+                body: JSON.stringify({
+                  ...briefingPayload,
+                  noticia_id: noticiaId,
+                  mode: "briefing",
+                }),
+              }
+            );
+
+          const bannerData =
+            await bannerResponse
+              .json()
+              .catch(() => ({}));
+
+          if (
+            !bannerResponse.ok ||
+            !bannerData?.success
+          ) {
+            throw new Error(
+              bannerData?.details ||
+              bannerData?.error ||
+              `Falha ao gerar banners da notícia ${newsIndex + 1}. HTTP ${bannerResponse.status}.`
+            );
+          }
+
+          if (
+            !Array.isArray(
+              bannerData?.banners
+            ) ||
+            bannerData.banners.length !== 3
+          ) {
+            throw new Error(
+              `A notícia ${newsIndex + 1} não retornou os 3 slides esperados.`
+            );
+          }
+
+          const editorialSlides =
+            bannerData.banners.filter(
+              (banner) =>
+                banner?.type ===
+                "editorial"
+            );
+
+          const ctaSlides =
+            bannerData.banners.filter(
+              (banner) =>
+                banner?.type === "cta"
+            );
+
+          if (
+            editorialSlides.length !== 2 ||
+            ctaSlides.length !== 1
+          ) {
+            throw new Error(
+              `A notícia ${newsIndex + 1} retornou composição inválida. Esperado: 2 editoriais + 1 CTA.`
+            );
+          }
+
+          const generatedItem = {
+            ...item,
+
+            briefing_source: true,
+
+            briefing_generated_banners:
+              bannerData.banners,
+          };
+
+          /*
+           * IMPORTANTE:
+           * substitui exatamente a posição
+           * da notícia processada.
+           *
+           * Não depende da quantidade
+           * de sucessos anteriores.
+           */
+          resultNews[newsIndex] =
+            generatedItem;
+
+          successCount++;
+
+          const partialEdition = {
+            ...edition,
+
+            news: [...resultNews],
+
+            generatedAt:
+              edition?.generatedAt ||
+              new Date().toISOString(),
+          };
+
+          setEdition(
+            partialEdition
+          );
+
+          try {
+            localStorage.setItem(
+              todayKey(),
+              JSON.stringify(
+                partialEdition
+              )
+            );
+          } catch {}
+
+          console.log(
+            "WIRE/GEEK: BRIEFING PARCIAL PERSISTIDO",
+            {
+              noticia_id:
+                noticiaId,
+
+              indice:
+                newsIndex,
+
+              sucessos:
+                successCount,
+
+              total:
+                currentNews.length,
+            }
+          );
+        }
+        catch (itemError) {
+          const failedItem =
+            currentNews[newsIndex];
+
+          failures.push({
+            index:
+              newsIndex,
+
+            id:
+              failedItem?.id || null,
+
+            titulo:
+              failedItem?.titulo || "",
+
+            error:
+              itemError?.message ||
+              "Falha desconhecida.",
+          });
+
+          console.error(
+            "WIRE/GEEK: falha no briefing automatico da noticia:",
+            {
+              indice:
+                newsIndex,
+
+              noticia_id:
+                failedItem?.id || null,
+
+              titulo:
+                failedItem?.titulo || "",
+
+              erro:
+                itemError?.message ||
+                "Falha desconhecida.",
+            }
+          );
+
+          /*
+           * Não interrompe o lote.
+           */
+          setTicker(
+            `NOTÍCIA ${newsIndex + 1} FALHOU · CONTINUANDO ${newsIndex + 2 <= currentNews.length ? `${newsIndex + 2}/${currentNews.length}` : ""}`
+          );
+        }
+      }
+
+      const finalEdition = {
+        ...edition,
+
+        news: [...resultNews],
+
+        generatedAt:
+          edition?.generatedAt ||
+          new Date().toISOString(),
+      };
+
+      setEdition(
+        finalEdition
+      );
+
+      setStatus("done");
+
+      try {
+        localStorage.setItem(
+          todayKey(),
+          JSON.stringify(
+            finalEdition
+          )
+        );
+      } catch {}
+
+      if (failures.length) {
+        setBriefingError(
+          `${failures.length} notícia(s) não tiveram os banners gerados. As demais foram preservadas. Primeira falha: ${failures[0].titulo || `notícia ${failures[0].index + 1}`} — ${failures[0].error}`
+        );
+
+        setTicker(
+          `BANNERS GERADOS · ${successCount} SUCESSO(S) · ${failures.length} FALHA(S)`
+        );
+      }
+      else {
+        setBriefingError("");
+
+        setTicker(
+          `BANNERS GERADOS · ${successCount} DESPACHOS · ${successCount * 3} SLIDES`
+        );
+      }
+
+      console.log(
+        "WIRE/GEEK: BRIEFING AUTOMATICO DA EDICAO CONCLUIDO",
+        {
+          noticias:
+            currentNews.length,
+
+          sucessos:
+            successCount,
+
+          falhas:
+            failures.length,
+
+          slides:
+            successCount * 3,
+
+          detalhes_falhas:
+            failures,
+        }
+      );
+    }
+    catch (error) {
+      /*
+       * Este catch fica reservado apenas
+       * para falhas inesperadas do lote,
+       * fora do processamento individual.
+       */
+      console.error(
+        "WIRE/GEEK: falha inesperada no briefing automatico da edicao:",
+        error
+      );
+
+      setBriefingError(
+        error?.message ||
+        "Não foi possível concluir o processamento automático da edição."
+      );
+
+      setTicker(
+        "FALHA INESPERADA NA GERAÇÃO AUTOMÁTICA"
+      );
+    }
+    finally {
+      setBriefingImporting(false);
+    }
+  }
+async function importBriefing() {
     if (briefingImporting) return;
 
     const payload = briefingText.trim();
@@ -1704,6 +2129,22 @@ const [edition,  setEdition]  = useState(null);
             >
               <Archive size={14}/>
               {archiveLoading ? "Carregando..." : "Arquivo de Edições"}
+            </button>
+
+            <button
+              type="button"
+              onClick={generateCurrentEditionBriefing}
+              disabled={
+                briefingImporting ||
+                !edition?.news?.length
+              }
+              className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ImageIcon size={14}/>
+
+              {briefingImporting
+                ? "Gerando banners..."
+                : "Gerar banners da edição"}
             </button>
 
             <button

@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
+import {
+  buildInstagramReelCaption,
+  buildInstagramReelVideo,
+  normalizeInstagramHashtags,
+  uploadInstagramReelVideo,
+} from "../lib/instagram-reel.mjs";
 
 function getSupabase() {
   const url = String(process.env.SUPABASE_URL || "").trim();
@@ -268,20 +274,50 @@ async function callInstagramApi(
 
 async function waitForInstagramContainer(
   config,
-  creationId
+  creationId,
+  maxAttempts = 37,
+  delayMs = 5000
 ) {
-  const maxAttempts = 20;
-  const delayMs = 2000;
+  const normalizedCreationId =
+    String(
+      creationId ||
+      ""
+    ).trim();
+
+  if (!normalizedCreationId) {
+    throw new Error(
+      "creationId ausente ao aguardar container Instagram."
+    );
+  }
+
+  const safeMaxAttempts =
+    Number.isInteger(
+      maxAttempts
+    ) &&
+    maxAttempts > 0
+      ? maxAttempts
+      : 37;
+
+  const safeDelayMs =
+    Number.isFinite(
+      delayMs
+    ) &&
+    delayMs >= 1000
+      ? delayMs
+      : 5000;
+
+  let lastStatus =
+    null;
 
   for (
     let attempt = 1;
-    attempt <= maxAttempts;
+    attempt <= safeMaxAttempts;
     attempt++
   ) {
     const status =
       await callInstagramApi(
         config,
-        String(creationId),
+        normalizedCreationId,
         {
           method:
             "GET",
@@ -292,6 +328,9 @@ async function waitForInstagramContainer(
           },
         }
       );
+
+    lastStatus =
+      status;
 
     if (
       status?.status_code ===
@@ -307,21 +346,47 @@ async function waitForInstagramContainer(
         "EXPIRED"
     ) {
       throw new Error(
-        `O container ${creationId} retornou ${status.status_code}: ${status?.status || "sem detalhes"}.`
+        `O container ${normalizedCreationId} retornou ${status.status_code}: ${status?.status || "sem detalhes"}. ID preservado para auditoria manual; recriacao automatica bloqueada.`
       );
     }
 
-    await new Promise(
-      (resolve) =>
-        setTimeout(
-          resolve,
-          delayMs
-        )
-    );
+    if (
+      status?.status_code ===
+      "PUBLISHED"
+    ) {
+      throw new Error(
+        `O container ${normalizedCreationId} ja consta como PUBLISHED. Nenhuma recriacao automatica sera executada.`
+      );
+    }
+
+    if (
+      attempt <
+      safeMaxAttempts
+    ) {
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            safeDelayMs
+          )
+      );
+    }
   }
 
+  const waitedSeconds =
+    Math.round(
+      (
+        Math.max(
+          0,
+          safeMaxAttempts - 1
+        ) *
+        safeDelayMs
+      ) /
+      1000
+    );
+
   throw new Error(
-    `Timeout aguardando o container ${creationId} ficar FINISHED.`
+    `Timeout aguardando o container ${normalizedCreationId} ficar FINISHED apos aproximadamente ${waitedSeconds}s. Ultimo status: ${lastStatus?.status_code || "desconhecido"} - ${lastStatus?.status || "sem detalhes"}. Container preservado; nao recriar automaticamente.`
   );
 }
 
@@ -476,6 +541,535 @@ async function createInstagramCarouselContainers(
   };
 }
 
+
+async function resolveApprovedInstagramReelAsset(
+  supabase,
+  publicationGroupId
+) {
+  const {
+    createHash,
+  } =
+    await import(
+      "node:crypto"
+    );
+
+  const groupId =
+    String(
+      publicationGroupId ||
+      ""
+    ).trim();
+
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      groupId
+    )
+  ) {
+    throw new Error(
+      "publication_group_id invalido para resolver o MP4 aprovado."
+    );
+  }
+
+  const folder =
+    "instagram-reels";
+
+  const {
+    data: files,
+    error: listError,
+  } =
+    await supabase
+      .storage
+      .from(
+        "wiregeek-banners"
+      )
+      .list(
+        folder,
+        {
+          limit:
+            100,
+
+          search:
+            groupId + "-",
+
+          sortBy: {
+            column:
+              "name",
+
+            order:
+              "asc",
+          },
+        }
+      );
+
+  if (listError) {
+    throw new Error(
+      "Nao foi possivel listar os MP4 aprovados: " +
+      listError.message
+    );
+  }
+
+  const filenamePattern =
+    new RegExp(
+      "^" +
+      groupId +
+      "-([0-9a-f]{16})\\.mp4$",
+      "i"
+    );
+
+  const candidates =
+    Array.isArray(files)
+      ? files.filter(
+          (item) =>
+            filenamePattern.test(
+              String(
+                item?.name ||
+                ""
+              )
+            )
+        )
+      : [];
+
+  if (
+    candidates.length !== 1
+  ) {
+    throw new Error(
+      "Esperado exatamente 1 MP4 imutavel para o grupo " +
+      groupId +
+      "; encontrados: " +
+      candidates.length +
+      "."
+    );
+  }
+
+  const filename =
+    String(
+      candidates[0].name ||
+      ""
+    ).trim();
+
+  const filenameMatch =
+    filename.match(
+      filenamePattern
+    );
+
+  if (!filenameMatch) {
+    throw new Error(
+      "Nome do MP4 imutavel invalido."
+    );
+  }
+
+  const expectedHashPrefix =
+    String(
+      filenameMatch[1] ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const storagePath =
+    folder +
+    "/" +
+    filename;
+
+  const {
+    data: blob,
+    error: downloadError,
+  } =
+    await supabase
+      .storage
+      .from(
+        "wiregeek-banners"
+      )
+      .download(
+        storagePath
+      );
+
+  if (
+    downloadError ||
+    !blob
+  ) {
+    throw new Error(
+      "Nao foi possivel baixar o MP4 aprovado para validacao: " +
+      (
+        downloadError?.message ||
+        "sem dados"
+      )
+    );
+  }
+
+  const buffer =
+    Buffer.from(
+      await blob.arrayBuffer()
+    );
+
+  if (
+    buffer.length === 0
+  ) {
+    throw new Error(
+      "MP4 aprovado esta vazio."
+    );
+  }
+
+  const sha256 =
+    createHash(
+      "sha256"
+    )
+      .update(
+        buffer
+      )
+      .digest(
+        "hex"
+      )
+      .toLowerCase();
+
+  if (
+    sha256.slice(
+      0,
+      16
+    ) !==
+    expectedHashPrefix
+  ) {
+    throw new Error(
+      "SHA256 real do MP4 nao corresponde ao hash do nome imutavel."
+    );
+  }
+
+  const {
+    data: publicData,
+  } =
+    supabase
+      .storage
+      .from(
+        "wiregeek-banners"
+      )
+      .getPublicUrl(
+        storagePath
+      );
+
+  const videoUrl =
+    String(
+      publicData?.publicUrl ||
+      ""
+    ).trim();
+
+  if (
+    !videoUrl.startsWith(
+      "https://"
+    )
+  ) {
+    throw new Error(
+      "URL publica do MP4 aprovado e invalida."
+    );
+  }
+
+  return {
+    storagePath,
+    videoUrl,
+    sha256,
+
+    bytes:
+      buffer.length,
+  };
+}
+
+
+async function loadInstagramReelPayload(
+  supabase,
+  group,
+  publicationId,
+  publicationGroupId
+) {
+  if (
+    !Array.isArray(group) ||
+    group.length !== 2 ||
+    group[0]?.carousel_position !== 1 ||
+    group[1]?.carousel_position !== 2
+  ) {
+    throw new Error(
+      "O Reel exige exatamente dois editoriais nas posicoes 1 e 2."
+    );
+  }
+
+  if (
+    !group.some(
+      (item) =>
+        String(item.id) ===
+        String(publicationId)
+    )
+  ) {
+    throw new Error(
+      "A publicacao selecionada nao pertence ao grupo editorial."
+    );
+  }
+
+  const noticiaIds = [
+    ...new Set(
+      group
+        .map(
+          (item) =>
+            Number(
+              item?.noticia_id ||
+              0
+            )
+        )
+        .filter(
+          (value) =>
+            Number.isInteger(value) &&
+            value > 0
+        )
+    ),
+  ];
+
+  if (
+    noticiaIds.length !== 1
+  ) {
+    throw new Error(
+      "Os dois editoriais precisam pertencer a mesma noticia."
+    );
+  }
+
+  const {
+    data: noticia,
+    error: noticiaError,
+  } =
+    await supabase
+      .from("noticias")
+      .select("id,artigo")
+      .eq(
+        "id",
+        noticiaIds[0]
+      )
+      .maybeSingle();
+
+  if (
+    noticiaError ||
+    !String(
+      noticia?.artigo ||
+      ""
+    ).trim()
+  ) {
+    throw new Error(
+      `Nao foi possivel carregar a noticia completa: ${
+        noticiaError?.message ||
+        "artigo ausente"
+      }`
+    );
+  }
+
+  const hashtagSets =
+    group.map(
+      (item) =>
+        normalizeInstagramHashtags(
+          item?.hashtags
+        )
+    );
+
+  for (
+    const hashtags of
+    hashtagSets
+  ) {
+    if (
+      hashtags.length !== 5
+    ) {
+      throw new Error(
+        `O Reel exige exatamente 5 hashtags. Encontradas: ${hashtags.length}.`
+      );
+    }
+  }
+
+  if (
+    JSON.stringify(
+      hashtagSets[0]
+    ) !==
+    JSON.stringify(
+      hashtagSets[1]
+    )
+  ) {
+    throw new Error(
+      "Os dois editoriais precisam possuir as mesmas 5 hashtags."
+    );
+  }
+
+  const captionInfo =
+    buildInstagramReelCaption({
+      article:
+        noticia.artigo,
+
+      hashtags:
+        hashtagSets[0],
+    });
+
+  const bannerUrls = [
+    String(
+      group[0]?.banner_url ||
+      ""
+    ).trim(),
+
+    String(
+      group[1]?.banner_url ||
+      ""
+    ).trim(),
+
+    String(
+      group[0]?.cta_url ||
+      ""
+    ).trim(),
+  ];
+
+  if (
+    !bannerUrls.every(Boolean)
+  ) {
+    throw new Error(
+      "O Reel exige os dois banners editoriais e o CTA."
+    );
+  }
+
+  if (
+    String(
+      group[0]?.cta_url ||
+      ""
+    ).trim() !==
+    String(
+      group[1]?.cta_url ||
+      ""
+    ).trim()
+  ) {
+    throw new Error(
+      "Os dois editoriais precisam usar o mesmo CTA."
+    );
+  }
+
+  for (
+    const value of bannerUrls
+  ) {
+    let parsed;
+
+    try {
+      parsed =
+        new URL(value);
+    }
+    catch {
+      throw new Error(
+        "URL de frame invalida."
+      );
+    }
+
+    if (
+      parsed.protocol !==
+        "https:" ||
+      parsed.username ||
+      parsed.password
+    ) {
+      throw new Error(
+        "Os frames do Reel precisam usar URLs HTTPS publicas."
+      );
+    }
+  }
+
+  const approvedReel =
+    await resolveApprovedInstagramReelAsset(
+      supabase,
+      publicationGroupId
+    );
+
+  const storagePath =
+    approvedReel.storagePath;
+
+  const videoUrl =
+    approvedReel.videoUrl;
+
+  return {
+    noticia,
+    bannerUrls,
+    captionInfo,
+    storagePath,
+    videoUrl,
+  };
+}
+
+
+async function createInstagramReelContainer({
+  videoUrl,
+  caption,
+}) {
+  const config =
+    getInstagramConfig();
+
+  const created =
+    await callInstagramApi(
+      config,
+      `${config.userId}/media`,
+      {
+        method:
+          "POST",
+
+        body: {
+          media_type:
+            "REELS",
+
+          video_url:
+            videoUrl,
+
+          caption:
+            caption,
+
+          share_to_feed:
+            true,
+        },
+      }
+    );
+
+  const id =
+    String(
+      created?.id ||
+      ""
+    ).trim();
+
+  if (!id) {
+    throw new Error(
+      "Instagram nao retornou ID para o container Reel."
+    );
+  }
+
+  /*
+   * IMPORTANTE:
+   *
+   * Não esperamos FINISHED aqui.
+   *
+   * O caller recebe o ID imediatamente,
+   * persiste no Supabase e somente depois
+   * aguarda o processamento.
+   *
+   * Isso evita criar outro container em caso
+   * de timeout depois do POST /media.
+   */
+  return {
+    api_version:
+      config.apiVersion,
+
+    graph_base_url:
+      config.baseUrl,
+
+    media_type:
+      "REELS",
+
+    share_to_feed:
+      true,
+
+    reel_container_id:
+      id,
+
+    parent_container_id:
+      id,
+
+    child_containers:
+      [],
+
+    video_url:
+      videoUrl,
+  };
+}
+
+
 export default async function handler(req, res) {
   const sessionModule = await import("./auth.js");
 
@@ -541,7 +1135,7 @@ export default async function handler(req, res) {
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
-      .select("id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key")
+      .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key")
       .eq("publication_group_id", selected.publication_group_id)
       .order("carousel_position", { ascending: true });
 
@@ -551,21 +1145,23 @@ export default async function handler(req, res) {
     if (wantsInstagramPublishPreflight) {
       /*
        * ======================================================
-       * INSTAGRAM PUBLISH PREFLIGHT
+       * INSTAGRAM REEL PREFLIGHT
        * ======================================================
        *
        * SOMENTE LEITURA:
-       * - nao gera JPEG
-       * - nao reserva grupo
+       * - nao gera MP4
        * - nao altera Supabase
        * - nao cria container
-       * - nao publica
+       * - nao executa media_publish
        */
 
       if (wantsInstagramContainers) {
         return res.status(400).json({
           error:
             "instagram_publish_preflight e instagram_containers nao podem ser usados juntos.",
+
+          publish_called:
+            false,
         });
       }
 
@@ -581,62 +1177,96 @@ export default async function handler(req, res) {
         group[1].carousel_position !== 2
       ) {
         return res.status(409).json({
-          success: false,
+          success:
+            false,
+
           mode:
             "instagram_publish_preflight",
+
+          publication_type:
+            "REEL",
+
           ready_to_publish:
             false,
+
           publish_called:
             false,
+
           error:
-            "O grupo do carrossel esta incompleto ou inconsistente.",
+            "O grupo editorial esta incompleto ou inconsistente.",
         });
       }
 
       if (
         group.some(
           (item) =>
-            item.status !== "APROVADO"
+            item.status !==
+            "APROVADO"
         )
       ) {
         return res.status(409).json({
-          success: false,
+          success:
+            false,
+
           mode:
             "instagram_publish_preflight",
+
+          publication_type:
+            "REEL",
+
           ready_to_publish:
             false,
+
           publish_called:
             false,
+
           error:
-            "Os dois editoriais precisam permanecer APROVADOS antes da publicacao.",
+            "Os dois editoriais precisam permanecer APROVADOS.",
         });
       }
 
-      const alreadyPublished =
+      if (
         group.some(
           (item) =>
-            item.published_at !== null ||
+            item.published_at !==
+              null ||
             String(
               item.instagram_post_id ||
               ""
             ).trim()
-        );
-
-      if (alreadyPublished) {
+        )
+      ) {
         return res.status(409).json({
-          success: false,
+          success:
+            false,
+
           mode:
             "instagram_publish_preflight",
+
+          publication_type:
+            "REEL",
+
           ready_to_publish:
             false,
-          publish_called:
-            false,
+
           already_published:
             true,
+
+          publish_called:
+            false,
+
           error:
-            "O grupo ja possui evidencia de publicacao no Instagram.",
+            "O grupo ja possui evidencia de publicacao.",
         });
       }
+
+      const reelPayload =
+        await loadInstagramReelPayload(
+          supabase,
+          group,
+          id,
+          selected.publication_group_id
+        );
 
       const parentIds = [
         ...new Set(
@@ -667,7 +1297,8 @@ export default async function handler(req, res) {
                       .map(
                         (value) =>
                           String(
-                            value || ""
+                            value ||
+                            ""
                           ).trim()
                       )
                       .filter(Boolean)
@@ -696,88 +1327,34 @@ export default async function handler(req, res) {
       if (
         parentIds.length !== 1 ||
         childVariants.length !== 1 ||
-        !Array.isArray(childIds) ||
-        childIds.length !== 3
+        !Array.isArray(
+          childIds
+        ) ||
+        childIds.length !== 0
       ) {
         return res.status(409).json({
-          success: false,
+          success:
+            false,
+
           mode:
             "instagram_publish_preflight",
+
+          publication_type:
+            "REEL",
+
           ready_to_publish:
             false,
+
           publish_called:
             false,
+
           error:
-            "Os containers persistidos estao ausentes ou inconsistentes.",
+            "O container Reel esta ausente ou existem metadados antigos de carrossel.",
         });
       }
 
       const config =
         getInstagramConfig();
-
-      const childContainers = [];
-
-      for (
-        let index = 0;
-        index < childIds.length;
-        index++
-      ) {
-        const containerId =
-          String(
-            childIds[index]
-          );
-
-        const status =
-          await callInstagramApi(
-            config,
-            containerId,
-            {
-              method:
-                "GET",
-
-              body: {
-                fields:
-                  "id,status_code,status",
-              },
-            }
-          );
-
-        if (
-          status?.status_code !==
-          "FINISHED"
-        ) {
-          return res.status(409).json({
-            success: false,
-            mode:
-              "instagram_publish_preflight",
-            ready_to_publish:
-              false,
-            publish_called:
-              false,
-            error:
-              `O container filho ${index + 1} nao esta FINISHED.`,
-            instagram: {
-              container_id:
-                containerId,
-              status_code:
-                status?.status_code ||
-                null,
-              status:
-                status?.status ||
-                null,
-            },
-          });
-        }
-
-        childContainers.push({
-          position:
-            index + 1,
-          id:
-            containerId,
-          status_code:
-            status.status_code,
-        });
-      }
 
       const parentId =
         parentIds[0];
@@ -802,22 +1379,36 @@ export default async function handler(req, res) {
         "FINISHED"
       ) {
         return res.status(409).json({
-          success: false,
+          success:
+            false,
+
           mode:
             "instagram_publish_preflight",
+
+          publication_type:
+            "REEL",
+
           ready_to_publish:
             false,
+
           publish_called:
             false,
+
           error:
-            "O container pai nao esta FINISHED.",
+            "O container Reel nao esta FINISHED.",
+
           instagram: {
+            reel_container_id:
+              parentId,
+
             parent_container_id:
               parentId,
-            parent_status_code:
+
+            status_code:
               parentStatus?.status_code ||
               null,
-            parent_status:
+
+            status:
               parentStatus?.status ||
               null,
           },
@@ -831,6 +1422,9 @@ export default async function handler(req, res) {
         mode:
           "instagram_publish_preflight",
 
+        publication_type:
+          "REEL",
+
         ready_to_publish:
           true,
 
@@ -842,7 +1436,8 @@ export default async function handler(req, res) {
 
         publication_ids:
           group.map(
-            (item) => item.id
+            (item) =>
+              item.id
           ),
 
         instagram: {
@@ -852,14 +1447,26 @@ export default async function handler(req, res) {
           account_id:
             config.userId,
 
-          child_containers:
-            childContainers,
+          media_type:
+            "REELS",
+
+          share_to_feed:
+            true,
+
+          reel_container_id:
+            parentId,
 
           parent_container_id:
             parentId,
 
+          child_containers:
+            [],
+
           parent_status_code:
             parentStatus.status_code,
+
+          video_url:
+            reelPayload.videoUrl,
 
           persisted:
             true,
@@ -868,26 +1475,26 @@ export default async function handler(req, res) {
             true,
         },
 
-        database: {
-          statuses:
-            group.map(
-              (item) => ({
-                id:
-                  item.id,
+        caption: {
+          caption_preview:
+            reelPayload
+              .captionInfo
+              .caption_preview,
 
-                status:
-                  item.status,
+          caption_length:
+            reelPayload
+              .captionInfo
+              .caption_length,
 
-                published_at:
-                  item.published_at,
+          hashtags:
+            reelPayload
+              .captionInfo
+              .hashtags,
 
-                instagram_status:
-                  item.instagram_status,
-
-                instagram_post_id:
-                  item.instagram_post_id,
-              })
-            ),
+          hashtags_count:
+            reelPayload
+              .captionInfo
+              .hashtags_count,
         },
 
         next_action:
@@ -1010,6 +1617,14 @@ export default async function handler(req, res) {
         });
       }
 
+      const reelPayload =
+        await loadInstagramReelPayload(
+          supabase,
+          group,
+          id,
+          selected.publication_group_id
+        );
+
       const parentIds = [
         ...new Set(
           group
@@ -1066,7 +1681,7 @@ export default async function handler(req, res) {
         parentIds.length !== 1 ||
         childVariants.length !== 1 ||
         !Array.isArray(childIds) ||
-        childIds.length !== 3
+        childIds.length !== 0
       ) {
         return res.status(409).json({
           error:
@@ -1110,44 +1725,8 @@ export default async function handler(req, res) {
       }
 
       /*
-       * PREFLIGHT FINAL DOS 3 FILHOS
+       * REEL NAO POSSUI CHILD CONTAINERS.
        */
-
-      for (
-        let index = 0;
-        index < childIds.length;
-        index++
-      ) {
-        const status =
-          await callInstagramApi(
-            config,
-            childIds[index],
-            {
-              method:
-                "GET",
-
-              body: {
-                fields:
-                  "id,status_code,status",
-              },
-            }
-          );
-
-        if (
-          status?.status_code !==
-          "FINISHED"
-        ) {
-          return res.status(409).json({
-            error:
-              `O container filho ${index + 1} nao esta FINISHED.`,
-            status_code:
-              status?.status_code ||
-              null,
-            publish_called:
-              false,
-          });
-        }
-      }
 
       /*
        * PREFLIGHT FINAL DO PARENT
@@ -1495,7 +2074,7 @@ export default async function handler(req, res) {
           publishError?.message ||
           "Erro desconhecido durante media_publish.";
 
-        await supabase
+        const { error: manualReviewPersistError } = await supabase
           .from("publicacoes")
           .update({
             instagram_status:
@@ -1520,7 +2099,13 @@ export default async function handler(req, res) {
             null
           );
 
-        return res.status(502).json({
+                if (manualReviewPersistError) {
+          console.error(
+            "WIRE/GEEK: falha ao persistir VERIFICAR_MANUALMENTE:",
+            manualReviewPersistError
+          );
+        }
+return res.status(502).json({
           success:
             false,
 
@@ -1898,15 +2483,27 @@ export default async function handler(req, res) {
 
     const instagramImages = [];
 
-    for (let index = 0; index < carouselImages.length; index++) {
-      instagramImages.push(
-        await createInstagramJpeg(
-          supabase,
-          carouselImages[index],
-          selected.publication_group_id,
-          index + 1
-        )
-      );
+    /*
+     * O dry-run legado ainda pode preparar JPEGs.
+     *
+     * instagram_containers=true agora significa:
+     * preparar um unico MP4 Reel.
+     */
+    if (!wantsInstagramContainers) {
+      for (
+        let index = 0;
+        index < carouselImages.length;
+        index++
+      ) {
+        instagramImages.push(
+          await createInstagramJpeg(
+            supabase,
+            carouselImages[index],
+            selected.publication_group_id,
+            index + 1
+          )
+        );
+      }
     }
 
     const { data: reservedGroup, error: reserveError } = await supabase.rpc(
@@ -1979,91 +2576,53 @@ export default async function handler(req, res) {
       const config =
         getInstagramConfig();
 
-      const selectedPublication =
-        group.find(
-          (item) =>
-            String(item.id) ===
-            String(id)
-        ) ||
-        group[0];
-
-      const captionParts = [
-        String(
-          selectedPublication?.caption ||
-          ""
-        ).trim(),
-
-        String(
-          selectedPublication?.hashtags ||
-          ""
-        ).trim(),
-      ].filter(Boolean);
-
-      /*
-       * ======================================================
-       * IDEMPOTENCIA
-       * ======================================================
-       *
-       * Se o grupo ja possui os mesmos IDs persistidos nos
-       * dois editoriais, primeiro verificamos esses containers
-       * na API do Instagram.
-       *
-       * Se ainda estiverem validos, REUTILIZAMOS.
-       * Nenhum novo /media e criado.
-       */
-
-      const persistedParents =
-        [
-          ...new Set(
-            group
-              .map(
-                (item) =>
-                  String(
-                    item
-                      ?.instagram_parent_container_id ||
-                    ""
-                  ).trim()
-              )
-              .filter(Boolean)
-          ),
-        ];
-
-      const childVariants =
-        [
-          ...new Set(
-            group
-              .map((item) =>
-                JSON.stringify(
-                  Array.isArray(
-                    item
-                      ?.instagram_child_container_ids
-                  )
-                    ? item
-                        .instagram_child_container_ids
-                        .map((value) =>
-                          String(
-                            value || ""
-                          ).trim()
-                        )
-                        .filter(Boolean)
-                    : []
-                )
-              )
-          ),
-        ];
-
-      const hasAnyPersistedContainer =
-        persistedParents.length > 0 ||
-        group.some(
-          (item) =>
-            Array.isArray(
-              item
-                ?.instagram_child_container_ids
-            ) &&
-            item
-              .instagram_child_container_ids
-              .length > 0
+      const reelPayload =
+        await loadInstagramReelPayload(
+          supabase,
+          group,
+          id,
+          selected.publication_group_id
         );
+
+      const persistedParents = [
+        ...new Set(
+          group
+            .map(
+              (item) =>
+                String(
+                  item
+                    ?.instagram_parent_container_id ||
+                  ""
+                ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      const childVariants = [
+        ...new Set(
+          group.map(
+            (item) =>
+              JSON.stringify(
+                Array.isArray(
+                  item
+                    ?.instagram_child_container_ids
+                )
+                  ? item
+                      .instagram_child_container_ids
+                      .map(
+                        (value) =>
+                          String(
+                            value ||
+                            ""
+                          ).trim()
+                      )
+                      .filter(Boolean)
+                  : []
+              )
+          )
+        ),
+      ];
 
       let persistedChildIds = [];
 
@@ -2081,81 +2640,64 @@ export default async function handler(req, res) {
         }
       }
 
-      const persistedMetadataIsComplete =
-        persistedParents.length === 1 &&
-        childVariants.length === 1 &&
-        Array.isArray(
-          persistedChildIds
-        ) &&
-        persistedChildIds.length === 3;
-
+      /*
+       * Nunca converter silenciosamente um conjunto
+       * antigo de carousel em Reel.
+       */
       if (
-        hasAnyPersistedContainer &&
-        !persistedMetadataIsComplete
+        persistedChildIds.length > 0
       ) {
         throw new Error(
-          "Os metadados persistidos dos containers Instagram estao incompletos ou inconsistentes entre os dois editoriais."
+          "Existem child containers de carrossel persistidos. Limpeza manual obrigatoria antes do Reel."
         );
       }
 
       /*
-       * ======================================================
-       * TENTAR REUTILIZAR
-       * ======================================================
+       * REUTILIZAR REEL EXISTENTE.
        */
-
-      let persistedContainersInvalid =
-        false;
-
       if (
-        persistedMetadataIsComplete
+        persistedParents.length === 1 &&
+        childVariants.length === 1 &&
+        persistedChildIds.length === 0
       ) {
-        const childContainers = [];
+        const reelContainerId =
+          persistedParents[0];
 
-        for (
-          let index = 0;
-          index < persistedChildIds.length;
-          index++
+        let status =
+          await callInstagramApi(
+            config,
+            reelContainerId,
+            {
+              method:
+                "GET",
+
+              body: {
+                fields:
+                  "id,status_code,status",
+              },
+            }
+          );
+
+        if (
+          status?.status_code ===
+          "PUBLISHED"
         ) {
-          const containerId =
-            persistedChildIds[index];
+          throw new Error(
+            `O container Reel ${reelContainerId} ja consta como PUBLISHED. Novo container bloqueado.`
+          );
+        }
 
-          let status =
-            await callInstagramApi(
-              config,
-              containerId,
-              {
-                method:
-                  "GET",
-
-                body: {
-                  fields:
-                    "id,status_code,status",
-                },
-              }
-            );
-
-          if (
-            status?.status_code ===
-            "PUBLISHED"
-          ) {
-            throw new Error(
-              `O container filho ${containerId} ja consta como PUBLISHED. Publicacao automatica bloqueada para evitar duplicidade.`
-            );
-          }
-
-          if (
-            status?.status_code ===
-              "ERROR" ||
-            status?.status_code ===
-              "EXPIRED"
-          ) {
-            persistedContainersInvalid =
-              true;
-
-            break;
-          }
-
+        if (
+          status?.status_code ===
+            "ERROR" ||
+          status?.status_code ===
+            "EXPIRED"
+        ) {
+          throw new Error(
+            `O container Reel ${reelContainerId} retornou ${status.status_code}: ${status?.status || "sem detalhes"}. ID preservado para auditoria manual; recriacao automatica bloqueada.`
+          );
+        }
+        else {
           if (
             status?.status_code !==
             "FINISHED"
@@ -2163,205 +2705,147 @@ export default async function handler(req, res) {
             status =
               await waitForInstagramContainer(
                 config,
-                containerId
+                reelContainerId
               );
           }
 
-          childContainers.push({
-            position:
-              index + 1,
+          instagramContainersResult = {
+            api_version:
+              config.apiVersion,
 
-            id:
-              containerId,
+            graph_base_url:
+              config.baseUrl,
 
-            image_url:
-              instagramImages[index],
+            media_type:
+              "REELS",
 
-            status_code:
+            share_to_feed:
+              true,
+
+            reel_container_id:
+              reelContainerId,
+
+            parent_container_id:
+              reelContainerId,
+
+            child_containers:
+              [],
+
+            parent_status_code:
               status.status_code,
-          });
-        }
 
-        if (
-          !persistedContainersInvalid
-        ) {
-          const parentId =
-            persistedParents[0];
+            video_url:
+              reelPayload.videoUrl,
 
-          let parentStatus =
-            await callInstagramApi(
-              config,
-              parentId,
-              {
-                method:
-                  "GET",
+            caption_preview:
+              reelPayload
+                .captionInfo
+                .caption_preview,
 
-                body: {
-                  fields:
-                    "id,status_code,status",
-                },
-              }
-            );
+            caption_length:
+              reelPayload
+                .captionInfo
+                .caption_length,
 
-          if (
-            parentStatus?.status_code ===
-            "PUBLISHED"
-          ) {
-            throw new Error(
-              `O container pai ${parentId} ja consta como PUBLISHED. Publicacao automatica bloqueada para evitar duplicidade.`
-            );
-          }
+            hashtags:
+              reelPayload
+                .captionInfo
+                .hashtags,
 
-          if (
-            parentStatus?.status_code ===
-              "ERROR" ||
-            parentStatus?.status_code ===
-              "EXPIRED"
-          ) {
-            persistedContainersInvalid =
-              true;
-          }
-          else {
-            if (
-              parentStatus
-                ?.status_code !==
-              "FINISHED"
-            ) {
-              parentStatus =
-                await waitForInstagramContainer(
-                  config,
-                  parentId
-                );
-            }
+            hashtags_count:
+              reelPayload
+                .captionInfo
+                .hashtags_count,
 
-            instagramContainersResult = {
-              api_version:
-                config.apiVersion,
+            reused:
+              true,
 
-              graph_base_url:
-                config.baseUrl,
-
-              child_containers:
-                childContainers,
-
-              parent_container_id:
-                parentId,
-
-              parent_status_code:
-                parentStatus.status_code,
-
-              reused:
-                true,
-
-              persisted:
-                true,
-            };
-          }
+            persisted:
+              true,
+          };
         }
       }
-
-      /*
-       * ======================================================
-       * INVALIDOS/EXPIRADOS
-       * ======================================================
-       *
-       * Somente ERROR/EXPIRED limpa a persistencia e permite
-       * gerar outro conjunto.
-       *
-       * Erros de rede/token NAO chegam aqui como invalidos:
-       * eles interrompem o fluxo e preservam os IDs existentes.
-       */
-
-      if (
-        persistedContainersInvalid
+      else if (
+        persistedParents.length > 1 ||
+        childVariants.length !== 1
       ) {
-        const {
-          data: clearedRows,
-          error: clearError,
-        } =
-          await supabase
-            .from("publicacoes")
-            .update({
-              instagram_parent_container_id:
-                null,
-
-              instagram_child_container_ids:
-                null,
-
-              instagram_containers_created_at:
-                null,
-
-              atualizado_em:
-                new Date().toISOString(),
-            })
-            .eq(
-              "publication_group_id",
-              selected.publication_group_id
-            )
-            .is(
-              "published_at",
-              null
-            )
-            .select("id");
-
-        if (
-          clearError ||
-          !Array.isArray(
-            clearedRows
-          ) ||
-          clearedRows.length !== 2
-        ) {
-          throw new Error(
-            `Nao foi possivel limpar containers Instagram invalidos: ${
-              clearError?.message ||
-              "grupo incompleto"
-            }`
-          );
-        }
+        throw new Error(
+          "Metadados de container Instagram inconsistentes entre os dois editoriais."
+        );
       }
 
       /*
-       * ======================================================
-       * CRIAR NOVOS SOMENTE SE NAO HOUVER REUTILIZAVEIS
-       * ======================================================
+       * CRIAR NOVO REEL.
        */
-
       if (
         !instagramContainersResult
       ) {
+        /*
+         * O MP4 desta publicacao ja foi:
+         * - gerado;
+         * - aprovado visualmente;
+         * - persistido em Storage;
+         * - identificado por hash.
+         *
+         * Nao regenerar nem sobrescrever nesta etapa.
+         */
+        const reelVideo = {
+          width:
+            1080,
+
+          height:
+            1920,
+
+          duration_seconds:
+            30,
+
+          frame_seconds:
+            [12, 12, 6],
+        };
+
+        const uploaded = {
+          video_url:
+            reelPayload.videoUrl,
+
+          storage_path:
+            reelPayload.storagePath,
+        };
+
+        /*
+         * POST /media.
+         *
+         * Ainda NÃO chama media_publish.
+         */
         const created =
-          await createInstagramCarouselContainers(
-            instagramImages,
-            captionParts.join("\n\n")
-          );
+          await createInstagramReelContainer({
+            videoUrl:
+              uploaded.video_url,
 
-        const childIds =
-          created
-            .child_containers
-            .map(
-              (item) =>
-                String(
-                  item.id
-                )
-            );
+            caption:
+              reelPayload
+                .captionInfo
+                .caption,
+          });
 
-        if (
-          childIds.length !== 3 ||
-          !created
-            .parent_container_id
-        ) {
+        const reelContainerId =
+          String(
+            created
+              .reel_container_id ||
+            ""
+          ).trim();
+
+        if (!reelContainerId) {
           throw new Error(
-            "O Instagram nao retornou o conjunto completo de containers."
+            "Instagram retornou container Reel invalido."
           );
         }
 
         /*
-         * Persistimos IMEDIATAMENTE depois da criacao.
+         * PERSISTIR PRIMEIRO.
          *
-         * A proxima chamada encontrara esses IDs e nao criara
-         * outro conjunto.
+         * Se houver timeout depois deste ponto,
+         * a chamada seguinte encontrará este ID.
          */
-
         const {
           data: persistedRows,
           error: persistError,
@@ -2370,11 +2854,10 @@ export default async function handler(req, res) {
             .from("publicacoes")
             .update({
               instagram_parent_container_id:
-                created
-                  .parent_container_id,
+                reelContainerId,
 
               instagram_child_container_ids:
-                childIds,
+                [],
 
               instagram_containers_created_at:
                 new Date().toISOString(),
@@ -2400,18 +2883,63 @@ export default async function handler(req, res) {
           persistedRows.length !== 2
         ) {
           throw new Error(
-            `Os containers foram criados no Instagram, mas nao foi possivel persisti-los no Supabase: ${
+            `O container Reel ${reelContainerId} foi criado na Meta, mas nao foi possivel persisti-lo no Supabase: ${
               persistError?.message ||
               "grupo incompleto"
-            }. Parent container: ${
-              created
-                .parent_container_id
-            }`
+            }. NAO CRIAR OUTRO CONTAINER SEM AUDITORIA.`
           );
         }
 
+        /*
+         * Somente depois da persistência esperamos
+         * o processamento do vídeo.
+         */
+        const finalStatus =
+          await waitForInstagramContainer(
+            config,
+            reelContainerId
+          );
+
         instagramContainersResult = {
           ...created,
+
+          parent_status_code:
+            finalStatus.status_code,
+
+          storage_path:
+            uploaded.storage_path,
+
+          video_url:
+            uploaded.video_url,
+
+          width:
+            reelVideo.width,
+
+          height:
+            reelVideo.height,
+
+          duration_seconds:
+            reelVideo.duration_seconds,
+
+          caption_preview:
+            reelPayload
+              .captionInfo
+              .caption_preview,
+
+          caption_length:
+            reelPayload
+              .captionInfo
+              .caption_length,
+
+          hashtags:
+            reelPayload
+              .captionInfo
+              .hashtags,
+
+          hashtags_count:
+            reelPayload
+              .captionInfo
+              .hashtags_count,
 
           reused:
             false,
@@ -2421,14 +2949,21 @@ export default async function handler(req, res) {
         };
       }
     }
+
     return res.status(200).json({
-      success: true,
-      dry_run: !wantsInstagramContainers,
+      success:
+        true,
+
+      dry_run:
+        !wantsInstagramContainers,
 
       ...(wantsInstagramContainers
         ? {
             mode:
-              "instagram_containers_only",
+              "instagram_reel_container_only",
+
+            publication_type:
+              "REEL",
 
             publish_called:
               false,
@@ -2437,27 +2972,59 @@ export default async function handler(req, res) {
               instagramContainersResult,
           }
         : {}),
-      carrossel: {
-        publication_group_id: selected.publication_group_id,
-        publication_ids: group.map((item) => item.id),
-        imagens: carouselImages,
-        imagens_instagram: instagramImages,
+
+      reel: {
+        publication_group_id:
+          selected.publication_group_id,
+
+        publication_ids:
+          group.map(
+            (item) =>
+              item.id
+          ),
+
+        frames:
+          carouselImages,
+
+        video_url:
+          instagramContainersResult
+            ?.video_url ||
+          null,
+
+        share_to_feed:
+          true,
       },
+
       transicao: [
         "APROVADO",
         "PUBLICANDO",
         "APROVADO",
       ],
+
       publicacao: {
-        id: restored.id,
-        noticia_id: restored.noticia_id,
-        banner_url: restored.banner_url,
-        caption: restored.caption,
-        hashtags: restored.hashtags,
-        status: restored.status,
-        published_at: restored.published_at,
+        id:
+          restored.id,
+
+        noticia_id:
+          restored.noticia_id,
+
+        banner_url:
+          restored.banner_url,
+
+        caption:
+          restored.caption,
+
+        hashtags:
+          restored.hashtags,
+
+        status:
+          restored.status,
+
+        published_at:
+          restored.published_at,
       },
     });
+
   } catch (error) {
     console.error("WIRE/GEEK: erro na preparacao de publicacao:", error);
 

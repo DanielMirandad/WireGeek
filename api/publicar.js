@@ -27,6 +27,37 @@ function getSupabase() {
   });
 }
 
+
+function resolvePersistedInstagramCaptionHash(group) {
+  const hashes = [
+    ...new Set(
+      (Array.isArray(group) ? group : [])
+        .map(
+          (item) =>
+            String(
+              item?.instagram_caption_sha256 ||
+              ""
+            )
+              .trim()
+              .toLowerCase()
+        )
+        .filter(Boolean)
+    ),
+  ];
+
+  if (hashes.length !== 1) {
+    return null;
+  }
+
+  const hash =
+    hashes[0];
+
+  return /^[0-9a-f]{64}$/.test(hash)
+    ? hash
+    : null;
+}
+
+
 async function createInstagramJpeg(
   supabase,
   sourceUrl,
@@ -1163,7 +1194,7 @@ export default async function handler(req, res) {
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
-      .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key")
+      .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_caption_sha256,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key")
       .eq("publication_group_id", selected.publication_group_id)
       .order("carousel_position", { ascending: true });
 
@@ -1722,6 +1753,18 @@ export default async function handler(req, res) {
             captionInfo
               .caption_length,
 
+          caption_text:
+            captionInfo
+              .caption,
+
+          footer:
+            captionInfo
+              .footer,
+
+          caption_sha256:
+            captionInfo
+              .caption_sha256,
+
           hashtags:
             captionInfo
               .hashtags,
@@ -1862,6 +1905,45 @@ export default async function handler(req, res) {
           id,
           selected.publication_group_id
         );
+
+      const expectedCaptionSha256 =
+        reelPayload
+          .captionInfo
+          .caption_sha256;
+
+      const persistedCaptionSha256 =
+        resolvePersistedInstagramCaptionHash(
+          group
+        );
+
+      if (
+        !persistedCaptionSha256 ||
+        persistedCaptionSha256 !==
+          expectedCaptionSha256
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_publish_preflight",
+
+          publication_type:
+            "REEL",
+
+          ready_to_publish:
+            false,
+
+          publish_called:
+            false,
+
+          caption_integrity:
+            false,
+
+          error:
+            "A legenda persistida no container nao corresponde a legenda atual. Publicacao bloqueada.",
+        });
+      }
 
       const parentIds = [
         ...new Set(
@@ -2081,6 +2163,22 @@ export default async function handler(req, res) {
               .captionInfo
               .caption_length,
 
+          caption_text:
+            reelPayload
+              .captionInfo
+              .caption,
+
+          footer:
+            reelPayload
+              .captionInfo
+              .footer,
+
+          caption_sha256:
+            expectedCaptionSha256,
+
+          caption_integrity:
+            true,
+
           hashtags:
             reelPayload
               .captionInfo
@@ -2219,6 +2317,33 @@ export default async function handler(req, res) {
           id,
           selected.publication_group_id
         );
+
+      const expectedCaptionSha256 =
+        reelPayload
+          .captionInfo
+          .caption_sha256;
+
+      const persistedCaptionSha256 =
+        resolvePersistedInstagramCaptionHash(
+          group
+        );
+
+      if (
+        !persistedCaptionSha256 ||
+        persistedCaptionSha256 !==
+          expectedCaptionSha256
+      ) {
+        return res.status(409).json({
+          error:
+            "A legenda do container nao corresponde a legenda atual. media_publish bloqueado.",
+
+          caption_integrity:
+            false,
+
+          publish_called:
+            false,
+        });
+      }
 
       const parentIds = [
         ...new Set(
@@ -3235,6 +3360,46 @@ return res.status(502).json({
         }
       }
 
+      const expectedCaptionSha256 =
+        reelPayload
+          .captionInfo
+          .caption_sha256;
+
+      const persistedCaptionSha256 =
+        resolvePersistedInstagramCaptionHash(
+          group
+        );
+
+      const hasAnyCaptionHash =
+        group.some(
+          (item) =>
+            Boolean(
+              String(
+                item?.instagram_caption_sha256 ||
+                ""
+              ).trim()
+            )
+        );
+
+      if (
+        persistedParents.length === 1 &&
+        persistedCaptionSha256 !==
+          expectedCaptionSha256
+      ) {
+        throw new Error(
+          "O container Reel existente possui legenda diferente da legenda atual. Recriacao e publicacao automaticas bloqueadas."
+        );
+      }
+
+      if (
+        persistedParents.length === 0 &&
+        hasAnyCaptionHash
+      ) {
+        throw new Error(
+          "Existe SHA de legenda sem parent container correspondente. Auditoria manual obrigatoria."
+        );
+      }
+
       /*
        * Nunca converter silenciosamente um conjunto
        * antigo de carousel em Reel.
@@ -3456,6 +3621,9 @@ return res.status(502).json({
 
               instagram_containers_created_at:
                 new Date().toISOString(),
+
+              instagram_caption_sha256:
+                expectedCaptionSha256,
 
               atualizado_em:
                 new Date().toISOString(),

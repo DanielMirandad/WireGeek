@@ -25,6 +25,13 @@ export default function PublicationPanel({ item }) {
       0
     );
 
+  const noticiaId =
+    Number(
+      item?.id ||
+      item?.noticia_id ||
+      0
+    );
+
   /*
    * Uma nova geracao pode reutilizar os mesmos
    * publication_id enquanto atualiza banner_url
@@ -153,7 +160,10 @@ export default function PublicationPanel({ item }) {
 
 
   async function loadGroup() {
-    if (!publicationId) {
+    if (
+      !publicationId &&
+      !noticiaId
+    ) {
       return;
     }
 
@@ -168,11 +178,18 @@ export default function PublicationPanel({ item }) {
     setPublishConfirmed(false);
 
     try {
+      const groupUrl =
+        publicationId
+          ? `/api/publicacoes?id=${encodeURIComponent(
+              publicationId
+            )}`
+          : `/api/publicacoes?noticia_id=${encodeURIComponent(
+              noticiaId
+            )}`;
+
       const response =
         await fetch(
-          `/api/publicacoes?id=${encodeURIComponent(
-            publicationId
-          )}`,
+          groupUrl,
           {
             method: "GET",
             credentials: "include",
@@ -320,6 +337,13 @@ export default function PublicationPanel({ item }) {
     Array.isArray(group?.publicacoes)
       ? group.publicacoes
       : [];
+
+  const activePublicationId =
+    Number(
+      publicationId ||
+      rows[0]?.id ||
+      0
+    );
 
   const published =
     rows.some(
@@ -619,7 +643,7 @@ export default function PublicationPanel({ item }) {
       } =
         await postPublisher({
           id:
-            publicationId,
+            activePublicationId,
 
           instagram_reel_asset:
             true,
@@ -755,7 +779,7 @@ export default function PublicationPanel({ item }) {
       } =
         await postPublisher({
           id:
-            publicationId,
+            activePublicationId,
 
           instagram_containers:
             true,
@@ -880,7 +904,7 @@ export default function PublicationPanel({ item }) {
       } =
         await postPublisher({
           id:
-            publicationId,
+            activePublicationId,
 
           instagram_publish_preflight:
             true,
@@ -958,7 +982,7 @@ export default function PublicationPanel({ item }) {
         publicationIds.some(
           (value) =>
             Number(value) ===
-            publicationId
+            activePublicationId
         ) &&
         accountId &&
         parentId ===
@@ -1046,13 +1070,13 @@ export default function PublicationPanel({ item }) {
       } =
         await postPublisher({
           id:
-            publicationId,
+            activePublicationId,
 
           instagram_publish:
             true,
 
           publish_confirmation:
-            `PUBLICAR_INSTAGRAM_${publicationId}`,
+            `PUBLICAR_INSTAGRAM_${activePublicationId}`,
 
           expected_parent_container_id:
             expectedParentId,
@@ -1238,7 +1262,10 @@ export default function PublicationPanel({ item }) {
     setPublishConfirmed(false);
     setPublishLocked(false);
 
-    if (publicationId) {
+    if (
+      publicationId ||
+      noticiaId
+    ) {
       console.log(
         "WIRE/GEEK: recarregando grupo de publicacao",
         {
@@ -1254,11 +1281,15 @@ export default function PublicationPanel({ item }) {
     }
   }, [
     publicationId,
+    noticiaId,
     publicationRefreshKey,
   ]);
 
 
-  if (!publicationId) {
+  if (
+    !publicationId &&
+    !noticiaId
+  ) {
     return (
       <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-4">
         <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#7a8f8a]">

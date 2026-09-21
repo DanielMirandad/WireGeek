@@ -33,6 +33,156 @@ export default async function handler(req, res) {
     const supabase = getSupabase();
 
     if (req.method === "GET") {
+      const rawRequestedNoticiaId =
+        req.query?.noticia_id;
+
+      if (
+        rawRequestedNoticiaId !==
+          undefined &&
+        rawRequestedNoticiaId !==
+          null &&
+        String(
+          rawRequestedNoticiaId
+        ).trim() !== ""
+      ) {
+        const requestedNoticiaId =
+          Number(
+            rawRequestedNoticiaId
+          );
+
+        if (
+          !Number.isInteger(
+            requestedNoticiaId
+          ) ||
+          requestedNoticiaId <= 0
+        ) {
+          return res.status(400).json({
+            error:
+              "Informe um noticia_id valido.",
+          });
+        }
+
+        const {
+          data: latestPublication,
+          error: latestError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .select(
+              "id,publication_group_id,criado_em"
+            )
+            .eq(
+              "noticia_id",
+              requestedNoticiaId
+            )
+            .not(
+              "publication_group_id",
+              "is",
+              null
+            )
+            .order(
+              "criado_em",
+              {
+                ascending: false,
+              }
+            )
+            .limit(1)
+            .maybeSingle();
+
+        if (latestError) {
+          throw new Error(
+            `Nao foi possivel localizar a publicacao mais recente da noticia: ${latestError.message}`
+          );
+        }
+
+        if (
+          !latestPublication
+            ?.publication_group_id
+        ) {
+          return res.status(404).json({
+            error:
+              "Esta noticia ainda nao possui publicacoes materializadas pelo modo Briefing.",
+          });
+        }
+
+        const {
+          data: latestGroup,
+          error: latestGroupError,
+        } =
+          await supabase
+            .from("publicacoes")
+            .select(`
+              id,
+              noticia_id,
+              banner_url,
+              caption,
+              hashtags,
+              status,
+              approved_at,
+              rejected_at,
+              published_at,
+              criado_em,
+              atualizado_em,
+              publication_group_id,
+              carousel_position,
+              cta_url,
+              selected_channels,
+              instagram_status,
+              instagram_caption_sha256,
+              instagram_post_id,
+              instagram_url,
+              instagram_parent_container_id,
+              instagram_child_container_ids,
+              instagram_containers_created_at,
+              publish_attempts,
+              last_error,
+              noticias (
+                id,
+                titulo,
+                categoria
+              )
+            `)
+            .eq(
+              "publication_group_id",
+              latestPublication
+                .publication_group_id
+            )
+            .order(
+              "carousel_position",
+              {
+                ascending: true,
+              }
+            );
+
+        if (latestGroupError) {
+          throw new Error(
+            `Nao foi possivel carregar o grupo mais recente da noticia: ${latestGroupError.message}`
+          );
+        }
+
+        return res.status(200).json({
+          success:
+            true,
+
+          resolved_by:
+            "noticia_id",
+
+          noticia_id:
+            requestedNoticiaId,
+
+          publication_group_id:
+            latestPublication
+              .publication_group_id,
+
+          quantidade:
+            latestGroup?.length || 0,
+
+          publicacoes:
+            latestGroup || [],
+        });
+      }
+
+
       const requestedId =
         Number(req.query?.id);
 

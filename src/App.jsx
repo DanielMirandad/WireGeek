@@ -1,4 +1,5 @@
 import BriefingBannerSection from "./briefing/BriefingBannerSection.jsx";
+import PublicationPanel from "./PublicationPanel.jsx";
 import { cleanBriefingText } from "../lib/briefing-text.mjs";
 import { parseBriefingRealInput } from "./briefing-real-input.mjs";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -707,6 +708,7 @@ function DispatchCard({ item, index }) {
     { id: "materia", label: "Matéria", icon: Newspaper },
     { id: "highlights", label: "Highlights", icon: Zap },
     { id: "hashtags", label: "Hashtags", icon: Hash },
+    { id: "publicacao", label: "Publicação", icon: Radio },
 
   ];
 
@@ -928,6 +930,12 @@ function DispatchCard({ item, index }) {
 
 
       </div>
+      {tab === "publicacao" && (
+        <div className="border-t border-[#243436] p-4">
+          <PublicationPanel item={item} />
+        </div>
+      )}
+
     </article>
 
   );

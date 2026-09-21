@@ -9,6 +9,7 @@ import briefingBannerHandler from "./api/banner-briefing.js";
 import publicacoesHandler from "./api/publicacoes.js";
 import publicarHandler from "./api/publicar.js";
 import briefingImportHandler from "./api/briefing-import.js";
+import canvaAuthHandler from "./api/canva-auth.js";
 
 dotenv.config({
   path: [
@@ -113,6 +114,13 @@ app.post("/api/banner-briefing", async (req, res) => {
     }
   }
 });
+
+app.get("/api/canva/authorize", canvaAuthHandler);
+app.get("/api/canva/callback", canvaAuthHandler);
+app.get("/api/canva/dataset", (req, res) => {
+  return canvaAuthHandler(req, res);
+});
+app.post("/api/canva/autofill", canvaAuthHandler);
 
 app.post("/api/banner", async (req, res) => {
   console.log("WIRE/GEEK: POST /api/banner recebido.");

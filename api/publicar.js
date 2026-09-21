@@ -4,7 +4,7 @@ import {
   buildInstagramReelCaption,
   buildInstagramReelVideo,
   normalizeInstagramHashtags,
-  uploadInstagramReelVideo,
+  uploadImmutableInstagramReelVideo,
 } from "../lib/instagram-reel.mjs";
 
 function getSupabase() {
@@ -1086,6 +1086,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    const wantsInstagramReelAsset =
+      req.body?.instagram_reel_asset === true ||
+      String(
+        req.body?.instagram_reel_asset || ""
+      )
+        .trim()
+        .toLowerCase() === "true";
+
     const wantsInstagramContainers =
       req.body?.instagram_containers === true ||
       String(
@@ -1107,6 +1115,26 @@ export default async function handler(req, res) {
       )
         .trim()
         .toLowerCase() === "true";
+    const instagramModeCount =
+      [
+        wantsInstagramReelAsset,
+        wantsInstagramContainers,
+        wantsInstagramPublishPreflight,
+        wantsInstagramPublish,
+      ]
+        .filter(Boolean)
+        .length;
+
+    if (instagramModeCount > 1) {
+      return res.status(400).json({
+        error:
+          "Use somente um modo Instagram por chamada.",
+
+        publish_called:
+          false,
+      });
+    }
+
     const id = Number(req.body?.id);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -1142,6 +1170,573 @@ export default async function handler(req, res) {
     if (groupError) {
       throw new Error(`Nao foi possivel carregar o carrossel: ${groupError.message}`);
     }
+    if (wantsInstagramReelAsset) {
+      /*
+       * ======================================================
+       * INSTAGRAM REEL - MP4 IMUTAVEL
+       * ======================================================
+       *
+       * NAO chama a Meta.
+       * NAO cria container.
+       * NAO executa media_publish.
+       * NAO altera publicacoes no banco.
+       */
+
+      if (
+        !Array.isArray(group) ||
+        group.length !== 2 ||
+        !group.some(
+          (item) =>
+            String(item.id) ===
+            String(id)
+        ) ||
+        group[0].carousel_position !== 1 ||
+        group[1].carousel_position !== 2
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          error:
+            "O grupo editorial esta incompleto ou inconsistente.",
+        });
+      }
+
+      if (
+        group.some(
+          (item) =>
+            item.status !==
+            "APROVADO"
+        )
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          error:
+            "Os dois editoriais precisam estar APROVADOS.",
+        });
+      }
+
+      if (
+        group.some(
+          (item) =>
+            item.published_at !==
+              null ||
+            String(
+              item.instagram_post_id ||
+              ""
+            ).trim()
+        )
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          already_published:
+            true,
+
+          error:
+            "O grupo ja possui evidencia de publicacao.",
+        });
+      }
+
+      const parentIds = [
+        ...new Set(
+          group
+            .map(
+              (item) =>
+                String(
+                  item
+                    ?.instagram_parent_container_id ||
+                  ""
+                ).trim()
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      const childIds =
+        group.flatMap(
+          (item) =>
+            Array.isArray(
+              item
+                ?.instagram_child_container_ids
+            )
+              ? item
+                  .instagram_child_container_ids
+                  .map(
+                    (value) =>
+                      String(
+                        value ||
+                        ""
+                      ).trim()
+                  )
+                  .filter(Boolean)
+              : []
+        );
+
+      if (
+        parentIds.length !== 0 ||
+        childIds.length !== 0
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          error:
+            "Ja existem metadados de container Instagram. Novo MP4 bloqueado.",
+        });
+      }
+
+      const noticiaIds = [
+        ...new Set(
+          group
+            .map(
+              (item) =>
+                Number(
+                  item?.noticia_id ||
+                  0
+                )
+            )
+            .filter(
+              (value) =>
+                Number.isInteger(value) &&
+                value > 0
+            )
+        ),
+      ];
+
+      if (
+        noticiaIds.length !== 1
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          error:
+            "Os dois editoriais precisam pertencer a mesma noticia.",
+        });
+      }
+
+      const {
+        data: noticia,
+        error: noticiaError,
+      } =
+        await supabase
+          .from("noticias")
+          .select("id,artigo")
+          .eq(
+            "id",
+            noticiaIds[0]
+          )
+          .maybeSingle();
+
+      if (
+        noticiaError ||
+        !String(
+          noticia?.artigo ||
+          ""
+        ).trim()
+      ) {
+        throw new Error(
+          `Nao foi possivel carregar a noticia completa: ${
+            noticiaError?.message ||
+            "artigo ausente"
+          }`
+        );
+      }
+
+      const hashtagSets =
+        group.map(
+          (item) =>
+            normalizeInstagramHashtags(
+              item?.hashtags
+            )
+        );
+
+      for (
+        const hashtags of
+        hashtagSets
+      ) {
+        if (
+          hashtags.length !== 5
+        ) {
+          return res.status(409).json({
+            success:
+              false,
+
+            mode:
+              "instagram_reel_asset",
+
+            publish_called:
+              false,
+
+            instagram_api_called:
+              false,
+
+            error:
+              `O Reel exige exatamente 5 hashtags. Encontradas: ${hashtags.length}.`,
+          });
+        }
+      }
+
+      if (
+        JSON.stringify(
+          hashtagSets[0]
+        ) !==
+        JSON.stringify(
+          hashtagSets[1]
+        )
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          error:
+            "Os dois editoriais precisam possuir as mesmas 5 hashtags.",
+        });
+      }
+
+      const captionInfo =
+        buildInstagramReelCaption({
+          article:
+            noticia.artigo,
+
+          hashtags:
+            hashtagSets[0],
+        });
+
+      const bannerUrls = [
+        String(
+          group[0]?.banner_url ||
+          ""
+        ).trim(),
+
+        String(
+          group[1]?.banner_url ||
+          ""
+        ).trim(),
+
+        String(
+          group[0]?.cta_url ||
+          ""
+        ).trim(),
+      ];
+
+      if (
+        !bannerUrls.every(Boolean) ||
+        String(
+          group[0]?.cta_url ||
+          ""
+        ).trim() !==
+        String(
+          group[1]?.cta_url ||
+          ""
+        ).trim()
+      ) {
+        return res.status(409).json({
+          success:
+            false,
+
+          mode:
+            "instagram_reel_asset",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          error:
+            "O Reel exige os dois banners editoriais e o mesmo CTA.",
+        });
+      }
+
+      for (
+        const value of
+        bannerUrls
+      ) {
+        let parsed;
+
+        try {
+          parsed =
+            new URL(value);
+        }
+        catch {
+          return res.status(409).json({
+            success:
+              false,
+
+            mode:
+              "instagram_reel_asset",
+
+            publish_called:
+              false,
+
+            instagram_api_called:
+              false,
+
+            error:
+              "URL de frame invalida.",
+          });
+        }
+
+        if (
+          parsed.protocol !==
+            "https:" ||
+          parsed.username ||
+          parsed.password
+        ) {
+          return res.status(409).json({
+            success:
+              false,
+
+            mode:
+              "instagram_reel_asset",
+
+            publish_called:
+              false,
+
+            instagram_api_called:
+              false,
+
+            error:
+              "Os frames precisam usar URLs HTTPS publicas.",
+          });
+        }
+      }
+
+      /*
+       * Se o asset imutavel ja existe,
+       * somente o validamos e reutilizamos.
+       *
+       * Isso torna refresh/reabertura idempotente.
+       */
+      let immutableAsset =
+        null;
+
+      let reelVideo =
+        null;
+
+      try {
+        const existing =
+          await resolveApprovedInstagramReelAsset(
+            supabase,
+            selected.publication_group_id
+          );
+
+        immutableAsset = {
+          storage_path:
+            existing.storagePath,
+
+          video_url:
+            existing.videoUrl,
+
+          sha256:
+            existing.sha256,
+
+          hash_prefix:
+            existing.sha256.slice(
+              0,
+              16
+            ),
+
+          bytes:
+            existing.bytes,
+
+          reused:
+            true,
+
+          immutable:
+            true,
+        };
+      }
+      catch (existingError) {
+        const message =
+          String(
+            existingError?.message ||
+            ""
+          );
+
+        if (
+          !message.includes(
+            "encontrados: 0"
+          )
+        ) {
+          throw existingError;
+        }
+      }
+
+      if (!immutableAsset) {
+        reelVideo =
+          await buildInstagramReelVideo({
+            bannerUrls,
+          });
+
+        const uploaded =
+          await uploadImmutableInstagramReelVideo({
+            supabase,
+
+            publicationGroupId:
+              selected.publication_group_id,
+
+            buffer:
+              reelVideo.buffer,
+          });
+
+        const verified =
+          await resolveApprovedInstagramReelAsset(
+            supabase,
+            selected.publication_group_id
+          );
+
+        if (
+          verified.sha256 !==
+            uploaded.sha256 ||
+          verified.storagePath !==
+            uploaded.storage_path ||
+          verified.videoUrl !==
+            uploaded.video_url
+        ) {
+          throw new Error(
+            "O MP4 foi salvo, mas a verificacao imutavel retornou dados divergentes."
+          );
+        }
+
+        immutableAsset =
+          uploaded;
+      }
+
+      return res.status(200).json({
+        success:
+          true,
+
+        mode:
+          "instagram_reel_asset",
+
+        publication_type:
+          "REEL",
+
+        publish_called:
+          false,
+
+        instagram_api_called:
+          false,
+
+        publication_group_id:
+          selected.publication_group_id,
+
+        publication_ids:
+          group.map(
+            (item) =>
+              item.id
+          ),
+
+        asset:
+          immutableAsset,
+
+        reel: {
+          width:
+            reelVideo?.width ||
+            1080,
+
+          height:
+            reelVideo?.height ||
+            1920,
+
+          duration_seconds:
+            reelVideo
+              ?.duration_seconds ||
+            30,
+
+          frame_seconds:
+            reelVideo
+              ?.frame_seconds ||
+            [12, 12, 6],
+
+          frames:
+            bannerUrls,
+        },
+
+        caption: {
+          caption_preview:
+            captionInfo
+              .caption_preview,
+
+          caption_length:
+            captionInfo
+              .caption_length,
+
+          hashtags:
+            captionInfo
+              .hashtags,
+
+          hashtags_count:
+            captionInfo
+              .hashtags_count,
+        },
+
+        next_action:
+          "create_instagram_reel_container",
+      });
+    }
+
+
     if (wantsInstagramPublishPreflight) {
       /*
        * ======================================================

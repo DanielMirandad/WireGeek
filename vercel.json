@@ -1,23 +1,23 @@
 {
-    "version":  2,
-    "buildCommand":  "npm run build",
-    "outputDirectory":  "dist",
-    "functions":  {
-                      "api/news.js":  {
-                                          "maxDuration":  300
-                                      },
-                      "api/banner.js":  {
-                                            "maxDuration":  300
-                                        },
-                      "api/banner-briefing.js":  {
-                                                     "maxDuration":  300
-                                                 },
-                      "api/auth.js":  {
-                                          "maxDuration":  30
-                                      },
-                      "api/publicar.js":  {
-                                              "memory":  3009,
-                                              "maxDuration":  300
-                                          }
-                  }
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/news.js": {
+      "maxDuration": 300
+    },
+    "api/banner.js": {
+      "maxDuration": 300
+    },
+    "api/banner-briefing.js": {
+      "maxDuration": 300
+    },
+    "api/auth.js": {
+      "maxDuration": 30
+    },
+    "api/publicar.js": {
+      "memory": 2048,
+      "maxDuration": 300
+    }
+  }
 }

@@ -1045,7 +1045,6 @@ async function createInstagramReelContainer({
           caption:
             caption,
 
-          user_tags: JSON.stringify(profileUsernames.map((username) => ({ username }))),
 
           share_to_feed:
             true,
@@ -2130,7 +2129,6 @@ export default async function handler(req, res) {
           account_id:
             config.userId,
 
-          user_tags: reelPayload.captionInfo.profile_usernames.map((username) => ({ username })),
 
           media_type:
             "REELS",

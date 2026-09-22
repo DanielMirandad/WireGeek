@@ -961,10 +961,9 @@ function ReelPublicationPanel({ item }) {
           !context.entries.every((row) => row.instagram_caption_sha256 === hash)) {
         throw new Error(data?.details || data?.error || "Preflight inconsistente com o grupo, MP4 ou legenda persistida.");
       }
-      if (!Array.isArray(data.caption?.profile_usernames) ||
-          !Array.isArray(data.instagram?.user_tags) ||
-          JSON.stringify(data.instagram.user_tags.map((tag) => tag.username)) !== JSON.stringify(data.caption.profile_usernames)) {
-        throw new Error("Marcações do Reel inconsistentes com a legenda.");
+
+      if (!Array.isArray(data.caption?.profile_usernames)) {
+        throw new Error("Perfis da legenda do Reel ausentes ou invalidos.");
       }
       const captionBytes = new TextEncoder().encode(data.caption.caption_text || "");
       const digest = await crypto.subtle.digest("SHA-256", captionBytes);

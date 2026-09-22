@@ -1,3 +1,4 @@
+import { previewInstagramProfiles } from "../lib/instagram-profiles.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 
@@ -378,6 +379,7 @@ export default async function handler(req, res) {
               noticias (
                 id,
                 titulo,
+                artigo,
                 categoria
               )
             `)
@@ -425,6 +427,8 @@ export default async function handler(req, res) {
 
           instagram_reel_asset:
             instagramReelAsset,
+
+          instagram_profile_usernames: previewInstagramProfiles(latestGroup),
 
           publicacoes:
             latestGroup || [],
@@ -516,6 +520,7 @@ export default async function handler(req, res) {
               noticias (
                 id,
                 titulo,
+                artigo,
                 categoria
               )
             `)
@@ -553,6 +558,7 @@ export default async function handler(req, res) {
           instagram_reel_asset:
             instagramReelAsset,
 
+          instagram_profile_usernames: previewInstagramProfiles(group),
           publicacoes:
             group || [],
         });

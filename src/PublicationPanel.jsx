@@ -632,8 +632,11 @@ function ReelPublicationPanel({ item }) {
     !error &&
     actionId === null;
 
+  const profileUsernames = group?.instagram_profile_usernames;
+  const profilesReviewed = Boolean(currentParentId) || Array.isArray(profileUsernames);
+
   const canPrepareReel =
-    rows.length === 2 && allApproved && assetReady &&
+    rows.length === 2 && allApproved && assetReady && profilesReviewed &&
     !published && !manualReview && !publishingEvidence &&
     !hasLegacyChildren && !groupInconsistent && !publishLocked &&
     !publisherBusy && !loading && !error && actionId === null;
@@ -892,7 +895,11 @@ function ReelPublicationPanel({ item }) {
         asset.video_url !== reelAsset?.asset?.video_url) {
       throw new Error("MP4 persistido ausente ou alterado. Preparação interrompida.");
     }
-    return { groupId, parentId: parents[0], entries };
+    if (!parents[0] && (!Array.isArray(loaded.instagram_profile_usernames) ||
+        JSON.stringify(loaded.instagram_profile_usernames) !== JSON.stringify(profileUsernames))) {
+      throw new Error("Os perfis mudaram. Revise a lista atualizada antes de preparar o Reel.");
+    }
+    return { groupId, parentId: parents[0], entries, profileUsernames: loaded.instagram_profile_usernames };
   }
 
   async function createReelContainer(context) {
@@ -901,6 +908,7 @@ function ReelPublicationPanel({ item }) {
     const { response, data } = await postPublisher({
       id: activePublicationId,
       instagram_containers: true,
+      expected_profile_usernames: context.profileUsernames,
     });
     const parentId = String(data?.instagram?.parent_container_id || "").trim();
     if (!response.ok || data?.success !== true ||
@@ -952,6 +960,11 @@ function ReelPublicationPanel({ item }) {
           !/^[0-9a-f]{64}$/i.test(hash || "") ||
           !context.entries.every((row) => row.instagram_caption_sha256 === hash)) {
         throw new Error(data?.details || data?.error || "Preflight inconsistente com o grupo, MP4 ou legenda persistida.");
+      }
+      if (!Array.isArray(data.caption?.profile_usernames) ||
+          !Array.isArray(data.instagram?.user_tags) ||
+          JSON.stringify(data.instagram.user_tags.map((tag) => tag.username)) !== JSON.stringify(data.caption.profile_usernames)) {
+        throw new Error("Marcações do Reel inconsistentes com a legenda.");
       }
       const captionBytes = new TextEncoder().encode(data.caption.caption_text || "");
       const digest = await crypto.subtle.digest("SHA-256", captionBytes);
@@ -1705,6 +1718,21 @@ function ReelPublicationPanel({ item }) {
 
                 </div>
               )}
+
+              <div className="border border-[#263b36] bg-[#0b1416] p-3">
+                <div className="font-mono text-[9px] font-bold uppercase text-[#9ab8c4]">
+                  Menções e marcações
+                </div>
+                <p className="mt-2 font-mono text-[10px] leading-5 text-[#d8dfd9]">
+                  {(preflight?.caption?.profile_usernames ?? (currentParentId ? null : profileUsernames))?.map((name) => "@" + name).join(" ") ||
+                    (currentParentId ? "Container existente: os perfis originais serão preservados." : "Aguardando a lista de perfis da notícia.")}
+                </p>
+                {!currentParentId && (
+                  <p className="mt-2 font-mono text-[9px] leading-5 text-[#667b77]">
+                    Os três perfis fixos entram sempre. Até três perfis oficiais do catálogo são incluídos quando citados na notícia. Confira a lista antes de preparar o Reel.
+                  </p>
+                )}
+              </div>
 
               {(assetReady || currentParentId) && (
                 <button

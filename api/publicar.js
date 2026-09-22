@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import {
-  buildInstagramReelCaption,
+  buildGroupInstagramReelCaption,
   buildInstagramReelVideo,
   normalizeInstagramHashtags,
   uploadImmutableInstagramReelVideo,
@@ -921,7 +921,8 @@ async function loadInstagramReelPayload(
   }
 
   const captionInfo =
-    buildInstagramReelCaption({
+    buildGroupInstagramReelCaption({
+      group,
       article:
         noticia.artigo,
 
@@ -1021,6 +1022,7 @@ async function loadInstagramReelPayload(
 async function createInstagramReelContainer({
   videoUrl,
   caption,
+  profileUsernames,
 }) {
   const config =
     getInstagramConfig();
@@ -1042,6 +1044,8 @@ async function createInstagramReelContainer({
 
           caption:
             caption,
+
+          user_tags: JSON.stringify(profileUsernames.map((username) => ({ username }))),
 
           share_to_feed:
             true,
@@ -1484,7 +1488,8 @@ export default async function handler(req, res) {
       }
 
       const captionInfo =
-        buildInstagramReelCaption({
+        buildGroupInstagramReelCaption({
+          group,
           article:
             noticia.artigo,
 
@@ -1745,6 +1750,7 @@ export default async function handler(req, res) {
         },
 
         caption: {
+          profile_usernames: captionInfo.profile_usernames,
           caption_preview:
             captionInfo
               .caption_preview,
@@ -2124,6 +2130,8 @@ export default async function handler(req, res) {
           account_id:
             config.userId,
 
+          user_tags: reelPayload.captionInfo.profile_usernames.map((username) => ({ username })),
+
           media_type:
             "REELS",
 
@@ -2178,6 +2186,8 @@ export default async function handler(req, res) {
 
           caption_integrity:
             true,
+
+          profile_usernames: reelPayload.captionInfo.profile_usernames,
 
           hashtags:
             reelPayload
@@ -3304,6 +3314,12 @@ return res.status(502).json({
           selected.publication_group_id
         );
 
+      if (!group.some((row) => row.instagram_parent_container_id) &&
+          JSON.stringify(req.body?.expected_profile_usernames) !==
+          JSON.stringify(reelPayload.captionInfo.profile_usernames)) {
+        throw new Error("Os perfis mudaram desde a revisão. Atualize o painel antes de preparar o Reel.");
+      }
+
       const persistedParents = [
         ...new Set(
           group
@@ -3585,6 +3601,8 @@ return res.status(502).json({
               reelPayload
                 .captionInfo
                 .caption,
+
+            profileUsernames: reelPayload.captionInfo.profile_usernames,
           });
 
         const reelContainerId =

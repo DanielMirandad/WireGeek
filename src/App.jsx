@@ -293,7 +293,10 @@ function normalizeNewsItem(item={}) {
   return {
     id:             item.id,
     categoria:      String(item.categoria||"geek").toLowerCase(),
-    titulo:         removeDashes(item.titulo||"Sem título"),
+    titulo:         removeDashes(item.titulo||"Sem título").replace(/\bfuncionarios\b/gi, word =>
+      word === word.toUpperCase() ? "FUNCIONÁRIOS" :
+      word[0] === "F" ? "Funcionários" : "funcionários"
+    ),
     titulo_curto: removeDashes(
       item.titulo_curto ||
       item.short_title ||

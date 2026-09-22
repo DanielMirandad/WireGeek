@@ -249,6 +249,95 @@ export default function PublicationPanel({ item }) {
         setPublishLocked(true);
       }
 
+      /*
+       * Reidratar MP4 imutavel existente.
+       *
+       * Atualizar ou reabrir a pagina nao deve
+       * regenerar um video que ja existe no Storage.
+       */
+      const persistedReelAsset =
+        data?.instagram_reel_asset;
+
+      if (
+        persistedReelAsset
+          ?.conflict === true
+      ) {
+        setReelAsset(null);
+        setPublishLocked(true);
+
+        setPublisherError(
+          "Conflito no MP4 imutavel persistido (" +
+          (
+            persistedReelAsset
+              ?.reason ||
+            "estado desconhecido"
+          ) +
+          "). Nenhuma regeneracao automatica sera executada."
+        );
+      }
+
+      if (
+        persistedReelAsset
+          ?.conflict !== true &&
+        persistedReelAsset
+          ?.exists === true
+      ) {
+        setReelAsset({
+          success: true,
+
+          mode:
+            "instagram_reel_asset",
+
+          publication_type:
+            "REEL",
+
+          publish_called:
+            false,
+
+          instagram_api_called:
+            false,
+
+          publication_group_id:
+            data
+              ?.publication_group_id,
+
+          asset: {
+            immutable: true,
+            reused: true,
+            rehydrated: true,
+
+            storage_path:
+              persistedReelAsset
+                .storage_path,
+
+            video_url:
+              persistedReelAsset
+                .video_url,
+
+            sha256:
+              persistedReelAsset
+                .sha256,
+
+            hash_prefix:
+              persistedReelAsset
+                .hash_prefix,
+
+            bytes:
+              persistedReelAsset
+                .bytes,
+          },
+        });
+      }
+
+      if (
+        persistedReelAsset
+          ?.conflict !== true &&
+        persistedReelAsset
+          ?.exists !== true
+      ) {
+        setReelAsset(null);
+      }
+
       setGroup(data);
     }
     catch (err) {
@@ -513,6 +602,7 @@ export default function PublicationPanel({ item }) {
     !publishingEvidence &&
     !hasLegacyChildren &&
     parentIds.length === 0 &&
+    !publishLocked &&
     !publisherBusy &&
     actionId === null;
 

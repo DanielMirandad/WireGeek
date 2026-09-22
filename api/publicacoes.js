@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 
 function getSupabase() {
   const url = String(process.env.SUPABASE_URL || "").trim();
@@ -18,6 +19,244 @@ function getSupabase() {
       persistSession: false,
     },
   });
+}
+
+
+async function resolveExistingInstagramReelAsset(
+  supabase,
+  publicationGroupId
+) {
+  const groupId =
+    String(
+      publicationGroupId ||
+      ""
+    ).trim();
+
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      groupId
+    )
+  ) {
+    return {
+      exists: false,
+      conflict: true,
+      reason:
+        "INVALID_PUBLICATION_GROUP_ID",
+    };
+  }
+
+  const folder =
+    "instagram-reels";
+
+  const {
+    data: files,
+    error: listError,
+  } =
+    await supabase
+      .storage
+      .from("wiregeek-banners")
+      .list(
+        folder,
+        {
+          limit: 100,
+
+          search:
+            groupId + "-",
+
+          sortBy: {
+            column: "name",
+            order: "asc",
+          },
+        }
+      );
+
+  if (listError) {
+    throw new Error(
+      "Nao foi possivel consultar o MP4 do Reel: " +
+      listError.message
+    );
+  }
+
+  /*
+   * Sem template literal aqui.
+   *
+   * Evita a falha que corrompeu o primeiro patch.
+   */
+  const filenamePattern =
+    new RegExp(
+      "^" +
+      groupId +
+      "-([0-9a-f]{16})\\.mp4$",
+      "i"
+    );
+
+  const candidates =
+    Array.isArray(files)
+      ? files.filter(
+          (item) =>
+            filenamePattern.test(
+              String(
+                item?.name ||
+                ""
+              )
+            )
+        )
+      : [];
+
+  if (candidates.length === 0) {
+    return {
+      exists: false,
+      conflict: false,
+    };
+  }
+
+  if (candidates.length !== 1) {
+    return {
+      exists: false,
+      conflict: true,
+
+      reason:
+        "MULTIPLE_IMMUTABLE_REELS",
+
+      count:
+        candidates.length,
+    };
+  }
+
+  const filename =
+    String(
+      candidates[0]?.name ||
+      ""
+    ).trim();
+
+  const match =
+    filename.match(
+      filenamePattern
+    );
+
+  if (!match) {
+    return {
+      exists: false,
+      conflict: true,
+      reason:
+        "INVALID_REEL_FILENAME",
+    };
+  }
+
+  const storagePath =
+    folder +
+    "/" +
+    filename;
+
+  /*
+   * Validacao real do conteudo.
+   *
+   * O hash do arquivo precisa corresponder
+   * ao prefixo imutavel presente no filename.
+   */
+  const {
+    data: blob,
+    error: downloadError,
+  } =
+    await supabase
+      .storage
+      .from("wiregeek-banners")
+      .download(
+        storagePath
+      );
+
+  if (
+    downloadError ||
+    !blob
+  ) {
+    throw new Error(
+      "Nao foi possivel validar o MP4 existente: " +
+      (
+        downloadError?.message ||
+        "sem dados"
+      )
+    );
+  }
+
+  const buffer =
+    Buffer.from(
+      await blob.arrayBuffer()
+    );
+
+  const sha256 =
+    createHash("sha256")
+      .update(buffer)
+      .digest("hex")
+      .toLowerCase();
+
+  const hashPrefix =
+    sha256.slice(
+      0,
+      16
+    );
+
+  if (
+    hashPrefix !==
+    String(
+      match[1]
+    ).toLowerCase()
+  ) {
+    return {
+      exists: false,
+      conflict: true,
+      reason:
+        "REEL_HASH_MISMATCH",
+    };
+  }
+
+  const {
+    data: publicData,
+  } =
+    supabase
+      .storage
+      .from("wiregeek-banners")
+      .getPublicUrl(
+        storagePath
+      );
+
+  const videoUrl =
+    String(
+      publicData?.publicUrl ||
+      ""
+    ).trim();
+
+  if (
+    !videoUrl.startsWith(
+      "https://"
+    )
+  ) {
+    return {
+      exists: false,
+      conflict: true,
+      reason:
+        "INVALID_REEL_PUBLIC_URL",
+    };
+  }
+
+  return {
+    exists: true,
+    conflict: false,
+    immutable: true,
+
+    storage_path:
+      storagePath,
+
+    video_url:
+      videoUrl,
+
+    sha256,
+
+    hash_prefix:
+      hashPrefix,
+
+    bytes:
+      buffer.length,
+  };
 }
 
 export default async function handler(req, res) {
@@ -160,6 +399,13 @@ export default async function handler(req, res) {
           );
         }
 
+        const instagramReelAsset =
+          await resolveExistingInstagramReelAsset(
+            supabase,
+            latestPublication
+              .publication_group_id
+          );
+
         return res.status(200).json({
           success:
             true,
@@ -176,6 +422,9 @@ export default async function handler(req, res) {
 
           quantidade:
             latestGroup?.length || 0,
+
+          instagram_reel_asset:
+            instagramReelAsset,
 
           publicacoes:
             latestGroup || [],
@@ -256,6 +505,7 @@ export default async function handler(req, res) {
               cta_url,
               selected_channels,
               instagram_status,
+              instagram_caption_sha256,
               instagram_post_id,
               instagram_url,
               instagram_parent_container_id,
@@ -284,6 +534,13 @@ export default async function handler(req, res) {
           );
         }
 
+        const instagramReelAsset =
+          await resolveExistingInstagramReelAsset(
+            supabase,
+            selected
+              .publication_group_id
+          );
+
         return res.status(200).json({
           success: true,
 
@@ -292,6 +549,9 @@ export default async function handler(req, res) {
 
           quantidade:
             group?.length || 0,
+
+          instagram_reel_asset:
+            instagramReelAsset,
 
           publicacoes:
             group || [],

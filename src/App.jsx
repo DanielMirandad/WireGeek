@@ -759,10 +759,22 @@ function BriefingLab() {
   );
 }
 
-function DispatchCard({ item, index }) {
+function DispatchCard({
+  item,
+  index,
+  onGenerateBanner,
+  generatingBanner,
+  bannerError,
+}) {
   const [tab, setTab] = useState("materia");
   const { words, minutes } = estimateReading(item.materia);
   const catColor = CATEGORY_COLOR[item.categoria] || "#e0452f";
+
+  const hasGeneratedBanners =
+    Array.isArray(
+      item.briefing_generated_banners
+    ) &&
+    item.briefing_generated_banners.length === 3;
 
   const tabs = [
     { id: "materia", label: "Matéria", icon: Newspaper },
@@ -799,9 +811,28 @@ function DispatchCard({ item, index }) {
           )}
         </div>
 
-        <span className="font-mono text-[10px] text-[#5c6f6b]">
-          {new Date().toLocaleDateString("pt-BR")}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] text-[#5c6f6b]">
+            {new Date().toLocaleDateString("pt-BR")}
+          </span>
+
+          <button
+            type="button"
+            onClick={() =>
+              onGenerateBanner(index)
+            }
+            disabled={generatingBanner}
+            className="inline-flex items-center gap-1.5 border border-[#e0452f]/60 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#e0452f] transition-colors hover:bg-[#e0452f] hover:text-[#0a1315] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ImageIcon size={12} />
+
+            {generatingBanner
+              ? "Gerando..."
+              : hasGeneratedBanners
+                ? "Regenerar banner"
+                : "Gerar banner"}
+          </button>
+        </div>
       </div>
 
       <div className="px-4 pb-2 pt-4">
@@ -812,6 +843,12 @@ function DispatchCard({ item, index }) {
           {item.titulo}
         </h3>
       </div>
+
+      {bannerError && (
+        <div className="mx-4 mb-3 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[11px] leading-5 text-[#f0a89a]">
+          {bannerError}
+        </div>
+      )}
 
       <div className="flex gap-1 overflow-x-auto border-b border-[#243436] px-4">
         {tabs.map(({ id, label, icon: Icon }) => (
@@ -1079,6 +1116,8 @@ export default function GeekNewsWire() {
   const [briefingText, setBriefingText] = useState("");
   const [briefingImporting, setBriefingImporting] = useState(false);
   const [briefingError, setBriefingError] = useState("");
+  const [bannerGeneratingKey, setBannerGeneratingKey] = useState("");
+  const [bannerErrors, setBannerErrors] = useState({});
 const [edition,  setEdition]  = useState(null);
   const [ticker,   setTicker]   = useState("PREPARANDO TRANSMISSAO");
   const [schedulerEnabled, setSchedulerEnabled] = useState(false);
@@ -1202,256 +1241,182 @@ const [edition,  setEdition]  = useState(null);
     return edition.news.filter(n=>n.categoria===activeFilter);
   },[edition,activeFilter]);
 
-  async function generateCurrentEditionBriefing() {
-    if (briefingImporting) return;
-
+  async function generateBannerForNews(
+    newsIndex
+  ) {
     const currentNews =
       Array.isArray(edition?.news)
         ? edition.news
         : [];
 
-    if (!currentNews.length) {
-      setBriefingError(
-        "Gere ou carregue uma edição antes de gerar os banners."
-      );
+    const currentItem =
+      currentNews[newsIndex];
+
+    if (!currentItem) {
       return;
     }
 
-    setBriefingImporting(true);
+    const item =
+      prepareAutomaticBriefingItem(
+        currentItem
+      );
+
+    const noticiaId =
+      String(
+        item?.id || ""
+      ).trim();
+
+    const generationKey =
+      noticiaId ||
+      String(newsIndex);
+
+    if (
+      bannerGeneratingKey ===
+      generationKey
+    ) {
+      return;
+    }
+
+    if (!noticiaId) {
+      setBannerErrors(
+        current => ({
+          ...current,
+          [generationKey]:
+            "Esta notícia não possui noticia_id.",
+        })
+      );
+
+      return;
+    }
+
+    setBannerGeneratingKey(
+      generationKey
+    );
+
+    setBannerErrors(
+      current => ({
+        ...current,
+        [generationKey]: "",
+      })
+    );
+
     setBriefingError("");
     setErrorMsg("");
 
-    /*
-     * Mantém a edição inteira na mesma ordem.
-     *
-     * Cada notícia bem-sucedida substitui
-     * somente sua própria posição.
-     */
-    const resultNews =
-      [...currentNews];
-
-    const failures = [];
-
-    let successCount = 0;
+    setTicker(
+      `GERANDO 3 SLIDES · NOTÍCIA ${newsIndex + 1}`
+    );
 
     try {
-      for (
-        let newsIndex = 0;
-        newsIndex < currentNews.length;
-        newsIndex++
+      const briefingPayload =
+        buildBriefingClientPayload(
+          item
+        );
+
+      console.log(
+        "WIRE/GEEK: GERANDO BANNER INDIVIDUAL",
+        {
+          noticia_id: noticiaId,
+          indice: newsIndex,
+          titulo: item.titulo,
+        }
+      );
+
+      const bannerResponse =
+        await fetch(
+          "/api/banner-briefing",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            credentials:
+              "include",
+
+            body:
+              JSON.stringify({
+                ...briefingPayload,
+                noticia_id: noticiaId,
+                mode: "briefing",
+              }),
+          }
+        );
+
+      const bannerData =
+        await bannerResponse
+          .json()
+          .catch(() => ({}));
+
+      if (
+        !bannerResponse.ok ||
+        !bannerData?.success
       ) {
-        try {
-          const item =
-            prepareAutomaticBriefingItem(
-              currentNews[newsIndex]
-            );
-
-          const noticiaId =
-            String(item?.id || "").trim();
-
-          if (!noticiaId) {
-            throw new Error(
-              `A notícia ${newsIndex + 1} não possui noticia_id.`
-            );
-          }
-
-          setTicker(
-            `GERANDO 3 SLIDES · NOTÍCIA ${newsIndex + 1}/${currentNews.length}`
-          );
-
-          const briefingPayload =
-            buildBriefingClientPayload(item);
-
-          const bannerResponse =
-            await fetch(
-              "/api/banner-briefing",
-              {
-                method: "POST",
-
-                headers: {
-                  "Content-Type":
-                    "application/json",
-                },
-
-                credentials: "include",
-
-                body: JSON.stringify({
-                  ...briefingPayload,
-                  noticia_id: noticiaId,
-                  mode: "briefing",
-                }),
-              }
-            );
-
-          const bannerData =
-            await bannerResponse
-              .json()
-              .catch(() => ({}));
-
-          if (
-            !bannerResponse.ok ||
-            !bannerData?.success
-          ) {
-            throw new Error(
-              bannerData?.details ||
-              bannerData?.error ||
-              `Falha ao gerar banners da notícia ${newsIndex + 1}. HTTP ${bannerResponse.status}.`
-            );
-          }
-
-          if (
-            !Array.isArray(
-              bannerData?.banners
-            ) ||
-            bannerData.banners.length !== 3
-          ) {
-            throw new Error(
-              `A notícia ${newsIndex + 1} não retornou os 3 slides esperados.`
-            );
-          }
-
-          const editorialSlides =
-            bannerData.banners.filter(
-              (banner) =>
-                banner?.type ===
-                "editorial"
-            );
-
-          const ctaSlides =
-            bannerData.banners.filter(
-              (banner) =>
-                banner?.type === "cta"
-            );
-
-          if (
-            editorialSlides.length !== 2 ||
-            ctaSlides.length !== 1
-          ) {
-            throw new Error(
-              `A notícia ${newsIndex + 1} retornou composição inválida. Esperado: 2 editoriais + 1 CTA.`
-            );
-          }
-
-          const generatedItem = {
-            ...item,
-
-            briefing_source: true,
-
-            briefing_generated_banners:
-              bannerData.banners,
-          };
-
-          /*
-           * IMPORTANTE:
-           * substitui exatamente a posição
-           * da notícia processada.
-           *
-           * Não depende da quantidade
-           * de sucessos anteriores.
-           */
-          resultNews[newsIndex] =
-            generatedItem;
-
-          successCount++;
-
-          const partialEdition = {
-            ...edition,
-
-            news: [...resultNews],
-
-            generatedAt:
-              edition?.generatedAt ||
-              new Date().toISOString(),
-          };
-
-          setEdition(
-            partialEdition
-          );
-
-          try {
-            localStorage.setItem(
-              todayKey(),
-              JSON.stringify(
-                partialEdition
-              )
-            );
-          } catch {}
-
-          console.log(
-            "WIRE/GEEK: BRIEFING PARCIAL PERSISTIDO",
-            {
-              noticia_id:
-                noticiaId,
-
-              indice:
-                newsIndex,
-
-              sucessos:
-                successCount,
-
-              total:
-                currentNews.length,
-            }
-          );
-        }
-        catch (itemError) {
-          const failedItem =
-            currentNews[newsIndex];
-
-          failures.push({
-            index:
-              newsIndex,
-
-            id:
-              failedItem?.id || null,
-
-            titulo:
-              failedItem?.titulo || "",
-
-            error:
-              itemError?.message ||
-              "Falha desconhecida.",
-          });
-
-          console.error(
-            "WIRE/GEEK: falha no briefing automatico da noticia:",
-            {
-              indice:
-                newsIndex,
-
-              noticia_id:
-                failedItem?.id || null,
-
-              titulo:
-                failedItem?.titulo || "",
-
-              erro:
-                itemError?.message ||
-                "Falha desconhecida.",
-            }
-          );
-
-          /*
-           * Não interrompe o lote.
-           */
-          setTicker(
-            `NOTÍCIA ${newsIndex + 1} FALHOU · CONTINUANDO ${newsIndex + 2 <= currentNews.length ? `${newsIndex + 2}/${currentNews.length}` : ""}`
-          );
-        }
+        throw new Error(
+          bannerData?.details ||
+          bannerData?.error ||
+          `Falha ao gerar banners. HTTP ${bannerResponse.status}.`
+        );
       }
 
-      const finalEdition = {
+      if (
+        !Array.isArray(
+          bannerData?.banners
+        ) ||
+        bannerData.banners.length !== 3
+      ) {
+        throw new Error(
+          "A notícia não retornou os 3 slides esperados."
+        );
+      }
+
+      const editorialSlides =
+        bannerData.banners.filter(
+          banner =>
+            banner?.type ===
+            "editorial"
+        );
+
+      const ctaSlides =
+        bannerData.banners.filter(
+          banner =>
+            banner?.type ===
+            "cta"
+        );
+
+      if (
+        editorialSlides.length !== 2 ||
+        ctaSlides.length !== 1
+      ) {
+        throw new Error(
+          "Composição inválida. Esperado: 2 editoriais + 1 CTA."
+        );
+      }
+
+      const generatedItem = {
+        ...item,
+
+        briefing_source: true,
+
+        briefing_generated_banners:
+          bannerData.banners,
+      };
+
+      const updatedNews =
+        [...currentNews];
+
+      updatedNews[newsIndex] =
+        generatedItem;
+
+      const updatedEdition = {
         ...edition,
-
-        news: [...resultNews],
-
-        generatedAt:
-          edition?.generatedAt ||
-          new Date().toISOString(),
+        news: updatedNews,
       };
 
       setEdition(
-        finalEdition
+        updatedEdition
       );
 
       setStatus("done");
@@ -1460,70 +1425,65 @@ const [edition,  setEdition]  = useState(null);
         localStorage.setItem(
           todayKey(),
           JSON.stringify(
-            finalEdition
+            updatedEdition
           )
         );
       } catch {}
 
-      if (failures.length) {
-        setBriefingError(
-          `${failures.length} notícia(s) não tiveram os banners gerados. As demais foram preservadas. Primeira falha: ${failures[0].titulo || `notícia ${failures[0].index + 1}`} — ${failures[0].error}`
-        );
+      setBannerErrors(
+        current => ({
+          ...current,
+          [generationKey]: "",
+        })
+      );
 
-        setTicker(
-          `BANNERS GERADOS · ${successCount} SUCESSO(S) · ${failures.length} FALHA(S)`
-        );
-      }
-      else {
-        setBriefingError("");
-
-        setTicker(
-          `BANNERS GERADOS · ${successCount} DESPACHOS · ${successCount * 3} SLIDES`
-        );
-      }
+      setTicker(
+        `BANNERS GERADOS · NOTÍCIA ${newsIndex + 1} · 3 SLIDES`
+      );
 
       console.log(
-        "WIRE/GEEK: BRIEFING AUTOMATICO DA EDICAO CONCLUIDO",
+        "WIRE/GEEK: BANNER INDIVIDUAL CONCLUIDO",
         {
-          noticias:
-            currentNews.length,
-
-          sucessos:
-            successCount,
-
-          falhas:
-            failures.length,
-
+          noticia_id: noticiaId,
+          indice: newsIndex,
           slides:
-            successCount * 3,
-
-          detalhes_falhas:
-            failures,
+            bannerData.banners.length,
         }
       );
     }
     catch (error) {
-      /*
-       * Este catch fica reservado apenas
-       * para falhas inesperadas do lote,
-       * fora do processamento individual.
-       */
       console.error(
-        "WIRE/GEEK: falha inesperada no briefing automatico da edicao:",
-        error
+        "WIRE/GEEK: falha no banner individual:",
+        {
+          noticia_id: noticiaId,
+          indice: newsIndex,
+          titulo: item.titulo,
+          erro:
+            error?.message ||
+            "Falha desconhecida.",
+        }
       );
 
-      setBriefingError(
-        error?.message ||
-        "Não foi possível concluir o processamento automático da edição."
+      setBannerErrors(
+        current => ({
+          ...current,
+          [generationKey]:
+            error?.message ||
+            "Não foi possível gerar os banners desta notícia.",
+        })
       );
 
       setTicker(
-        "FALHA INESPERADA NA GERAÇÃO AUTOMÁTICA"
+        `FALHA NO BANNER · NOTÍCIA ${newsIndex + 1}`
       );
     }
     finally {
-      setBriefingImporting(false);
+      setBannerGeneratingKey(
+        current =>
+          current === generationKey
+            ? ""
+            : current
+      );
     }
   }
 async function importBriefing() {
@@ -1726,138 +1686,14 @@ async function importBriefing() {
         throw new Error(validationError);
       }
 
-      /*
+            /*
        * ETAPA 2
-       * Cada notícia agora usa o pipeline Briefing aprovado.
        *
-       * NÃO recebe arquivos prontos.
-       * Usa exclusivamente o pipeline do Briefing.
+       * Importação sem geração automática.
+       *
+       * Busca de imagem e renderização somente
+       * acontecem quando Gerar banner for clicado.
        */
-      const newsWithGeneratedBanners = [];
-
-      for (
-        let newsIndex = 0;
-        newsIndex < news.length;
-        newsIndex++
-      ) {
-        const item = news[newsIndex];
-
-        const noticiaId = String(
-          item?.id || ""
-        ).trim();
-
-        if (!noticiaId) {
-          throw new Error(
-            `A notícia ${newsIndex + 1} foi importada sem noticia_id.`
-          );
-        }
-
-        if (!hasBriefingBannerSpecs(item)) {
-          throw new Error(
-            `A notícia ${newsIndex + 1} não possui os dois banners editoriais exigidos pelo modo Briefing.`
-          );
-        }
-
-        setTicker(
-          `GERANDO 3 SLIDES · NOTÍCIA ${newsIndex + 1}/${news.length}`
-        );
-
-        const briefingPayload =
-          buildBriefingClientPayload(item);
-
-        console.log(
-          "WIRE/GEEK: GERANDO BRIEFING IMPORTADO",
-          {
-            noticia_id: noticiaId,
-            noticia: newsIndex + 1,
-            total: news.length,
-            titulo: item.titulo,
-            banners:
-              briefingPayload?.banners?.length || 0,
-          }
-        );
-
-        const bannerResponse =
-          await fetch(
-            "/api/banner-briefing",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-              credentials: "include",
-              body: JSON.stringify({
-                ...briefingPayload,
-                noticia_id: noticiaId,
-                mode: "briefing",
-              }),
-            }
-          );
-
-        const bannerData =
-          await bannerResponse
-            .json()
-            .catch(() => ({}));
-
-        if (
-          !bannerResponse.ok ||
-          !bannerData?.success
-        ) {
-          throw new Error(
-            bannerData?.details ||
-            bannerData?.error ||
-            `Falha ao gerar banners da notícia ${newsIndex + 1}. HTTP ${bannerResponse.status}.`
-          );
-        }
-
-        if (
-          !Array.isArray(bannerData?.banners) ||
-          bannerData.banners.length !== 3
-        ) {
-          throw new Error(
-            `A notícia ${newsIndex + 1} não retornou os 3 slides esperados.`
-          );
-        }
-
-        const editorialSlides =
-          bannerData.banners.filter(
-            banner =>
-              banner?.type === "editorial"
-          );
-
-        const ctaSlides =
-          bannerData.banners.filter(
-            banner =>
-              banner?.type === "cta"
-          );
-
-        if (
-          editorialSlides.length !== 2 ||
-          ctaSlides.length !== 1
-        ) {
-          throw new Error(
-            `A notícia ${newsIndex + 1} retornou uma composição inválida. Esperado: 2 editoriais + 1 CTA.`
-          );
-        }
-
-        newsWithGeneratedBanners.push({
-          ...item,
-
-          /*
-           * Mantemos item.banners intacto:
-           * ele continua sendo o contrato editorial.
-           */
-          briefing_source: true,
-
-          /*
-           * Resultado materializado do Wire/Geek.
-           */
-          briefing_generated_banners:
-            bannerData.banners,
-        });
-      }
-
       const newEdition = {
         ...data.edition,
 
@@ -1872,34 +1708,40 @@ async function importBriefing() {
           data.edition.data_edicao ||
           new Date().toISOString(),
 
-        news: newsWithGeneratedBanners,
+        news: news,
       };
 
-      setEdition(newEdition);
+      setEdition(
+        newEdition
+      );
+
       setStatus("done");
 
       setTicker(
-        `BRIEFING IMPORTADO · ${newsWithGeneratedBanners.length} DESPACHOS · ${newsWithGeneratedBanners.length * 3} SLIDES`
+        `BRIEFING IMPORTADO · ${news.length} DESPACHOS · BANNERS SOB DEMANDA`
       );
 
       setActiveFilter("all");
-      setBriefingImportOpen(false);
+
+      setBriefingImportOpen(
+        false
+      );
+
       setBriefingText("");
 
       try {
         localStorage.setItem(
           todayKey(),
-          JSON.stringify(newEdition)
+          JSON.stringify(
+            newEdition
+          )
         );
       } catch {}
 
       console.log(
-        "WIRE/GEEK: BRIEFING COMPLETO GERADO",
+        "WIRE/GEEK: BRIEFING IMPORTADO SEM GERACAO AUTOMATICA",
         {
-          noticias:
-            newsWithGeneratedBanners.length,
-          slides:
-            newsWithGeneratedBanners.length * 3,
+          noticias: news.length,
         }
       );
     } catch (error) {
@@ -2207,21 +2049,6 @@ async function importBriefing() {
               {archiveLoading ? "Carregando..." : "Arquivo de Edições"}
             </button>
 
-            <button
-              type="button"
-              onClick={generateCurrentEditionBriefing}
-              disabled={
-                briefingImporting ||
-                !edition?.news?.length
-              }
-              className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ImageIcon size={14}/>
-
-              {briefingImporting
-                ? "Gerando banners..."
-                : "Gerar banners da edição"}
-            </button>
 
             <button
               type="button"
@@ -2257,9 +2084,9 @@ async function importBriefing() {
               </div>
 
               <p className="mt-2 text-[12px] leading-5 text-[#8fa39d]">
-                Cole o WIREGEEK_JSON. O Wire/Geek usará o contrato editorial do Briefing,
-                buscará e validará automaticamente as imagens e gerará 2 banners editoriais
-                + 1 CTA para cada notícia.
+                Cole o WIREGEEK_JSON. O Wire/Geek preservará o contrato editorial do Briefing.
+                Nenhuma imagem será buscada durante a importação. Depois, use Gerar banner
+                somente nas notícias que realmente serão utilizadas.
               </p>
             </div>
 
@@ -2278,13 +2105,13 @@ async function importBriefing() {
 
               <div className="border border-[#263b36] bg-[#07110f] px-3 py-3">
                 <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#5fbf7a]">
-                  GERAÇÃO AUTOMÁTICA
+                  GERAÇÃO SOB DEMANDA
                 </div>
 
                 <p className="mt-1 text-[11px] leading-5 text-[#8fa39d]">
-                  Não é necessário selecionar imagens prontas.
-                  Cada notícia será enviada ao modo Briefing aprovado:
-                  busca real de imagens, validação visual, 2 banners editoriais e CTA.
+                  As notícias serão importadas sem consumir buscas de imagem.
+                  Use o botão Gerar banner somente nas matérias que serão utilizadas.
+                  Cada clique gera 2 banners editoriais + 1 CTA para uma única notícia.
                 </p>
               </div>
 
@@ -2311,8 +2138,8 @@ async function importBriefing() {
                   <Newspaper size={14}/>
 
                   {briefingImporting
-                    ? "Gerando..."
-                    : "Importar e gerar banners"}
+                    ? "Importando..."
+                    : "Importar briefing"}
                 </button>
 
                 <button
@@ -2456,7 +2283,23 @@ async function importBriefing() {
 
             <div className="space-y-5">
               {filteredNews.map((item,index)=>(
-                <DispatchCard key={`${item.categoria}-${index}`} item={item} index={edition.news.indexOf(item)}/>
+                <DispatchCard
+                  key={`${item.categoria}-${index}`}
+                  item={item}
+                  index={edition.news.indexOf(item)}
+                  onGenerateBanner={generateBannerForNews}
+                  generatingBanner={
+                    bannerGeneratingKey ===
+                    (String(item?.id || "").trim() ||
+                      String(edition.news.indexOf(item)))
+                  }
+                  bannerError={
+                    bannerErrors[
+                      String(item?.id || "").trim() ||
+                      String(edition.news.indexOf(item))
+                    ] || ""
+                  }
+                />
               ))}
             </div>
           </>

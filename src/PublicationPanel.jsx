@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   RefreshCw,
@@ -7,6 +7,16 @@ import {
 } from "lucide-react";
 
 export default function PublicationPanel({ item }) {
+  const panelKey = JSON.stringify([
+    item?.id, item?.noticia_id, item?.briefing_generated_banners,
+  ]);
+  return <ReelPublicationPanel key={panelKey} item={item} />;
+}
+
+function ReelPublicationPanel({ item }) {
+  const operationRef = useRef(false);
+  const mountedRef = useRef(true);
+
   const generatedSlides =
     Array.isArray(item?.briefing_generated_banners)
       ? item.briefing_generated_banners
@@ -75,7 +85,6 @@ export default function PublicationPanel({ item }) {
    * publisherBusy:
    * - asset
    * - prepare
-   * - preflight
    * - publish
    */
   const [
@@ -108,11 +117,6 @@ export default function PublicationPanel({ item }) {
   ] =
     useState(null);
 
-  const [
-    publishConfirmed,
-    setPublishConfirmed,
-  ] =
-    useState(false);
 
   /*
    * Bloqueio de seguranca local.
@@ -123,11 +127,25 @@ export default function PublicationPanel({ item }) {
    *
    * NUNCA fazemos retry automatico.
    */
+  const lockKey = `wiregeek:reel-lock:${noticiaId}:${publicationId}:${publicationRefreshKey}`;
+
   const [
     publishLocked,
-    setPublishLocked,
+    updatePublishLocked,
   ] =
-    useState(false);
+    useState(() => {
+      try { return sessionStorage.getItem(lockKey) === "true"; }
+      catch { return true; }
+    });
+
+  function setPublishLocked(locked) {
+    updatePublishLocked(locked);
+    try {
+      if (locked) sessionStorage.setItem(lockKey, "true");
+      else sessionStorage.removeItem(lockKey);
+    }
+    catch { /* A trava em memória continua ativa. */ }
+  }
 
 
   async function postPublisher(payload) {
@@ -152,6 +170,8 @@ export default function PublicationPanel({ item }) {
         .json()
         .catch(() => ({}));
 
+    if (!mountedRef.current) throw new Error("Painel alterado; operação interrompida.");
+
     return {
       response,
       data,
@@ -160,6 +180,7 @@ export default function PublicationPanel({ item }) {
 
 
   async function loadGroup() {
+    if (!mountedRef.current) return null;
     if (
       !publicationId &&
       !noticiaId
@@ -175,7 +196,7 @@ export default function PublicationPanel({ item }) {
      * A autorizacao precisa refletir o estado atual.
      */
     setPreflight(null);
-    setPublishConfirmed(false);
+
 
     try {
       const groupUrl =
@@ -208,6 +229,8 @@ export default function PublicationPanel({ item }) {
           `Falha ao carregar grupo. HTTP ${response.status}.`
         );
       }
+
+      if (!mountedRef.current) return null;
 
       const loadedRows =
         Array.isArray(data?.publicacoes)
@@ -339,6 +362,7 @@ export default function PublicationPanel({ item }) {
       }
 
       setGroup(data);
+      return data;
     }
     catch (err) {
       setError(
@@ -375,7 +399,7 @@ export default function PublicationPanel({ item }) {
     setPublisherError("");
     setPublisherInfo("");
     setPreflight(null);
-    setPublishConfirmed(false);
+
 
     try {
       const response =
@@ -604,30 +628,15 @@ export default function PublicationPanel({ item }) {
     parentIds.length === 0 &&
     !publishLocked &&
     !publisherBusy &&
+    !loading &&
+    !error &&
     actionId === null;
 
-  const canCreateContainer =
-    canGenerateAsset &&
-    assetReady &&
-    !publishLocked;
-
-  /*
-   * Preflight e somente leitura.
-   *
-   * Ele continua permitido depois de uma
-   * incerteza na criacao do container, desde
-   * que o parent tenha sido persistido.
-   */
-  const canPreflight =
-    rows.length === 2 &&
-    allApproved &&
-    !published &&
-    !manualReview &&
-    !publishingEvidence &&
-    !hasLegacyChildren &&
-    parentIds.length === 1 &&
-    !publisherBusy &&
-    actionId === null;
+  const canPrepareReel =
+    rows.length === 2 && allApproved && assetReady &&
+    !published && !manualReview && !publishingEvidence &&
+    !hasLegacyChildren && !groupInconsistent && !publishLocked &&
+    !publisherBusy && !loading && !error && actionId === null;
 
   const preflightParentId =
     String(
@@ -700,12 +709,20 @@ export default function PublicationPanel({ item }) {
     preflightGroupId &&
     preflightGroupId ===
       currentGroupId &&
-    preflightAccountId;
+    preflightAccountId &&
+    preflight?.caption?.caption_integrity === true &&
+    /^[0-9a-f]{64}$/i.test(preflight?.caption?.caption_sha256 || "") &&
+    rows.every((row) => row.instagram_caption_sha256 === preflight.caption.caption_sha256);
 
   const canPublish =
     Boolean(
       preflightReady &&
-      publishConfirmed &&
+      assetReady &&
+      allApproved &&
+      !loading &&
+      !error &&
+      !hasLegacyChildren &&
+      !groupInconsistent &&
       !publishLocked &&
       !published &&
       !manualReview &&
@@ -724,7 +741,7 @@ export default function PublicationPanel({ item }) {
     setPublisherError("");
     setPublisherInfo("");
     setPreflight(null);
-    setPublishConfirmed(false);
+
 
     try {
       const {
@@ -851,288 +868,145 @@ export default function PublicationPanel({ item }) {
   }
 
 
-  async function createReelContainer() {
-    if (!canCreateContainer) {
-      return;
+  function preparationContext(loaded, expectedParent = "") {
+    const entries = loaded?.publicacoes;
+    const groupId = String(loaded?.publication_group_id || "");
+    if (!groupId || groupId !== currentGroupId ||
+        !Array.isArray(entries) || entries.length !== 2 ||
+        !entries.some((row) => Number(row.id) === activePublicationId) ||
+        entries.some((row) => row.status !== "APROVADO" ||
+          row.published_at || row.instagram_post_id ||
+          ["PUBLICANDO", "VERIFICAR_MANUALMENTE"].includes(row.instagram_status) ||
+          String(row.publication_group_id || "") !== groupId ||
+          (row.instagram_child_container_ids != null && !Array.isArray(row.instagram_child_container_ids)) ||
+          (row.instagram_child_container_ids || []).length > 0)) {
+      throw new Error("Grupo alterado ou bloqueado. Preparação interrompida.");
     }
-
-    setPublisherBusy("prepare");
-    setPublisherError("");
-    setPublisherInfo("");
-    setPreflight(null);
-    setPublishConfirmed(false);
-
-    try {
-      const {
-        response,
-        data,
-      } =
-        await postPublisher({
-          id:
-            activePublicationId,
-
-          instagram_containers:
-            true,
-        });
-
-      if (!response.ok) {
-        const message =
-          data?.details ||
-          data?.error ||
-          `Falha preparando Reel. HTTP ${response.status}.`;
-
-        /*
-         * 5xx pode acontecer depois de POST /media.
-         * Nao criamos outro container automaticamente.
-         */
-        if (
-          response.status >= 500
-        ) {
-          setPublishLocked(true);
-
-          setPublisherError(
-            `${message} O resultado da criação pode ser ambíguo. NÃO tente criar outro container antes de atualizar e auditar o estado.`
-          );
-        }
-        else {
-          setPublisherError(
-            message
-          );
-        }
-
-        await loadGroup();
-        return;
-      }
-
-      const parentId =
-        String(
-          data
-            ?.instagram
-            ?.parent_container_id ||
-          ""
-        ).trim();
-
-      const children =
-        data
-          ?.instagram
-          ?.child_containers;
-
-      const responseValid =
-        data?.success === true &&
-        data?.mode ===
-          "instagram_reel_container_only" &&
-        data?.publication_type ===
-          "REEL" &&
-        data?.publish_called ===
-          false &&
-        parentId &&
-        Array.isArray(children) &&
-        children.length === 0 &&
-        data
-          ?.instagram
-          ?.persisted ===
-          true &&
-        data
-          ?.instagram
-          ?.parent_status_code ===
-          "FINISHED";
-
-      if (!responseValid) {
-        setPublishLocked(true);
-
-        setPublisherError(
-          "O backend respondeu à preparação do Reel com um estado inesperado. O container NÃO será recriado automaticamente. Atualize o status antes de qualquer nova ação."
-        );
-
-        await loadGroup();
-        return;
-      }
-
-      setPublisherInfo(
-        `Reel preparado e FINISHED. Container ${parentId}. Execute o preflight antes de publicar.`
-      );
-
-      await loadGroup();
+    const parents = entries.map((row) => String(row.instagram_parent_container_id || "").trim());
+    if (parents[0] !== parents[1] || (expectedParent && parents[0] !== expectedParent)) {
+      throw new Error("Parent container inconsistente. Auditoria manual obrigatória.");
     }
-    catch (err) {
-      /*
-       * Falha de rede também é ambígua:
-       * o POST /media pode ter chegado ao backend.
-       */
-      setPublishLocked(true);
-
-      setPublisherError(
-        `${
-          err?.message ||
-          "Falha de rede preparando o Reel."
-        } O resultado pode ser ambíguo. NÃO tente criar outro container antes de atualizar e auditar o estado.`
-      );
-
-      await loadGroup();
+    const asset = loaded.instagram_reel_asset;
+    if (asset?.exists !== true || asset.conflict === true ||
+        asset.sha256 !== reelAsset?.asset?.sha256 ||
+        asset.video_url !== reelAsset?.asset?.video_url) {
+      throw new Error("MP4 persistido ausente ou alterado. Preparação interrompida.");
     }
-    finally {
-      setPublisherBusy("");
-    }
+    return { groupId, parentId: parents[0], entries };
   }
 
-
-  async function runPreflight() {
-    if (!canPreflight) {
-      return;
+  async function createReelContainer(context) {
+    // O endpoint existente persiste o ID antes de aguardar FINISHED.
+    // Uma única chamada: nunca repetir POST de criação nesta operação.
+    const { response, data } = await postPublisher({
+      id: activePublicationId,
+      instagram_containers: true,
+    });
+    const parentId = String(data?.instagram?.parent_container_id || "").trim();
+    if (!response.ok || data?.success !== true ||
+        data.mode !== "instagram_reel_container_only" ||
+        data.publication_type !== "REEL" || data.publish_called !== false ||
+        data.reel?.publication_group_id !== context.groupId || !parentId ||
+        data.instagram?.media_type !== "REELS" || data.instagram?.share_to_feed !== true ||
+        data.instagram?.persisted !== true || data.instagram?.parent_status_code !== "FINISHED" ||
+        !Array.isArray(data.instagram?.child_containers) || data.instagram.child_containers.length !== 0) {
+      throw new Error(data?.details || data?.error || "Resposta inesperada criando container. Resultado possivelmente ambíguo.");
     }
+    return parentId;
+  }
 
-    setPublisherBusy("preflight");
+  async function runPreflight(context) {
+    // Reconsultar somente um container conhecido em processamento não recria
+    // container nem repete publicação. Qualquer outro erro encerra a operação.
+    const deadline = Date.now() + 120000;
+    while (mountedRef.current) {
+      const { response, data } = await postPublisher({
+        id: activePublicationId,
+        instagram_publish_preflight: true,
+      });
+      const parentId = String(data?.instagram?.parent_container_id || "").trim();
+      const processing = response.status === 409 && data?.success === false &&
+        data?.mode === "instagram_publish_preflight" && data?.publication_type === "REEL" &&
+        data?.publish_called === false && data?.ready_to_publish === false &&
+        data?.do_not_retry !== true && parentId === context.parentId &&
+        data?.instagram?.status_code === "IN_PROGRESS";
+      if (processing && Date.now() < deadline) {
+        setPublisherInfo("Aguardando o processamento do Reel...");
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        continue;
+      }
+      const hash = data?.caption?.caption_sha256;
+      const ids = data?.publication_ids;
+      if (!response.ok || data?.success !== true ||
+          data.mode !== "instagram_publish_preflight" || data.publication_type !== "REEL" ||
+          data.ready_to_publish !== true || data.publish_called !== false ||
+          data.publication_group_id !== context.groupId || parentId !== context.parentId ||
+          !Array.isArray(ids) || ids.length !== 2 || new Set(ids.map(Number)).size !== 2 ||
+          !context.entries.every((row) => ids.some((id) => Number(id) === Number(row.id))) ||
+          !String(data.instagram?.account_id || "").trim() ||
+          data.instagram?.media_type !== "REELS" || data.instagram?.share_to_feed !== true ||
+          data.instagram?.parent_status_code !== "FINISHED" ||
+          data.instagram?.video_url !== reelAsset.asset.video_url ||
+          !Array.isArray(data.instagram?.child_containers) || data.instagram.child_containers.length !== 0 ||
+          Number(data.caption?.hashtags_count) !== 5 || data.caption?.caption_integrity !== true ||
+          !/^[0-9a-f]{64}$/i.test(hash || "") ||
+          !context.entries.every((row) => row.instagram_caption_sha256 === hash)) {
+        throw new Error(data?.details || data?.error || "Preflight inconsistente com o grupo, MP4 ou legenda persistida.");
+      }
+      const captionBytes = new TextEncoder().encode(data.caption.caption_text || "");
+      const digest = await crypto.subtle.digest("SHA-256", captionBytes);
+      const computedHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      if (computedHash !== hash) throw new Error("Hash da caption não corresponde ao texto aprovado.");
+      // A conta vem da configuração autenticada do backend e é fixada no
+      // expected_account_id da publicação, cuja API volta a conferir a conta.
+      return data;
+    }
+    throw new Error("Painel alterado; preparação interrompida.");
+  }
+
+  async function prepareInstagramReel() {
+    if (!canPrepareReel || operationRef.current) return;
+    operationRef.current = true;
+    setPublisherBusy("prepare");
     setPublisherError("");
-    setPublisherInfo("");
+    setPublisherInfo("Conferindo MP4 e grupo persistidos...");
     setPreflight(null);
-    setPublishConfirmed(false);
-
+    let creating = false;
     try {
-      const {
-        response,
-        data,
-      } =
-        await postPublisher({
-          id:
-            activePublicationId,
-
-          instagram_publish_preflight:
-            true,
-        });
-
-      if (!response.ok) {
-        setPublisherError(
-          data?.details ||
-          data?.error ||
-          `Preflight falhou. HTTP ${response.status}.`
-        );
-
-        if (
-          data?.already_published ===
-            true ||
-          data?.publish_called ===
-            true
-        ) {
-          setPublishLocked(true);
-          await loadGroup();
-        }
-
-        return;
+      let context = preparationContext(await loadGroup());
+      if (!mountedRef.current) return;
+      if (!context.parentId) {
+        creating = true;
+        setPublishLocked(true);
+        setPublisherInfo("Criando container e aguardando o processamento do Reel...");
+        const parentId = await createReelContainer(context);
+        context = preparationContext(await loadGroup(), parentId);
+        creating = false;
+        setPublishLocked(false);
       }
-
-      const parentId =
-        String(
-          data
-            ?.instagram
-            ?.parent_container_id ||
-          ""
-        ).trim();
-
-      const accountId =
-        String(
-          data
-            ?.instagram
-            ?.account_id ||
-          ""
-        ).trim();
-
-      const returnedGroupId =
-        String(
-          data
-            ?.publication_group_id ||
-          ""
-        ).trim();
-
-      const publicationIds =
-        Array.isArray(
-          data?.publication_ids
-        )
-          ? data.publication_ids
-          : [];
-
-      const children =
-        data
-          ?.instagram
-          ?.child_containers;
-
-      const valid =
-        data?.success === true &&
-        data?.mode ===
-          "instagram_publish_preflight" &&
-        data?.publication_type ===
-          "REEL" &&
-        data?.ready_to_publish ===
-          true &&
-        data?.publish_called ===
-          false &&
-        returnedGroupId ===
-          currentGroupId &&
-        publicationIds.length ===
-          2 &&
-        publicationIds.some(
-          (value) =>
-            Number(value) ===
-            activePublicationId
-        ) &&
-        accountId &&
-        parentId ===
-          currentParentId &&
-        data
-          ?.instagram
-          ?.media_type ===
-          "REELS" &&
-        data
-          ?.instagram
-          ?.share_to_feed ===
-          true &&
-        data
-          ?.instagram
-          ?.parent_status_code ===
-          "FINISHED" &&
-        Array.isArray(children) &&
-        children.length === 0 &&
-        Number(
-          data
-            ?.caption
-            ?.hashtags_count
-        ) === 5;
-
-      if (!valid) {
-        throw new Error(
-          "O preflight retornou dados inconsistentes com o grupo atualmente carregado."
-        );
-      }
-
-      /*
-       * Um preflight valido prova que:
-       * - grupo ainda esta APROVADO;
-       * - parent persistido e FINISHED;
-       * - conta e grupo conferem;
-       * - nenhum media_publish foi executado.
-       */
-      setPublishLocked(false);
-      setPreflight(data);
-
-      setPublisherInfo(
-        "Preflight aprovado. Revise os dados abaixo e confirme explicitamente a publicação."
-      );
+      if (!mountedRef.current) return;
+      setPublisherInfo("Verificando Reel e legenda...");
+      const result = await runPreflight(context);
+      if (!mountedRef.current) return;
+      setPreflight(result);
+      setPublisherInfo("PRONTO_PARA_PUBLICAR. Revise os dados e clique em Publicar no Instagram.");
     }
     catch (err) {
+      if (!mountedRef.current) return;
       setPreflight(null);
-
-      setPublisherError(
-        err?.message ||
-        "Não foi possível concluir o preflight."
-      );
+      if (creating) setPublishLocked(true);
+      setPublisherError((err?.message || "Não foi possível preparar o Reel.") +
+        (creating ? " Não crie outro container; atualize o status e faça auditoria manual." : " Nenhuma publicação foi executada."));
     }
     finally {
-      setPublisherBusy("");
+      operationRef.current = false;
+      if (mountedRef.current) setPublisherBusy("");
     }
   }
 
 
   async function publishReel() {
-    if (!canPublish) {
+    if (!canPublish || operationRef.current) {
       return;
     }
 
@@ -1149,6 +1023,7 @@ export default function PublicationPanel({ item }) {
     const expectedAccountId =
       preflightAccountId;
 
+    operationRef.current = true;
     setPublisherBusy("publish");
     setPublisherError("");
     setPublisherInfo("");
@@ -1192,7 +1067,7 @@ export default function PublicationPanel({ item }) {
           doNotRetry
         ) {
           setPublishLocked(true);
-          setPublishConfirmed(false);
+
           setPreflight(null);
 
           if (
@@ -1273,7 +1148,7 @@ export default function PublicationPanel({ item }) {
          * que pode ter publicado.
          */
         setPublishLocked(true);
-        setPublishConfirmed(false);
+
         setPreflight(null);
 
         setPublisherError(
@@ -1301,7 +1176,7 @@ export default function PublicationPanel({ item }) {
         ).trim();
 
       setPublishLocked(true);
-      setPublishConfirmed(false);
+
       setPreflight(null);
 
       setPublisherInfo(
@@ -1323,7 +1198,7 @@ export default function PublicationPanel({ item }) {
        * Nunca repetir automaticamente.
        */
       setPublishLocked(true);
-      setPublishConfirmed(false);
+
       setPreflight(null);
 
       setPublisherError(
@@ -1336,12 +1211,14 @@ export default function PublicationPanel({ item }) {
       await loadGroup();
     }
     finally {
+      operationRef.current = false;
       setPublisherBusy("");
     }
   }
 
 
   useEffect(() => {
+    mountedRef.current = true;
     setGroup(null);
     setError("");
     setActionError("");
@@ -1349,8 +1226,7 @@ export default function PublicationPanel({ item }) {
     setPublisherInfo("");
     setPreflight(null);
     setReelAsset(null);
-    setPublishConfirmed(false);
-    setPublishLocked(false);
+
 
     if (
       publicationId ||
@@ -1369,6 +1245,7 @@ export default function PublicationPanel({ item }) {
 
       loadGroup();
     }
+    return () => { mountedRef.current = false; };
   }, [
     publicationId,
     noticiaId,
@@ -1743,7 +1620,7 @@ export default function PublicationPanel({ item }) {
                 </div>
 
                 <p className="mt-1 font-mono text-[9px] leading-5 text-[#667b77]">
-                  Fluxo controlado: MP4 imutável → container → preflight → confirmação explícita → media_publish.
+                  Revise o MP4 → Preparar Reel → Publicar no Instagram. A publicação depende do seu clique final.
                 </p>
               </div>
 
@@ -1790,8 +1667,7 @@ export default function PublicationPanel({ item }) {
               )}
 
 
-              {!currentParentId &&
-                assetReady && (
+              {assetReady && (
                 <div className="space-y-2">
                   <div className="border border-[#5fbf7a]/40 bg-[#0c1813] p-3">
                     <div className="font-mono text-[9px] font-bold uppercase tracking-wider text-[#5fbf7a]">
@@ -1827,32 +1703,17 @@ export default function PublicationPanel({ item }) {
                     </a>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={createReelContainer}
-                    disabled={!canCreateContainer}
-                    className="w-full border border-[#d8b45f]/60 bg-[#18160d] px-3 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#d8b45f] transition hover:bg-[#211e10] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {publisherBusy ===
-                    "prepare"
-                      ? "Criando container..."
-                      : "Criar container Reel"}
-                  </button>
                 </div>
               )}
 
-
-              {currentParentId && (
+              {(assetReady || currentParentId) && (
                 <button
                   type="button"
-                  onClick={runPreflight}
-                  disabled={!canPreflight}
+                  onClick={prepareInstagramReel}
+                  disabled={!canPrepareReel}
                   className="w-full border border-[#5b7c89] bg-[#101a1e] px-3 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#9ab8c4] transition hover:bg-[#142229] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {publisherBusy ===
-                  "preflight"
-                    ? "Verificando Reel..."
-                    : "Verificar Reel / Preflight"}
+                  {publisherBusy === "prepare" ? "Preparando Reel..." : "Preparar Reel"}
                 </button>
               )}
 
@@ -1860,7 +1721,7 @@ export default function PublicationPanel({ item }) {
               {publishLocked &&
                 !preflightReady && (
                 <div className="border border-[#e0452f]/40 bg-[#1a1214] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#d9a59b]">
-                  Nova ação mutável bloqueada por segurança. Use “Atualizar status” e, se houver um único parent persistido, execute apenas o preflight de leitura.
+                  Preparação bloqueada por segurança. Atualize o status e audite o container antes de qualquer nova tentativa.
                 </div>
               )}
 
@@ -1873,7 +1734,7 @@ export default function PublicationPanel({ item }) {
                       size={13}
                     />
 
-                    Preflight aprovado
+                    PRONTO_PARA_PUBLICAR
                   </div>
 
 
@@ -1938,31 +1799,9 @@ export default function PublicationPanel({ item }) {
                   )}
 
 
-                  <label className="flex cursor-pointer items-start gap-2 border border-[#344447] bg-[#0b1416] p-3">
-                    <input
-                      type="checkbox"
-                      checked={
-                        publishConfirmed
-                      }
-                      onChange={
-                        (event) =>
-                          setPublishConfirmed(
-                            event.target
-                              .checked
-                          )
-                      }
-                      disabled={
-                        Boolean(
-                          publisherBusy
-                        )
-                      }
-                      className="mt-0.5"
-                    />
-
-                    <span className="font-mono text-[9px] leading-5 text-[#9aa9a5]">
-                      Confirmo que revisei o Reel, a conta, o container e desejo publicar agora no Instagram. Esta ação chama media_publish e não terá retry automático.
-                    </span>
-                  </label>
+                  <p className="font-mono text-[9px] leading-5 text-[#9aa9a5]">
+                    Ao clicar em Publicar no Instagram, você confirma a publicação deste Reel na conta exibida. Não haverá nova tentativa automática.
+                  </p>
 
 
                   <button
@@ -1974,7 +1813,7 @@ export default function PublicationPanel({ item }) {
                     {publisherBusy ===
                     "publish"
                       ? "Publicando..."
-                      : "Publicar agora no Instagram"}
+                      : "Publicar no Instagram"}
                   </button>
                 </div>
               )}
@@ -1985,7 +1824,7 @@ export default function PublicationPanel({ item }) {
 
 
       <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#5c6f6b]">
-        Fluxo Reel: MP4 imutável → container persistido → preflight obrigatório → confirmação explícita. Nenhum retry automático de media_publish.
+        Fluxo Reel: revisar MP4 → Preparar Reel → Publicar no Instagram. Nenhuma publicação automática.
       </div>
 
     </div>

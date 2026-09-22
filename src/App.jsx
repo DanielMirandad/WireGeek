@@ -1117,7 +1117,10 @@ const [edition,  setEdition]  = useState(null);
   }, []);
 
   async function login() {
-    if (!adminKey.trim()) {
+    const normalizedAdminKey =
+      adminKey.trim();
+
+    if (!normalizedAdminKey) {
       setAuthError("Informe a chave administrativa.");
       return;
     }
@@ -1132,7 +1135,9 @@ const [edition,  setEdition]  = useState(null);
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ key: adminKey }),
+        body: JSON.stringify({
+          key: normalizedAdminKey,
+        }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -2110,7 +2115,10 @@ async function importBriefing() {
                 type="password"
                 value={adminKey}
                 onChange={(event) => setAdminKey(event.target.value)}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                autoCapitalize="none"
+                spellCheck={false}
+                name="wiregeek-admin-key"
                 autoFocus
                 className="w-full border border-[#3a4a4d] bg-[#07110f] px-3 py-3 font-mono text-sm text-[#f4f0e8] outline-none transition focus:border-[#e0452f]"
                 placeholder="Digite a chave de acesso"

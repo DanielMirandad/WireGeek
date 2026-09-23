@@ -86,6 +86,652 @@ async function fetchWithRetry(url, options, { attempts=4, onRetry }={}) {
   }
   throw lastError||new Error("Falha após múltiplas tentativas.");
 }
+async function postPublisherMode(
+  payload
+) {
+  const response =
+    await fetch(
+      "/api/publicar",
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        credentials:
+          "include",
+
+        body:
+          JSON.stringify(
+            payload
+          ),
+      }
+    );
+
+  const data =
+    await response
+      .json()
+      .catch(
+        () => ({})
+      );
+
+  if (!response.ok) {
+    const message =
+      data?.details ||
+      data?.error ||
+      `Falha em /api/publicar. HTTP ${response.status}.`;
+
+    const error =
+      new Error(
+        message
+      );
+
+    error.status =
+      response.status;
+
+    error.data =
+      data;
+
+    throw error;
+  }
+
+  return data;
+}
+
+
+async function loadPublicationGroupForAutomation(
+  publicationId
+) {
+  const response =
+    await fetch(
+      `/api/publicacoes?id=${encodeURIComponent(
+        publicationId
+      )}`,
+      {
+        method:
+          "GET",
+
+        credentials:
+          "include",
+      }
+    );
+
+  const data =
+    await response
+      .json()
+      .catch(
+        () => ({})
+      );
+
+  if (!response.ok) {
+    throw new Error(
+      data?.details ||
+      data?.error ||
+      `Falha carregando grupo de publicacao. HTTP ${response.status}.`
+    );
+  }
+
+  return data;
+}
+
+
+async function autoPrepareInstagramReel(
+  publicationId
+) {
+  const normalizedPublicationId =
+    Number(
+      publicationId
+    );
+
+  if (
+    !Number.isInteger(
+      normalizedPublicationId
+    ) ||
+    normalizedPublicationId <= 0
+  ) {
+    throw new Error(
+      "AUTO-PUBLISH: publication_id invalido para preparar Reel."
+    );
+  }
+
+  /*
+   * =======================================================
+   * ETAPA 1 - MP4 IMUTAVEL
+   * =======================================================
+   *
+   * Este modo:
+   *
+   * - nao chama Meta;
+   * - nao cria container;
+   * - nao executa media_publish.
+   */
+
+  const asset =
+    await postPublisherMode({
+      id:
+        normalizedPublicationId,
+
+      instagram_reel_asset:
+        true,
+    });
+
+  const assetGroupId =
+    String(
+      asset
+        ?.publication_group_id ||
+      ""
+    ).trim();
+
+  const assetStoragePath =
+    String(
+      asset
+        ?.asset
+        ?.storage_path ||
+      ""
+    ).trim();
+
+  const assetVideoUrl =
+    String(
+      asset
+        ?.asset
+        ?.video_url ||
+      ""
+    ).trim();
+
+  const assetSha256 =
+    String(
+      asset
+        ?.asset
+        ?.sha256 ||
+      ""
+    ).trim();
+
+  const assetValid =
+    asset?.success ===
+      true &&
+    asset?.mode ===
+      "instagram_reel_asset" &&
+    asset?.publication_type ===
+      "REEL" &&
+    asset?.publish_called ===
+      false &&
+    asset?.instagram_api_called ===
+      false &&
+    asset
+      ?.asset
+      ?.immutable ===
+      true &&
+    Boolean(
+      assetGroupId
+    ) &&
+    assetStoragePath.startsWith(
+      `instagram-reels/${assetGroupId}-`
+    ) &&
+    /^https:\/\//i.test(
+      assetVideoUrl
+    ) &&
+    /^[0-9a-f]{64}$/i.test(
+      assetSha256
+    ) &&
+    Number(
+      asset
+        ?.caption
+        ?.hashtags_count
+    ) === 5;
+
+  if (!assetValid) {
+    throw new Error(
+      "AUTO-PUBLISH: MP4 retornou contrato invalido."
+    );
+  }
+
+  console.log(
+    "WIRE/GEEK AUTO-PUBLISH: MP4 imutavel pronto",
+    {
+      publication_id:
+        normalizedPublicationId,
+
+      publication_group_id:
+        assetGroupId,
+
+      storage_path:
+        assetStoragePath,
+
+      sha256_prefix:
+        assetSha256.slice(
+          0,
+          16
+        ),
+
+      reused:
+        asset
+          ?.asset
+          ?.reused ===
+          true,
+    }
+  );
+
+
+  /*
+   * =======================================================
+   * ETAPA 2 - RECARREGAR O GRUPO
+   * =======================================================
+   *
+   * Precisamos consultar o estado atual antes de qualquer
+   * chamada mutavel a Meta.
+   */
+
+  const group =
+    await loadPublicationGroupForAutomation(
+      normalizedPublicationId
+    );
+
+  const groupId =
+    String(
+      group
+        ?.publication_group_id ||
+      ""
+    ).trim();
+
+  const rows =
+    Array.isArray(
+      group?.publicacoes
+    )
+      ? group.publicacoes
+      : [];
+
+  const profileUsernames =
+    group
+      ?.instagram_profile_usernames;
+
+  const currentPublicationIds =
+    rows
+      .map(
+        row =>
+          Number(
+            row?.id ||
+            0
+          )
+      )
+      .filter(
+        value =>
+          Number.isInteger(
+            value
+          ) &&
+          value > 0
+      );
+
+  if (
+    group?.success !==
+      true ||
+    rows.length !== 2 ||
+    currentPublicationIds.length !==
+      2 ||
+    new Set(
+      currentPublicationIds
+    ).size !== 2 ||
+    !currentPublicationIds.includes(
+      normalizedPublicationId
+    ) ||
+    groupId !==
+      assetGroupId ||
+    !Array.isArray(
+      profileUsernames
+    ) ||
+    rows.some(
+      row =>
+        row?.status !==
+          "APROVADO" ||
+        row?.published_at ||
+        String(
+          row
+            ?.instagram_post_id ||
+          ""
+        ).trim() ||
+        [
+          "PUBLICANDO",
+          "VERIFICAR_MANUALMENTE",
+          "PUBLICADO",
+        ].includes(
+          String(
+            row
+              ?.instagram_status ||
+            ""
+          )
+        )
+    )
+  ) {
+    throw new Error(
+      "AUTO-PUBLISH: grupo mudou depois da geracao do MP4."
+    );
+  }
+
+
+  /*
+   * =======================================================
+   * ETAPA 3 - CONTAINER REEL
+   * =======================================================
+   *
+   * Esta chamada PODE criar estado na Meta.
+   *
+   * CRITICO:
+   *
+   * NUNCA repetir automaticamente esta chamada em caso
+   * de erro de rede, timeout ou resposta ambigua.
+   */
+
+  const container =
+    await postPublisherMode({
+      id:
+        normalizedPublicationId,
+
+      instagram_containers:
+        true,
+
+      expected_profile_usernames:
+        profileUsernames,
+    });
+
+  const parentId =
+    String(
+      container
+        ?.instagram
+        ?.parent_container_id ||
+      ""
+    ).trim();
+
+  const containerGroupId =
+    String(
+      container
+        ?.reel
+        ?.publication_group_id ||
+      ""
+    ).trim();
+
+  const containerValid =
+    container?.success ===
+      true &&
+    container?.mode ===
+      "instagram_reel_container_only" &&
+    container?.publication_type ===
+      "REEL" &&
+    container?.publish_called ===
+      false &&
+    containerGroupId ===
+      groupId &&
+    Boolean(
+      parentId
+    ) &&
+    container
+      ?.instagram
+      ?.media_type ===
+      "REELS" &&
+    container
+      ?.instagram
+      ?.share_to_feed ===
+      true &&
+    container
+      ?.instagram
+      ?.parent_status_code ===
+      "FINISHED" &&
+    container
+      ?.instagram
+      ?.persisted ===
+      true &&
+    Array.isArray(
+      container
+        ?.instagram
+        ?.child_containers
+    ) &&
+    container
+      .instagram
+      .child_containers
+      .length === 0 &&
+    Number(
+      container
+        ?.instagram
+        ?.hashtags_count
+    ) === 5 &&
+    String(
+      container
+        ?.instagram
+        ?.video_url ||
+      ""
+    ) ===
+      assetVideoUrl;
+
+  if (!containerValid) {
+    throw new Error(
+      "AUTO-PUBLISH: container Reel retornou contrato inesperado. Nao criar outro container automaticamente."
+    );
+  }
+
+  console.log(
+    "WIRE/GEEK AUTO-PUBLISH: container Reel preparado",
+    {
+      publication_id:
+        normalizedPublicationId,
+
+      publication_group_id:
+        groupId,
+
+      parent_container_id:
+        parentId,
+
+      status:
+        container
+          .instagram
+          .parent_status_code,
+
+      reused:
+        container
+          .instagram
+          .reused ===
+          true,
+    }
+  );
+
+
+  /*
+   * =======================================================
+   * ETAPA 4 - PREFLIGHT
+   * =======================================================
+   *
+   * Somente leitura.
+   *
+   * Ainda NAO executa media_publish.
+   */
+
+  const preflight =
+    await postPublisherMode({
+      id:
+        normalizedPublicationId,
+
+      instagram_publish_preflight:
+        true,
+    });
+
+  const preflightParentId =
+    String(
+      preflight
+        ?.instagram
+        ?.parent_container_id ||
+      ""
+    ).trim();
+
+  const preflightAccountId =
+    String(
+      preflight
+        ?.instagram
+        ?.account_id ||
+      ""
+    ).trim();
+
+  const preflightHash =
+    String(
+      preflight
+        ?.caption
+        ?.caption_sha256 ||
+      ""
+    ).trim();
+
+  const preflightIds =
+    Array.isArray(
+      preflight
+        ?.publication_ids
+    )
+      ? preflight
+          .publication_ids
+          .map(Number)
+          .filter(
+            value =>
+              Number.isInteger(
+                value
+              ) &&
+              value > 0
+          )
+      : [];
+
+  const preflightValid =
+    preflight?.success ===
+      true &&
+    preflight?.mode ===
+      "instagram_publish_preflight" &&
+    preflight?.publication_type ===
+      "REEL" &&
+    preflight?.ready_to_publish ===
+      true &&
+    preflight?.publish_called ===
+      false &&
+    String(
+      preflight
+        ?.publication_group_id ||
+      ""
+    ) ===
+      groupId &&
+    preflightIds.length ===
+      2 &&
+    new Set(
+      preflightIds
+    ).size === 2 &&
+    currentPublicationIds.every(
+      id =>
+        preflightIds.includes(
+          id
+        )
+    ) &&
+    preflightParentId ===
+      parentId &&
+    Boolean(
+      preflightAccountId
+    ) &&
+    preflight
+      ?.instagram
+      ?.media_type ===
+      "REELS" &&
+    preflight
+      ?.instagram
+      ?.share_to_feed ===
+      true &&
+    preflight
+      ?.instagram
+      ?.parent_status_code ===
+      "FINISHED" &&
+    String(
+      preflight
+        ?.instagram
+        ?.video_url ||
+      ""
+    ) ===
+      assetVideoUrl &&
+    Array.isArray(
+      preflight
+        ?.instagram
+        ?.child_containers
+    ) &&
+    preflight
+      .instagram
+      .child_containers
+      .length === 0 &&
+    Number(
+      preflight
+        ?.caption
+        ?.hashtags_count
+    ) === 5 &&
+    preflight
+      ?.caption
+      ?.caption_integrity ===
+      true &&
+    /^[0-9a-f]{64}$/i.test(
+      preflightHash
+    );
+
+  if (!preflightValid) {
+    throw new Error(
+      "AUTO-PUBLISH: preflight do Reel nao confirmou PRONTO_PARA_PUBLICAR."
+    );
+  }
+
+  console.log(
+    "WIRE/GEEK AUTO-PUBLISH: Reel preparado automaticamente",
+    {
+      publication_id:
+        normalizedPublicationId,
+
+      publication_group_id:
+        groupId,
+
+      parent_container_id:
+        parentId,
+
+      ready_to_publish:
+        true,
+
+      publish_called:
+        false,
+    }
+  );
+
+  return {
+    success:
+      true,
+
+    publication_id:
+      normalizedPublicationId,
+
+    publication_group_id:
+      groupId,
+
+    publication_ids:
+      currentPublicationIds,
+
+    parent_container_id:
+      parentId,
+
+    expected_account_id:
+      preflightAccountId,
+
+    video_url:
+      assetVideoUrl,
+
+    asset_sha256:
+      assetSha256,
+
+    caption_sha256:
+      preflightHash,
+
+    ready_to_publish:
+      true,
+
+    publish_called:
+      false,
+  };
+}
+
+
 function estimateReading(text) {
   const words = String(text||"").trim().split(/\s+/).filter(Boolean);
   return { words: words.length, minutes: Math.max(1,Math.round(words.length/200)) };
@@ -1453,6 +2099,147 @@ const [edition,  setEdition]  = useState(null);
             bannerData.banners.length,
         }
       );
+
+      /*
+       * =====================================================
+       * AUTO-PUBLISH - PREPARO AUTOMATICO
+       * =====================================================
+       *
+       * So continua quando o backend confirmou:
+       *
+       * - WIREGEEK_AUTO_PUBLISH ativa;
+       * - auto-aprovacao concluida;
+       * - exatamente dois IDs de publicacao.
+       *
+       * media_publish NAO acontece neste passo.
+       */
+
+      if (
+        bannerData
+          ?.auto_publish ===
+          true &&
+        bannerData
+          ?.auto_approval
+          ?.approved ===
+          true
+      ) {
+        const autoPublicationIds =
+          Array.isArray(
+            bannerData
+              ?.auto_approval
+              ?.publication_ids
+          )
+            ? bannerData
+                .auto_approval
+                .publication_ids
+                .map(Number)
+                .filter(
+                  value =>
+                    Number.isInteger(
+                      value
+                    ) &&
+                    value > 0
+                )
+            : [];
+
+        if (
+          autoPublicationIds.length !==
+            2 ||
+          new Set(
+            autoPublicationIds
+          ).size !== 2
+        ) {
+          throw new Error(
+            "AUTO-PUBLISH: auto-aprovacao nao retornou exatamente dois IDs de publicacao."
+          );
+        }
+
+        setTicker(
+          `GERANDO MP4 - NOTICIA ${newsIndex + 1}`
+        );
+
+        try {
+          const prepared =
+            await autoPrepareInstagramReel(
+              autoPublicationIds[0]
+            );
+
+          setTicker(
+            `REEL PRONTO PARA PUBLICAR - NOTICIA ${newsIndex + 1}`
+          );
+
+          console.log(
+            "WIRE/GEEK AUTO-PUBLISH: preparo automatico concluido",
+            {
+              noticia_id:
+                noticiaId,
+
+              publication_id:
+                prepared
+                  .publication_id,
+
+              publication_group_id:
+                prepared
+                  .publication_group_id,
+
+              parent_container_id:
+                prepared
+                  .parent_container_id,
+
+              ready_to_publish:
+                prepared
+                  .ready_to_publish,
+
+              publish_called:
+                prepared
+                  .publish_called,
+            }
+          );
+        }
+        catch (
+          autoPrepareError
+        ) {
+          /*
+           * Os banners permanecem gerados e aprovados.
+           *
+           * Asset/container existentes tambem sao preservados.
+           *
+           * Nenhuma operacao mutavel e repetida
+           * automaticamente.
+           */
+
+          console.error(
+            "WIRE/GEEK AUTO-PUBLISH: preparo automatico interrompido",
+            {
+              noticia_id:
+                noticiaId,
+
+              erro:
+                autoPrepareError
+                  ?.message ||
+                "Falha desconhecida.",
+            }
+          );
+
+          setBannerErrors(
+            current => ({
+              ...current,
+
+              [generationKey]:
+                "Banners gerados e aprovados, mas a preparacao automatica do Reel foi interrompida: " +
+                (
+                  autoPrepareError
+                    ?.message ||
+                  "falha desconhecida"
+                ),
+            })
+          );
+
+          setTicker(
+            `BANNERS APROVADOS - REEL EXIGE ATENCAO - NOTICIA ${newsIndex + 1}`
+          );
+        }
+      }
     }
     catch (error) {
       console.error(

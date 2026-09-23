@@ -11,6 +11,176 @@ import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 const BRIEFING_BANNER_MODEL_VERSION = "briefing-approved-2026-09-21-v2";
 
+function isAutoPublishEnabled() {
+  return (
+    String(
+      process.env.WIREGEEK_AUTO_PUBLISH ||
+      ""
+    )
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
+async function autoApprovePublicationGroup({
+  noticiaId,
+  publicationGroupId,
+}) {
+  const normalizedNoticiaId =
+    Number(noticiaId);
+
+  const normalizedGroupId =
+    String(
+      publicationGroupId ||
+      ""
+    ).trim();
+
+  if (
+    !Number.isInteger(
+      normalizedNoticiaId
+    ) ||
+    normalizedNoticiaId <= 0 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      normalizedGroupId
+    )
+  ) {
+    throw new Error(
+      "AUTO_PUBLISH: noticia_id ou publication_group_id invalido."
+    );
+  }
+
+  const supabase =
+    createClient(
+      String(
+        process.env.SUPABASE_URL ||
+        ""
+      ).trim(),
+
+      String(
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SECRET_KEY ||
+        ""
+      ).trim(),
+
+      {
+        auth: {
+          autoRefreshToken:
+            false,
+
+          persistSession:
+            false,
+        },
+      }
+    );
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.rpc(
+      "auto_approve_publication_group",
+      {
+        p_group_id:
+          normalizedGroupId,
+
+        p_noticia_id:
+          normalizedNoticiaId,
+      }
+    );
+
+  if (error) {
+    throw new Error(
+      "AUTO_PUBLISH: falha na auto-aprovacao atomica: " +
+      error.message
+    );
+  }
+
+  const rows =
+    Array.isArray(data)
+      ? data
+      : [];
+
+  const positions =
+    rows
+      .map(
+        (row) =>
+          Number(
+            row?.carousel_position ||
+            0
+          )
+      )
+      .sort(
+        (a, b) =>
+          a - b
+      );
+
+  const valid =
+    rows.length === 2 &&
+    positions[0] === 1 &&
+    positions[1] === 2 &&
+    rows.every(
+      (row) =>
+        row?.status ===
+          "APROVADO" &&
+        Number(
+          row?.noticia_id ||
+          0
+        ) ===
+          normalizedNoticiaId &&
+        String(
+          row?.publication_group_id ||
+          ""
+        ) ===
+          normalizedGroupId &&
+        row?.published_at ===
+          null &&
+        !String(
+          row?.instagram_post_id ||
+          ""
+        ).trim()
+    );
+
+  if (!valid) {
+    throw new Error(
+      "AUTO_PUBLISH: o grupo nao passou pela auto-aprovacao atomica."
+    );
+  }
+
+  console.log(
+    "WIRE/GEEK AUTO-PUBLISH: grupo auto-aprovado",
+    {
+      noticia_id:
+        normalizedNoticiaId,
+
+      publication_group_id:
+        normalizedGroupId,
+
+      publication_ids:
+        rows.map(
+          (row) =>
+            row.id
+        ),
+    }
+  );
+
+  return {
+    enabled:
+      true,
+
+    approved:
+      true,
+
+    publication_group_id:
+      normalizedGroupId,
+
+    publication_ids:
+      rows.map(
+        (row) =>
+          row.id
+      ),
+  };
+}
+
 async function uploadBanner(png, noticiaId) {
   const supabase = createClient(
     String(process.env.SUPABASE_URL || "").trim(),
@@ -682,6 +852,44 @@ async function handleBriefingGeneratedBanners(
     });
   }
 
+  const autoPublishEnabled =
+    isAutoPublishEnabled();
+
+  let autoApproval = {
+    enabled:
+      autoPublishEnabled,
+
+    approved:
+      false,
+
+    publication_group_id:
+      generationId,
+  };
+
+  /*
+   * A auto-aprovacao so acontece depois que:
+   *
+   * - as duas imagens foram aprovadas;
+   * - o par visual foi aprovado;
+   * - os dois editoriais foram renderizados;
+   * - o CTA foi renderizado;
+   * - os tres PNGs foram enviados;
+   * - os dois registros foram materializados.
+   *
+   * Se qualquer etapa anterior falhar,
+   * esta funcao nunca e chamada.
+   */
+  if (autoPublishEnabled) {
+    autoApproval =
+      await autoApprovePublicationGroup({
+        noticiaId:
+          body.noticia_id,
+
+        publicationGroupId:
+          generationId,
+      });
+  }
+
   console.log(
     "WIRE/GEEK BRIEFING: carrossel gerado",
     {
@@ -696,6 +904,12 @@ async function handleBriefingGeneratedBanners(
         completed.map(
           (item) => item.type
         ),
+
+      auto_publish:
+        autoPublishEnabled,
+
+      auto_approved:
+        autoApproval.approved,
     }
   );
 
@@ -710,6 +924,12 @@ async function handleBriefingGeneratedBanners(
 
       quantidade:
         completed.length,
+
+      auto_publish:
+        autoPublishEnabled,
+
+      auto_approval:
+        autoApproval,
 
       banners:
         completed,

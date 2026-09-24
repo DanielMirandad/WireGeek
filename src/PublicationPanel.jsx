@@ -144,7 +144,7 @@ function ReelPublicationPanel({ item }) {
       if (locked) sessionStorage.setItem(lockKey, "true");
       else sessionStorage.removeItem(lockKey);
     }
-    catch { /* A trava em memória continua ativa. */ }
+    catch { /* A trava em mem├│ria continua ativa. */ }
   }
 
 
@@ -170,7 +170,7 @@ function ReelPublicationPanel({ item }) {
         .json()
         .catch(() => ({}));
 
-    if (!mountedRef.current) throw new Error("Painel alterado; operação interrompida.");
+    if (!mountedRef.current) throw new Error("Painel alterado; opera├º├úo interrompida.");
 
     return {
       response,
@@ -428,7 +428,7 @@ function ReelPublicationPanel({ item }) {
         throw new Error(
           data?.details ||
           data?.error ||
-          `Falha ao atualizar publicação. HTTP ${response.status}.`
+          `Falha ao atualizar publica├º├úo. HTTP ${response.status}.`
         );
       }
 
@@ -437,7 +437,7 @@ function ReelPublicationPanel({ item }) {
     catch (err) {
       setActionError(
         err?.message ||
-        "Não foi possível atualizar a publicação."
+        "N├úo foi poss├¡vel atualizar a publica├º├úo."
       );
     }
     finally {
@@ -883,17 +883,17 @@ function ReelPublicationPanel({ item }) {
           String(row.publication_group_id || "") !== groupId ||
           (row.instagram_child_container_ids != null && !Array.isArray(row.instagram_child_container_ids)) ||
           (row.instagram_child_container_ids || []).length > 0)) {
-      throw new Error("Grupo alterado ou bloqueado. Preparação interrompida.");
+      throw new Error("Grupo alterado ou bloqueado. Prepara├º├úo interrompida.");
     }
     const parents = entries.map((row) => String(row.instagram_parent_container_id || "").trim());
     if (parents[0] !== parents[1] || (expectedParent && parents[0] !== expectedParent)) {
-      throw new Error("Parent container inconsistente. Auditoria manual obrigatória.");
+      throw new Error("Parent container inconsistente. Auditoria manual obrigat├│ria.");
     }
     const asset = loaded.instagram_reel_asset;
     if (asset?.exists !== true || asset.conflict === true ||
         asset.sha256 !== reelAsset?.asset?.sha256 ||
         asset.video_url !== reelAsset?.asset?.video_url) {
-      throw new Error("MP4 persistido ausente ou alterado. Preparação interrompida.");
+      throw new Error("MP4 persistido ausente ou alterado. Prepara├º├úo interrompida.");
     }
     if (!parents[0] && (!Array.isArray(loaded.instagram_profile_usernames) ||
         JSON.stringify(loaded.instagram_profile_usernames) !== JSON.stringify(profileUsernames))) {
@@ -904,7 +904,7 @@ function ReelPublicationPanel({ item }) {
 
   async function createReelContainer(context) {
     // O endpoint existente persiste o ID antes de aguardar FINISHED.
-    // Uma única chamada: nunca repetir POST de criação nesta operação.
+    // Uma ├║nica chamada: nunca repetir POST de cria├º├úo nesta opera├º├úo.
     const { response, data } = await postPublisher({
       id: activePublicationId,
       instagram_containers: true,
@@ -918,14 +918,14 @@ function ReelPublicationPanel({ item }) {
         data.instagram?.media_type !== "REELS" || data.instagram?.share_to_feed !== true ||
         data.instagram?.persisted !== true || data.instagram?.parent_status_code !== "FINISHED" ||
         !Array.isArray(data.instagram?.child_containers) || data.instagram.child_containers.length !== 0) {
-      throw new Error(data?.details || data?.error || "Resposta inesperada criando container. Resultado possivelmente ambíguo.");
+      throw new Error(data?.details || data?.error || "Resposta inesperada criando container. Resultado possivelmente amb├¡guo.");
     }
     return parentId;
   }
 
   async function runPreflight(context) {
-    // Reconsultar somente um container conhecido em processamento não recria
-    // container nem repete publicação. Qualquer outro erro encerra a operação.
+    // Reconsultar somente um container conhecido em processamento n├úo recria
+    // container nem repete publica├º├úo. Qualquer outro erro encerra a opera├º├úo.
     const deadline = Date.now() + 120000;
     while (mountedRef.current) {
       const { response, data } = await postPublisher({
@@ -968,12 +968,12 @@ function ReelPublicationPanel({ item }) {
       const captionBytes = new TextEncoder().encode(data.caption.caption_text || "");
       const digest = await crypto.subtle.digest("SHA-256", captionBytes);
       const computedHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      if (computedHash !== hash) throw new Error("Hash da caption não corresponde ao texto aprovado.");
-      // A conta vem da configuração autenticada do backend e é fixada no
-      // expected_account_id da publicação, cuja API volta a conferir a conta.
+      if (computedHash !== hash) throw new Error("Hash da caption n├úo corresponde ao texto aprovado.");
+      // A conta vem da configura├º├úo autenticada do backend e ├⌐ fixada no
+      // expected_account_id da publica├º├úo, cuja API volta a conferir a conta.
       return data;
     }
-    throw new Error("Painel alterado; preparação interrompida.");
+    throw new Error("Painel alterado; prepara├º├úo interrompida.");
   }
 
   async function prepareInstagramReel() {
@@ -1007,8 +1007,8 @@ function ReelPublicationPanel({ item }) {
       if (!mountedRef.current) return;
       setPreflight(null);
       if (creating) setPublishLocked(true);
-      setPublisherError((err?.message || "Não foi possível preparar o Reel.") +
-        (creating ? " Não crie outro container; atualize o status e faça auditoria manual." : " Nenhuma publicação foi executada."));
+      setPublisherError((err?.message || "N├úo foi poss├¡vel preparar o Reel.") +
+        (creating ? " N├úo crie outro container; atualize o status e fa├ºa auditoria manual." : " Nenhuma publica├º├úo foi executada."));
     }
     finally {
       operationRef.current = false;
@@ -1089,16 +1089,16 @@ function ReelPublicationPanel({ item }) {
             setPublisherError(
               `${
                 data?.error ||
-                "O Instagram confirmou a publicação, mas houve uma falha posterior."
-              } NÃO publique novamente. O banco precisa ser auditado/reparado.`
+                "O Instagram confirmou a publica├º├úo, mas houve uma falha posterior."
+              } N├âO publique novamente. O banco precisa ser auditado/reparado.`
             );
           }
           else {
             setPublisherError(
               `${
                 data?.error ||
-                "O resultado de media_publish não pôde ser confirmado."
-              } NÃO tente novamente. Verifique o Instagram e o estado do grupo antes de qualquer nova ação.`
+                "O resultado de media_publish n├úo p├┤de ser confirmado."
+              } N├âO tente novamente. Verifique o Instagram e o estado do grupo antes de qualquer nova a├º├úo.`
             );
           }
 
@@ -1109,7 +1109,7 @@ function ReelPublicationPanel({ item }) {
         setPublisherError(
           data?.details ||
           data?.error ||
-          `Publicação bloqueada. HTTP ${response.status}.`
+          `Publica├º├úo bloqueada. HTTP ${response.status}.`
         );
 
         return;
@@ -1164,7 +1164,7 @@ function ReelPublicationPanel({ item }) {
         setPreflight(null);
 
         setPublisherError(
-          "A resposta após media_publish não corresponde ao contrato esperado. NÃO tente publicar novamente; atualize o status e faça auditoria manual."
+          "A resposta ap├│s media_publish n├úo corresponde ao contrato esperado. N├âO tente publicar novamente; atualize o status e fa├ºa auditoria manual."
         );
 
         await loadGroup();
@@ -1205,7 +1205,7 @@ function ReelPublicationPanel({ item }) {
        *
        * Em erro de rede depois que o usuario
        * confirmou a publicacao, nao sabemos se
-       * media_publish chegou ou nao à Meta.
+       * media_publish chegou ou nao ├á Meta.
        *
        * Nunca repetir automaticamente.
        */
@@ -1216,8 +1216,8 @@ function ReelPublicationPanel({ item }) {
       setPublisherError(
         `${
           err?.message ||
-          "A conexão foi interrompida durante a publicação."
-        } O resultado pode ser ambíguo. NÃO tente publicar novamente. Atualize o status e verifique o Instagram primeiro.`
+          "A conex├úo foi interrompida durante a publica├º├úo."
+        } O resultado pode ser amb├¡guo. N├âO tente publicar novamente. Atualize o status e verifique o Instagram primeiro.`
       );
 
       await loadGroup();
@@ -1265,6 +1265,180 @@ function ReelPublicationPanel({ item }) {
   ]);
 
 
+  /*
+   * ==========================================================
+   * AUTO-PREFLIGHT DO REEL PELO PAINEL
+   * ==========================================================
+   *
+   * O App.jsx continua sendo o unico responsavel
+   * por gerar MP4 e criar/reutilizar o container.
+   *
+   * Aqui fazemos somente a verificacao READ-ONLY
+   * quando o backend ja possui:
+   *
+   * - MP4 imutavel;
+   * - parent container persistido.
+   *
+   * Nenhum container e criado neste efeito.
+   * media_publish nunca e chamado aqui.
+   */
+
+  const autoPreflightRef =
+    useRef("");
+
+  useEffect(() => {
+    if (
+      !assetReady ||
+      !currentParentId ||
+      preflightReady ||
+      publisherBusy ||
+      operationRef.current ||
+      !allApproved ||
+      published ||
+      manualReview ||
+      publishingEvidence ||
+      hasLegacyChildren ||
+      groupInconsistent
+    ) {
+      return;
+    }
+
+    const key =
+      [
+        currentGroupId,
+        currentParentId,
+        String(
+          reelAsset
+            ?.asset
+            ?.sha256 ||
+          ""
+        ),
+      ]
+        .filter(Boolean)
+        .join(":");
+
+    if (
+      !key ||
+      autoPreflightRef.current === key
+    ) {
+      return;
+    }
+
+    autoPreflightRef.current = key;
+
+    const run =
+      async () => {
+        try {
+          setPublisherBusy("prepare");
+          setPublisherError("");
+          setPublisherInfo(
+            "Verificando automaticamente o Reel preparado..."
+          );
+
+          const loaded =
+            await loadGroup();
+
+          if (
+            !mountedRef.current ||
+            !loaded
+          ) {
+            return;
+          }
+
+          const context =
+            preparationContext(
+              loaded,
+              currentParentId
+            );
+
+          /*
+           * runPreflight usa somente
+           * instagram_publish_preflight=true.
+           *
+           * Portanto:
+           * - nao cria container;
+           * - nao gera MP4;
+           * - nao chama media_publish.
+           */
+          const result =
+            await runPreflight(
+              context
+            );
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setPreflight(result);
+
+          setPublisherInfo(
+            "REEL PRONTO PARA PUBLICAR."
+          );
+
+          console.log(
+            "WIRE/GEEK AUTO-PUBLISH: preflight automatico concluido pelo painel",
+            {
+              publication_id:
+                activePublicationId,
+
+              publication_group_id:
+                currentGroupId,
+
+              parent_container_id:
+                currentParentId,
+
+              ready_to_publish:
+                true,
+
+              publish_called:
+                false,
+            }
+          );
+        }
+        catch (err) {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          /*
+           * Sem retry automatico.
+           *
+           * O botao manual permanece como
+           * ferramenta de recuperacao.
+           */
+          setPreflight(null);
+
+          setPublisherError(
+            (
+              err?.message ||
+              "Nao foi possivel validar automaticamente o Reel."
+            ) +
+            " Nenhuma publicacao foi executada."
+          );
+        }
+        finally {
+          if (mountedRef.current) {
+            setPublisherBusy("");
+          }
+        }
+      };
+
+    void run();
+  }, [
+    assetReady,
+    currentGroupId,
+    currentParentId,
+    preflightReady,
+    publisherBusy,
+    allApproved,
+    published,
+    manualReview,
+    publishingEvidence,
+    hasLegacyChildren,
+    groupInconsistent,
+    reelAsset?.asset?.sha256,
+  ]);
+
   if (
     !publicationId &&
     !noticiaId
@@ -1272,11 +1446,11 @@ function ReelPublicationPanel({ item }) {
     return (
       <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-4">
         <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#7a8f8a]">
-          Publicação indisponível
+          Publica├º├úo indispon├¡vel
         </div>
 
         <p className="mt-2 font-mono text-[11px] leading-5 text-[#5c6f6b]">
-          Esta notícia ainda não possui publicações materializadas pelo modo Briefing.
+          Esta not├¡cia ainda n├úo possui publica├º├╡es materializadas pelo modo Briefing.
         </p>
       </div>
     );
@@ -1295,12 +1469,12 @@ function ReelPublicationPanel({ item }) {
             />
 
             <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#f4f0e8]">
-              Publicação
+              Publica├º├úo
             </span>
           </div>
 
           <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-[#667b77]">
-            2 editoriais + CTA · Instagram Reel
+            2 editoriais + CTA ┬╖ Instagram Reel
           </p>
         </div>
 
@@ -1381,7 +1555,7 @@ function ReelPublicationPanel({ item }) {
         loading &&
         rows.length === 0 && (
           <div className="border border-[#263b36] bg-[#0b1416] px-3 py-4 font-mono text-[11px] text-[#7a8f8a]">
-            Carregando grupo de publicação...
+            Carregando grupo de publica├º├úo...
           </div>
         )}
 
@@ -1554,11 +1728,11 @@ function ReelPublicationPanel({ item }) {
           {manualReview && (
             <div className="border border-[#e0452f]/60 bg-[#1a1214] p-3">
               <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#f0a89a]">
-                Verificação manual obrigatória
+                Verifica├º├úo manual obrigat├│ria
               </div>
 
               <p className="mt-2 font-mono text-[10px] leading-5 text-[#d9a59b]">
-                O resultado de uma tentativa de publicação é incerto. Não execute uma nova publicação antes de verificar o Instagram e reconciliar o estado do grupo.
+                O resultado de uma tentativa de publica├º├úo ├⌐ incerto. N├úo execute uma nova publica├º├úo antes de verificar o Instagram e reconciliar o estado do grupo.
               </p>
 
               {lastInstagramError && (
@@ -1574,11 +1748,11 @@ function ReelPublicationPanel({ item }) {
             !published && (
             <div className="border border-[#d8b45f]/40 bg-[#18160d] p-3">
               <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#d8b45f]">
-                Publicação em estado intermediário
+                Publica├º├úo em estado intermedi├írio
               </div>
 
               <p className="mt-2 font-mono text-[10px] leading-5 text-[#a99c73]">
-                O grupo está PUBLICANDO. Nenhuma nova tentativa será liberada pela interface.
+                O grupo est├í PUBLICANDO. Nenhuma nova tentativa ser├í liberada pela interface.
               </p>
             </div>
           )}
@@ -1586,14 +1760,14 @@ function ReelPublicationPanel({ item }) {
 
           {hasLegacyChildren && (
             <div className="border border-[#e0452f]/50 bg-[#1a1214] p-3 font-mono text-[10px] leading-5 text-[#f0a89a]">
-              Existem child containers de carrossel persistidos neste grupo. O Reel permanece bloqueado até auditoria manual.
+              Existem child containers de carrossel persistidos neste grupo. O Reel permanece bloqueado at├⌐ auditoria manual.
             </div>
           )}
 
 
           {groupInconsistent && (
             <div className="border border-[#e0452f]/50 bg-[#1a1214] p-3 font-mono text-[10px] leading-5 text-[#f0a89a]">
-              Há mais de um parent container persistido no grupo. Publicação bloqueada.
+              H├í mais de um parent container persistido no grupo. Publica├º├úo bloqueada.
             </div>
           )}
 
@@ -1612,7 +1786,7 @@ function ReelPublicationPanel({ item }) {
                   rel="noopener noreferrer"
                   className="mt-2 inline-block font-mono text-[10px] text-[#d8dfd9] underline hover:text-[#5fbf7a]"
                 >
-                  Abrir publicação
+                  Abrir publica├º├úo
                 </a>
               )}
             </div>
@@ -1632,7 +1806,7 @@ function ReelPublicationPanel({ item }) {
                 </div>
 
                 <p className="mt-1 font-mono text-[9px] leading-5 text-[#667b77]">
-                  Revise o MP4 → Preparar Reel → Publicar no Instagram. A publicação depende do seu clique final.
+                  Revise o MP4 ΓåÆ Preparar Reel ΓåÆ Publicar no Instagram. A publica├º├úo depende do seu clique final.
                 </p>
               </div>
 
@@ -1645,7 +1819,7 @@ function ReelPublicationPanel({ item }) {
 
                   <div className="mt-1 break-all font-mono text-[9px] text-[#8fa39d]">
                     {currentParentId ||
-                      "Ainda não preparado"}
+                      "Ainda n├úo preparado"}
                   </div>
                 </div>
 
@@ -1657,7 +1831,7 @@ function ReelPublicationPanel({ item }) {
                   <div className="mt-1 font-mono text-[9px] text-[#8fa39d]">
                     {allApproved
                       ? "2 / 2 APROVADOS"
-                      : "Aguardando aprovação"}
+                      : "Aguardando aprova├º├úo"}
                   </div>
                 </div>
               </div>
@@ -1674,7 +1848,7 @@ function ReelPublicationPanel({ item }) {
                   {publisherBusy ===
                   "asset"
                     ? "Gerando MP4..."
-                    : "Gerar MP4 imutável"}
+                    : "Gerar MP4 imut├ível"}
                 </button>
               )}
 
@@ -1683,7 +1857,7 @@ function ReelPublicationPanel({ item }) {
                 <div className="space-y-2">
                   <div className="border border-[#5fbf7a]/40 bg-[#0c1813] p-3">
                     <div className="font-mono text-[9px] font-bold uppercase tracking-wider text-[#5fbf7a]">
-                      MP4 imutável validado
+                      MP4 imut├ível validado
                     </div>
 
                     <div className="mt-2 break-all font-mono text-[8px] leading-5 text-[#8fa39d]">
@@ -1698,7 +1872,7 @@ function ReelPublicationPanel({ item }) {
                           ?.sha256 ||
                         ""
                       ).slice(0, 16)}
-                      …
+                      ΓÇª
                     </div>
 
                     <a
@@ -1720,15 +1894,15 @@ function ReelPublicationPanel({ item }) {
 
               <div className="border border-[#263b36] bg-[#0b1416] p-3">
                 <div className="font-mono text-[9px] font-bold uppercase text-[#9ab8c4]">
-                  Menções e marcações
+                  Men├º├╡es e marca├º├╡es
                 </div>
                 <p className="mt-2 font-mono text-[10px] leading-5 text-[#d8dfd9]">
                   {(preflight?.caption?.profile_usernames ?? (currentParentId ? null : profileUsernames))?.map((name) => "@" + name).join(" ") ||
-                    (currentParentId ? "Container existente: os perfis originais serão preservados." : "Aguardando a lista de perfis da notícia.")}
+                    (currentParentId ? "Container existente: os perfis originais ser├úo preservados." : "Aguardando a lista de perfis da not├¡cia.")}
                 </p>
                 {!currentParentId && (
                   <p className="mt-2 font-mono text-[9px] leading-5 text-[#667b77]">
-                    Os três perfis fixos entram sempre. Até três perfis oficiais do catálogo são incluídos quando citados na notícia. Confira a lista antes de preparar o Reel.
+                    Os tr├¬s perfis fixos entram sempre. At├⌐ tr├¬s perfis oficiais do cat├ílogo s├úo inclu├¡dos quando citados na not├¡cia. Confira a lista antes de preparar o Reel.
                   </p>
                 )}
               </div>
@@ -1748,7 +1922,7 @@ function ReelPublicationPanel({ item }) {
               {publishLocked &&
                 !preflightReady && (
                 <div className="border border-[#e0452f]/40 bg-[#1a1214] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#d9a59b]">
-                  Preparação bloqueada por segurança. Atualize o status e audite o container antes de qualquer nova tentativa.
+                  Prepara├º├úo bloqueada por seguran├ºa. Atualize o status e audite o container antes de qualquer nova tentativa.
                 </div>
               )}
 
@@ -1792,7 +1966,7 @@ function ReelPublicationPanel({ item }) {
                       </div>
 
                       <div className="mt-1 font-mono text-[9px] text-[#d8dfd9]">
-                        REELS · share_to_feed=true
+                        REELS ┬╖ share_to_feed=true
                       </div>
                     </div>
 
@@ -1802,7 +1976,7 @@ function ReelPublicationPanel({ item }) {
                       </div>
 
                       <div className="mt-1 font-mono text-[9px] text-[#d8dfd9]">
-                        {preflight?.caption?.caption_length} caracteres · {preflight?.caption?.hashtags_count} hashtags
+                        {preflight?.caption?.caption_length} caracteres ┬╖ {preflight?.caption?.hashtags_count} hashtags
                       </div>
                     </div>
                   </div>
@@ -1827,7 +2001,7 @@ function ReelPublicationPanel({ item }) {
 
 
                   <p className="font-mono text-[9px] leading-5 text-[#9aa9a5]">
-                    Ao clicar em Publicar no Instagram, você confirma a publicação deste Reel na conta exibida. Não haverá nova tentativa automática.
+                    Ao clicar em Publicar no Instagram, voc├¬ confirma a publica├º├úo deste Reel na conta exibida. N├úo haver├í nova tentativa autom├ítica.
                   </p>
 
 
@@ -1851,7 +2025,7 @@ function ReelPublicationPanel({ item }) {
 
 
       <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#5c6f6b]">
-        Fluxo Reel: revisar MP4 → Preparar Reel → Publicar no Instagram. Nenhuma publicação automática.
+        Fluxo Reel: revisar MP4 ΓåÆ Preparar Reel ΓåÆ Publicar no Instagram. Nenhuma publica├º├úo autom├ítica.
       </div>
 
     </div>

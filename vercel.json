@@ -18,6 +18,10 @@
     "api/publicar.js": {
       "memory": 2048,
       "maxDuration": 300
+    },
+    "api/youtube.js": {
+      "memory": 1024,
+      "maxDuration": 300
     }
   }
 }

@@ -763,6 +763,260 @@ async function autoPrepareInstagramReel(
 }
 
 
+async function autoPublishPreparedInstagramReel(
+  prepared
+) {
+  const publicationId =
+    Number(
+      prepared
+        ?.publication_id ||
+      0
+    );
+
+  const publicationGroupId =
+    String(
+      prepared
+        ?.publication_group_id ||
+      ""
+    ).trim();
+
+  const parentContainerId =
+    String(
+      prepared
+        ?.parent_container_id ||
+      ""
+    ).trim();
+
+  const expectedAccountId =
+    String(
+      prepared
+        ?.expected_account_id ||
+      ""
+    ).trim();
+
+  const publicationIds =
+    Array.isArray(
+      prepared
+        ?.publication_ids
+    )
+      ? prepared
+          .publication_ids
+          .map(Number)
+          .filter(
+            value =>
+              Number.isInteger(
+                value
+              ) &&
+              value > 0
+          )
+      : [];
+
+  if (
+    !Number.isInteger(
+      publicationId
+    ) ||
+    publicationId <= 0 ||
+    !publicationGroupId ||
+    !parentContainerId ||
+    !expectedAccountId ||
+    publicationIds.length !== 2 ||
+    new Set(
+      publicationIds
+    ).size !== 2 ||
+    !publicationIds.includes(
+      publicationId
+    ) ||
+    prepared
+      ?.ready_to_publish !==
+      true ||
+    prepared
+      ?.publish_called !==
+      false
+  ) {
+    throw new Error(
+      "AUTO-PUBLISH: preflight invalido para iniciar media_publish."
+    );
+  }
+
+  let published;
+
+  try {
+    /*
+     * CRITICO:
+     *
+     * Esta chamada ocorre exatamente UMA vez.
+     *
+     * postPublisherMode nao possui retry.
+     *
+     * Se a conexao cair depois que o servidor receber
+     * a requisicao, o cliente NAO pode decidir repetir.
+     */
+    published =
+      await postPublisherMode({
+        id:
+          publicationId,
+
+        instagram_publish:
+          true,
+
+        publish_confirmation:
+          `PUBLICAR_INSTAGRAM_${publicationId}`,
+
+        expected_parent_container_id:
+          parentContainerId,
+
+        expected_publication_group_id:
+          publicationGroupId,
+
+        expected_account_id:
+          expectedAccountId,
+      });
+  }
+  catch (error) {
+    error.autoPublishStage =
+      "instagram_publish";
+
+    error.doNotRetry =
+      true;
+
+    throw error;
+  }
+
+  const returnedIds =
+    Array.isArray(
+      published
+        ?.publication_ids
+    )
+      ? published
+          .publication_ids
+          .map(Number)
+          .filter(
+            value =>
+              Number.isInteger(
+                value
+              ) &&
+              value > 0
+          )
+      : [];
+
+  const postId =
+    String(
+      published
+        ?.instagram
+        ?.post_id ||
+      ""
+    ).trim();
+
+  const valid =
+    published
+      ?.success ===
+      true &&
+    published
+      ?.mode ===
+      "instagram_publish" &&
+    published
+      ?.publish_called ===
+      true &&
+    published
+      ?.published ===
+      true &&
+    published
+      ?.do_not_retry ===
+      true &&
+    String(
+      published
+        ?.publication_group_id ||
+      ""
+    ) ===
+      publicationGroupId &&
+    returnedIds.length ===
+      2 &&
+    new Set(
+      returnedIds
+    ).size ===
+      2 &&
+    publicationIds.every(
+      id =>
+        returnedIds.includes(
+          id
+        )
+    ) &&
+    String(
+      published
+        ?.instagram
+        ?.account_id ||
+      ""
+    ) ===
+      expectedAccountId &&
+    String(
+      published
+        ?.instagram
+        ?.parent_container_id ||
+      ""
+    ) ===
+      parentContainerId &&
+    Boolean(
+      postId
+    ) &&
+    published
+      ?.database
+      ?.status ===
+      "PUBLICADO" &&
+    published
+      ?.database
+      ?.instagram_status ===
+      "PUBLICADO" &&
+    Number(
+      published
+        ?.database
+        ?.rows
+    ) === 2;
+
+  if (!valid) {
+    const error =
+      new Error(
+        "AUTO-PUBLISH: media_publish respondeu com contrato inesperado. NAO REPETIR automaticamente."
+      );
+
+    error.autoPublishStage =
+      "instagram_publish";
+
+    error.doNotRetry =
+      true;
+
+    error.data =
+      published;
+
+    throw error;
+  }
+
+  console.log(
+    "WIRE/GEEK AUTO-PUBLISH: Reel publicado automaticamente",
+    {
+      publication_id:
+        publicationId,
+
+      publication_group_id:
+        publicationGroupId,
+
+      parent_container_id:
+        parentContainerId,
+
+      instagram_post_id:
+        postId,
+
+      permalink:
+        published
+          ?.instagram
+          ?.permalink ||
+        null,
+    }
+  );
+
+  return published;
+}
+
+
 function estimateReading(text) {
   const words = String(text||"").trim().split(/\s+/).filter(Boolean);
   return { words: words.length, minutes: Math.max(1,Math.round(words.length/200)) };
@@ -2142,7 +2396,10 @@ const [edition,  setEdition]  = useState(null);
        * - auto-aprovacao concluida;
        * - exatamente dois IDs de publicacao.
        *
-       * media_publish NAO acontece neste passo.
+       * media_publish so acontece quando o backend tambem
+       * retornar auto_media_publish=true.
+       *
+       * Sem essa segunda flag, o fluxo para no preflight.
        */
 
       if (
@@ -2489,6 +2746,170 @@ const [edition,  setEdition]  = useState(null);
                   .parent_container_id,
             }
           );
+
+          /*
+           * =================================================
+           * FASE 3 - MEDIA_PUBLISH AUTOMATICO
+           * =================================================
+           *
+           * Segunda feature flag independente.
+           *
+           * WIREGEEK_AUTO_PUBLISH controla:
+           * - auto-aprovacao;
+           * - MP4;
+           * - container;
+           * - preflight.
+           *
+           * WIREGEEK_AUTO_MEDIA_PUBLISH controla somente
+           * a chamada final e irreversivel media_publish.
+           */
+          if (
+            bannerData
+              ?.auto_media_publish ===
+              true
+          ) {
+            setTicker(
+              `PUBLICANDO REEL - NOTICIA ${newsIndex + 1}`
+            );
+
+            const published =
+              await autoPublishPreparedInstagramReel(
+                prepared
+              );
+
+            const publishedPostId =
+              String(
+                published
+                  ?.instagram
+                  ?.post_id ||
+                ""
+              ).trim();
+
+            const publishedRefreshKey =
+              [
+                prepared
+                  .publication_group_id,
+
+                prepared
+                  .parent_container_id,
+
+                "published",
+
+                publishedPostId,
+              ]
+                .filter(Boolean)
+                .join(":");
+
+            setEdition(
+              currentEdition => {
+                if (
+                  !Array.isArray(
+                    currentEdition?.news
+                  )
+                ) {
+                  return currentEdition;
+                }
+
+                let changed =
+                  false;
+
+                const syncedNews =
+                  currentEdition.news.map(
+                    newsItem => {
+                      const currentNoticiaId =
+                        String(
+                          newsItem?.id ||
+                          newsItem?.noticia_id ||
+                          ""
+                        ).trim();
+
+                      if (
+                        currentNoticiaId !==
+                          noticiaId
+                      ) {
+                        return newsItem;
+                      }
+
+                      const slides =
+                        Array.isArray(
+                          newsItem
+                            ?.briefing_generated_banners
+                        )
+                          ? newsItem
+                              .briefing_generated_banners
+                          : [];
+
+                      if (!slides.length) {
+                        return newsItem;
+                      }
+
+                      changed =
+                        true;
+
+                      return {
+                        ...newsItem,
+
+                        briefing_generated_banners:
+                          slides.map(
+                            (
+                              slide,
+                              slideIndex
+                            ) => ({
+                              ...slide,
+
+                              _publication_refresh_key:
+                                slideIndex === 0
+                                  ? publishedRefreshKey
+                                  : String(
+                                      slide
+                                        ?._publication_refresh_key ||
+                                      ""
+                                    ),
+                            })
+                          ),
+                      };
+                    }
+                  );
+
+                if (!changed) {
+                  return currentEdition;
+                }
+
+                return {
+                  ...currentEdition,
+                  news:
+                    syncedNews,
+                };
+              }
+            );
+
+            setTicker(
+              `REEL PUBLICADO - NOTICIA ${newsIndex + 1}`
+            );
+
+            console.log(
+              "WIRE/GEEK AUTO-PUBLISH: publicacao automatica concluida",
+              {
+                noticia_id:
+                  noticiaId,
+
+                publication_id:
+                  prepared
+                    .publication_id,
+
+                publication_group_id:
+                  prepared
+                    .publication_group_id,
+
+                parent_container_id:
+                  prepared
+                    .parent_container_id,
+
+                instagram_post_id:
+                  publishedPostId,
+              }
+            );
+          }
         }
         catch (
           autoPrepareError
@@ -2520,17 +2941,34 @@ const [edition,  setEdition]  = useState(null);
               ...current,
 
               [generationKey]:
-                "Banners gerados e aprovados, mas a preparacao automatica do Reel foi interrompida: " +
-                (
-                  autoPrepareError
-                    ?.message ||
-                  "falha desconhecida"
-                ),
+                autoPrepareError
+                  ?.autoPublishStage ===
+                  "instagram_publish"
+                  ? (
+                      "A publicacao automatica do Reel foi interrompida depois de iniciar a etapa de publicacao. NAO REPETIR automaticamente. Verifique o Instagram e o status salvo antes de qualquer nova tentativa: " +
+                      (
+                        autoPrepareError
+                          ?.message ||
+                        "resultado desconhecido"
+                      )
+                    )
+                  : (
+                      "Banners gerados e aprovados, mas a preparacao automatica do Reel foi interrompida: " +
+                      (
+                        autoPrepareError
+                          ?.message ||
+                        "falha desconhecida"
+                      )
+                    ),
             })
           );
 
           setTicker(
-            `BANNERS APROVADOS - REEL EXIGE ATENCAO - NOTICIA ${newsIndex + 1}`
+            autoPrepareError
+              ?.autoPublishStage ===
+              "instagram_publish"
+              ? `PUBLICACAO EXIGE VERIFICACAO MANUAL - NOTICIA ${newsIndex + 1}`
+              : `BANNERS APROVADOS - REEL EXIGE ATENCAO - NOTICIA ${newsIndex + 1}`
           );
         }
       }

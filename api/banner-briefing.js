@@ -22,6 +22,18 @@ function isAutoPublishEnabled() {
   );
 }
 
+function isAutoMediaPublishEnabled() {
+  return (
+    isAutoPublishEnabled() &&
+    String(
+      process.env.WIREGEEK_AUTO_MEDIA_PUBLISH ||
+      ""
+    )
+      .trim()
+      .toLowerCase() === "true"
+  );
+}
+
 function rowHasActivePublicationLifecycle(
   row
 ) {
@@ -1158,6 +1170,9 @@ async function handleBriefingGeneratedBanners(
   const autoPublishEnabled =
     isAutoPublishEnabled();
 
+  const autoMediaPublishEnabled =
+    isAutoMediaPublishEnabled();
+
   let autoApproval = {
     enabled:
       autoPublishEnabled,
@@ -1211,6 +1226,9 @@ async function handleBriefingGeneratedBanners(
       auto_publish:
         autoPublishEnabled,
 
+      auto_media_publish:
+        autoMediaPublishEnabled,
+
       auto_approved:
         autoApproval.approved,
     }
@@ -1230,6 +1248,9 @@ async function handleBriefingGeneratedBanners(
 
       auto_publish:
         autoPublishEnabled,
+
+      auto_media_publish:
+        autoMediaPublishEnabled,
 
       auto_approval:
         autoApproval,

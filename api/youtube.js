@@ -75,6 +75,7 @@ export default async function handler(req,res) {
       const pending=await checked(db.from(TABLE+'oauth').delete().eq('state_hash',hash(state)).eq('session_hash',hash(cookies(req).wiregeek_session||'')).gt('expires_at',new Date().toISOString()).select().maybeSingle());
       res.setHeader('Set-Cookie','wiregeek_youtube_state=; HttpOnly; SameSite=Lax; Path=/api/youtube; Max-Age=0');
       if(!pending || req.query.error || !req.query.code)throw failure('Conexão cancelada ou expirada.');
+      channelKey(pending.slot);
       const data=await googleJSON('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({client_id:c.env.YOUTUBE_CLIENT_ID,client_secret:c.env.YOUTUBE_CLIENT_SECRET,redirect_uri:c.redirect.href,code:String(req.query.code),grant_type:'authorization_code',code_verifier:unseal(pending.verifier_cipher,c.key)})});
       if(!data.refresh_token || SCOPES.some(scope=>!String(data.scope||'').split(' ').includes(scope)))throw failure('Autorize leitura e upload para conectar o canal.');
       const mine=await yt('channels',{part:'snippet',mine:'true'},data.access_token);
@@ -85,12 +86,12 @@ export default async function handler(req,res) {
       return res.redirect(303,'/?youtube=connected');
     }
     if(action==='status') {
-      const channels=await checked(db.from(TABLE+'channels').select('slot,channel_id,title,connected_at'));
+      const channels=await checked(db.from(TABLE+'channels').select('slot,channel_id,title,connected_at').eq('slot','bagaca'));
       const group=String(req.query.group_id||'');
-      const jobs=group?await checked(db.from(TABLE+'uploads').select('slot,status,video_id,privacy,error').eq('group_id',group)):[];
+      const jobs=group?await checked(db.from(TABLE+'uploads').select('slot,status,video_id,privacy,error').eq('group_id',group).eq('slot','bagaca')):[];
       const id=Number(req.query.noticia_id);
       const sources=Number.isSafeInteger(id)&&id>0?await checked(db.from(TABLE+'sources').select('video_id,title,channel_id').eq('noticia_id',id)):[];
-      return res.json({channels,jobs:jobs.map(publicJob),sources,uploads_enabled:c.env.YOUTUBE_UPLOAD_ENABLED==='true'});
+      return res.json({channels,jobs:jobs.map(publicJob),sources:sources.filter(source=>channels.some(ch=>ch.channel_id===source.channel_id)),uploads_enabled:c.env.YOUTUBE_UPLOAD_ENABLED==='true'});
     }
     if(action==='disconnect') {
       await checked(db.from(TABLE+'channels').delete().eq('slot',channelKey(req.body.slot)));
@@ -98,7 +99,7 @@ export default async function handler(req,res) {
     }
     if(action==='search') {
       const query=String(req.query.q||'').trim().slice(0,200);
-      const slots=req.query.slot==='both'?Object.keys(CHANNELS):[channelKey(req.query.slot)];
+      const slots=req.query.slot==='both'?Object.keys(CHANNELS):[channelKey(req.query.slot || 'bagaca')];
       const results=[],errors=[];
       for(const slot of slots)try {
         const ch=await connection(db,slot),access=await token(ch,c);
@@ -117,7 +118,7 @@ export default async function handler(req,res) {
       const id=Number(req.body.noticia_id),videoId=String(req.body.video_id||'');
       if(!Number.isSafeInteger(id)||id<1||!/^[\w-]{11}$/.test(videoId))throw failure('Notícia ou vídeo inválido.');
       if(!await checked(db.from('noticias').select('id').eq('id',id).maybeSingle()))throw failure('Notícia não encontrada.');
-      const channels=await checked(db.from(TABLE+'channels').select('*'));
+      const channels=await checked(db.from(TABLE+'channels').select('*').eq('slot','bagaca'));
       if(!channels.length)throw failure('Conecte um canal.');
       const data=await yt('videos',{part:'snippet',id:videoId},await token(channels[0],c));
       const video=data.items?.[0];

@@ -179,7 +179,8 @@ async function loadPublicationGroupForAutomation(
 
 
 async function autoPrepareInstagramReel(
-  publicationId
+  publicationId,
+  onAssetReady = null
 ) {
   const normalizedPublicationId =
     Number(
@@ -313,6 +314,38 @@ async function autoPrepareInstagramReel(
           true,
     }
   );
+
+
+  /*
+   * Sincronizar a interface assim que o MP4 estiver
+   * comprovadamente pronto.
+   *
+   * Isto acontece ANTES da etapa de container.
+   *
+   * Assim, uma falha posterior nunca faz a interface
+   * oferecer novamente a geracao de um MP4 que ja existe.
+   */
+  if (
+    typeof onAssetReady ===
+    "function"
+  ) {
+    await onAssetReady({
+      publication_id:
+        normalizedPublicationId,
+
+      publication_group_id:
+        assetGroupId,
+
+      storage_path:
+        assetStoragePath,
+
+      video_url:
+        assetVideoUrl,
+
+      asset_sha256:
+        assetSha256,
+    });
+  }
 
 
   /*
@@ -2161,7 +2194,136 @@ const [edition,  setEdition]  = useState(null);
         try {
           const prepared =
             await autoPrepareInstagramReel(
-              autoPublicationIds[0]
+              autoPublicationIds[0],
+
+              async assetReadyInfo => {
+                const assetRefreshKey =
+                  [
+                    "asset",
+
+                    assetReadyInfo
+                      .publication_group_id,
+
+                    assetReadyInfo
+                      .asset_sha256,
+                  ]
+                    .filter(Boolean)
+                    .join(":");
+
+                setEdition(
+                  currentEdition => {
+                    if (
+                      !Array.isArray(
+                        currentEdition?.news
+                      )
+                    ) {
+                      return currentEdition;
+                    }
+
+                    let changed =
+                      false;
+
+                    const syncedNews =
+                      currentEdition.news.map(
+                        newsItem => {
+                          const currentNoticiaId =
+                            String(
+                              newsItem?.id ||
+                              newsItem?.noticia_id ||
+                              ""
+                            ).trim();
+
+                          if (
+                            currentNoticiaId !==
+                              noticiaId
+                          ) {
+                            return newsItem;
+                          }
+
+                          const slides =
+                            Array.isArray(
+                              newsItem
+                                ?.briefing_generated_banners
+                            )
+                              ? newsItem
+                                  .briefing_generated_banners
+                              : [];
+
+                          if (!slides.length) {
+                            return newsItem;
+                          }
+
+                          changed =
+                            true;
+
+                          return {
+                            ...newsItem,
+
+                            briefing_generated_banners:
+                              slides.map(
+                                (
+                                  slide,
+                                  slideIndex
+                                ) => ({
+                                  ...slide,
+
+                                  _publication_refresh_key:
+                                    slideIndex === 0
+                                      ? assetRefreshKey
+                                      : String(
+                                          slide
+                                            ?._publication_refresh_key ||
+                                          ""
+                                        ),
+                                })
+                              ),
+                          };
+                        }
+                      );
+
+                    if (!changed) {
+                      return currentEdition;
+                    }
+
+                    return {
+                      ...currentEdition,
+
+                      news:
+                        syncedNews,
+                    };
+                  }
+                );
+
+                console.log(
+                  "WIRE/GEEK AUTO-PUBLISH: painel sincronizado apos MP4 automatico",
+                  {
+                    noticia_id:
+                      noticiaId,
+
+                    publication_id:
+                      assetReadyInfo
+                        .publication_id,
+
+                    publication_group_id:
+                      assetReadyInfo
+                        .publication_group_id,
+
+                    storage_path:
+                      assetReadyInfo
+                        .storage_path,
+
+                    sha256_prefix:
+                      String(
+                        assetReadyInfo
+                          .asset_sha256 ||
+                        ""
+                      ).slice(
+                        0,
+                        16
+                      ),
+                  }
+                );
+              }
             );
 
           setTicker(

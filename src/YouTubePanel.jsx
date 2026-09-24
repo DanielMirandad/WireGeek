@@ -23,8 +23,8 @@ export default function YouTubePanel({ item, group, asset }) {
   const lock = useRef(false);
   const [title, setTitle] = useState(() => youtubeDraft(item).title);
   const [description, setDescription] = useState(() => youtubeDraft(item).description);
-  const [privacy, setPrivacy] = useState('private');
-  const [kids, setKids] = useState('');
+  const [privacy, setPrivacy] = useState('public');
+  const [kids, setKids] = useState('no');
   const [reviewed, setReviewed] = useState(false);
   const [query, setQuery] = useState('');
   const [videos, setVideos] = useState([]);
@@ -35,6 +35,8 @@ export default function YouTubePanel({ item, group, asset }) {
   const connected = state?.channels?.some(ch => ch.slot === 'bagaca');
   const existingJob = state?.jobs?.find(job => job.slot === 'bagaca');
   const approved = group?.publicacoes?.length === 2 && group.publicacoes.every(row => ['APROVADO', 'PUBLICADO'].includes(row.status));
+  const draftReady = approved && Boolean(state?.uploads_enabled) && Boolean(connected) && Boolean(asset?.sha256) && Boolean(title.trim()) && Boolean(description.trim());
+  const queueStatus = existingJob?.status || (draftReady ? (reviewed ? 'PRONTO_PARA_ENVIAR' : 'AGUARDANDO_REVISÃO') : 'PREPARANDO');
   async function refresh() {
     const result = await api('status', { group_id: groupId, noticia_id: String(noticiaId) }, 'GET');
     setState(result);
@@ -48,6 +50,13 @@ export default function YouTubePanel({ item, group, asset }) {
     return () => { active = false; window.removeEventListener('focus', onFocus); };
   }, [groupId, noticiaId]);
   useEffect(() => { setReviewed(false); }, [groupId, asset?.sha256, title, description, privacy, kids]);
+  useEffect(() => {
+    setTitle(youtubeDraft(item).title);
+    setDescription(youtubeDraft(item).description);
+    setPrivacy('public');
+    setKids('no');
+    setReviewed(false);
+  }, [groupId, asset?.sha256]);
   async function run(fn) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
@@ -75,7 +84,8 @@ export default function YouTubePanel({ item, group, asset }) {
     </div>
     <fieldset className="space-y-3" disabled={busy}>
       <legend className="mb-2 font-bold">Enviar Short</legend>
-      <p className="text-xs">Título e descrição preparados a partir da matéria. Revise o MP4 e confirme o envio ao Bagaça Studios.</p>
+      <p className="text-xs">Rascunho preparado automaticamente após a aprovação dos dois editoriais. Revise o MP4 e confirme o envio ao Bagaça Studios.</p>
+      <p className="text-xs">Fila: <strong>{queueStatus}</strong>{existingJob ? ' · acompanhe o status abaixo.' : ' · a publicação final depende do seu clique.'}</p>
       {!state?.uploads_enabled && <p className="text-xs">Envios ainda desativados na configuração do servidor.</p>}
       <label className="block">Título<input className={field} value={title} onChange={e => setTitle(e.target.value)} maxLength={100} /></label>
       <label className="block">Descrição<textarea className={field} value={description} onChange={e => setDescription(e.target.value)} rows={3} /></label>
@@ -86,7 +96,7 @@ export default function YouTubePanel({ item, group, asset }) {
       <button className={button} disabled={!state?.uploads_enabled || !connected || !!existingJob || !approved || !asset?.sha256 || !reviewed || !title.trim() || kids === ''} onClick={() => run(upload)}>{busy ? 'Processando…' : 'Enviar para Bagaça Studios'}</button>
       {!approved && <p className="text-xs">Aprove os dois editoriais para habilitar o envio.</p>}
     </fieldset>
-    <ul className="space-y-2 text-sm">{state?.jobs?.map(job => <li key={job.slot}>{channels[job.slot]}: {job.status} {job.privacy && `(${job.privacy})`} {job.url && <a href={job.url} target="_blank" rel="noreferrer" className="underline">Abrir vídeo</a>}{!job.video_id && <button className={button} disabled={busy} onClick={() => run(async () => { await api('reconcile', { slot: job.slot, group_id: groupId }); await refresh(); })}>Verificar envio</button>}{job.error && <p>{job.error}</p>}</li>)}</ul>
+    <div className="space-y-2 text-sm"><h4 className="font-bold">Fila de publicações</h4><ul className="space-y-2">{state?.jobs?.map(job => <li key={job.slot}>{channels[job.slot]}: {job.status} {job.privacy && `(${job.privacy})`} {job.url && <a href={job.url} target="_blank" rel="noreferrer" className="underline">Abrir vídeo</a>}{!job.video_id && <button className={button} disabled={busy} onClick={() => run(async () => { await api('reconcile', { slot: job.slot, group_id: groupId }); await refresh(); })}>Verificar envio</button>}{job.error && <p>{job.error}</p>}</li>)}</ul></div>
     <fieldset className="space-y-3 border-t border-[#3a4a4d] pt-3" disabled={busy}>
       <legend className="font-bold">Buscar vídeos para esta matéria</legend>
       <label className="block">Assunto<input className={field} value={query} onChange={e => setQuery(e.target.value)} placeholder="Deixe vazio para ver os últimos vídeos" /></label>

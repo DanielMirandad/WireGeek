@@ -22,6 +22,208 @@ function isAutoPublishEnabled() {
   );
 }
 
+function rowHasActivePublicationLifecycle(
+  row
+) {
+  const status =
+    String(
+      row?.status ||
+      ""
+    ).trim();
+
+  const instagramStatus =
+    String(
+      row?.instagram_status ||
+      ""
+    ).trim();
+
+  return (
+    [
+      "APROVADO",
+      "PUBLICANDO",
+      "PUBLICADO",
+    ].includes(status) ||
+
+    Boolean(
+      row?.published_at
+    ) ||
+
+    Boolean(
+      String(
+        row?.instagram_post_id ||
+        ""
+      ).trim()
+    ) ||
+
+    Boolean(
+      String(
+        row?.instagram_parent_container_id ||
+        ""
+      ).trim()
+    ) ||
+
+    (
+      Array.isArray(
+        row?.instagram_child_container_ids
+      ) &&
+      row
+        .instagram_child_container_ids
+        .length > 0
+    ) ||
+
+    Number(
+      row?.publish_attempts ||
+      0
+    ) > 0 ||
+
+    Boolean(
+      String(
+        row?.idempotency_key ||
+        ""
+      ).trim()
+    ) ||
+
+    [
+      "PUBLICANDO",
+      "VERIFICAR_MANUALMENTE",
+      "PUBLICADO",
+    ].includes(
+      instagramStatus
+    )
+  );
+}
+
+
+async function findActivePublicationGroup(
+  noticiaId,
+  excludeGroupId = ""
+) {
+  const normalizedNoticiaId =
+    Number(
+      noticiaId
+    );
+
+  if (
+    !Number.isInteger(
+      normalizedNoticiaId
+    ) ||
+    normalizedNoticiaId <= 0
+  ) {
+    return null;
+  }
+
+  const excluded =
+    String(
+      excludeGroupId ||
+      ""
+    ).trim();
+
+  const supabase =
+    createClient(
+      String(
+        process.env.SUPABASE_URL ||
+        ""
+      ).trim(),
+
+      String(
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SECRET_KEY ||
+        ""
+      ).trim(),
+
+      {
+        auth: {
+          autoRefreshToken:
+            false,
+
+          persistSession:
+            false,
+        },
+      }
+    );
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from("publicacoes")
+      .select(
+        [
+          "id",
+          "publication_group_id",
+          "status",
+          "instagram_status",
+          "instagram_parent_container_id",
+          "instagram_child_container_ids",
+          "instagram_post_id",
+          "published_at",
+          "publish_attempts",
+          "idempotency_key",
+          "criado_em",
+        ].join(",")
+      )
+      .eq(
+        "noticia_id",
+        normalizedNoticiaId
+      )
+      .not(
+        "publication_group_id",
+        "is",
+        null
+      )
+      .order(
+        "criado_em",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(
+        100
+      );
+
+  if (error) {
+    throw new Error(
+      "AUTO_PUBLISH: nao foi possivel verificar grupos ativos: " +
+      error.message
+    );
+  }
+
+  const blocker =
+    (
+      Array.isArray(data)
+        ? data
+        : []
+    ).find(
+      row => {
+        const groupId =
+          String(
+            row
+              ?.publication_group_id ||
+            ""
+          ).trim();
+
+        if (
+          !groupId ||
+          (
+            excluded &&
+            groupId === excluded
+          )
+        ) {
+          return false;
+        }
+
+        return rowHasActivePublicationLifecycle(
+          row
+        );
+      }
+    );
+
+  return blocker || null;
+}
+
+
 async function autoApprovePublicationGroup({
   noticiaId,
   publicationGroupId,
@@ -99,6 +301,62 @@ async function autoApprovePublicationGroup({
     Array.isArray(data)
       ? data
       : [];
+
+  if (rows.length === 0) {
+    const blocker =
+      await findActivePublicationGroup(
+        normalizedNoticiaId,
+        normalizedGroupId
+      );
+
+    if (blocker) {
+      console.warn(
+        "WIRE/GEEK AUTO-PUBLISH: auto-aprovacao bloqueada por grupo existente",
+        {
+          noticia_id:
+            normalizedNoticiaId,
+
+          attempted_group_id:
+            normalizedGroupId,
+
+          existing_publication_id:
+            blocker.id,
+
+          existing_publication_group_id:
+            blocker.publication_group_id,
+
+          existing_status:
+            blocker.status,
+
+          existing_instagram_status:
+            blocker.instagram_status,
+        }
+      );
+
+      return {
+        enabled:
+          true,
+
+        approved:
+          false,
+
+        blocked:
+          true,
+
+        reason:
+          "ACTIVE_PUBLICATION_GROUP_EXISTS",
+
+        publication_group_id:
+          normalizedGroupId,
+
+        existing_publication_id:
+          blocker.id,
+
+        existing_publication_group_id:
+          blocker.publication_group_id,
+      };
+    }
+  }
 
   const positions =
     rows
@@ -412,6 +670,51 @@ async function handleBriefingGeneratedBanners(
     throw inputError(
       "Envie um payload JSON valido para o modo Briefing."
     );
+  }
+
+
+  /*
+   * ========================================================
+   * DUPLICATE GUARD ANTES DE QUALQUER TRABALHO CARO
+   * ========================================================
+   *
+   * Somente no fluxo automatico.
+   *
+   * Se a noticia ja possui outro grupo que avancou para
+   * APROVADO / PUBLICANDO / PUBLICADO ou possui qualquer
+   * evidencia Instagram, nao pesquisamos imagens,
+   * nao renderizamos, nao fazemos upload e nao criamos
+   * outro MP4/container.
+   */
+  if (
+    isAutoPublishEnabled() &&
+    body.noticia_id
+  ) {
+    const activeGroup =
+      await findActivePublicationGroup(
+        body.noticia_id
+      );
+
+    if (activeGroup) {
+      const error =
+        new Error(
+          "AUTO_PUBLISH: esta noticia ja possui um grupo ativo. Nova geracao automatica bloqueada."
+        );
+
+      error.statusCode =
+        409;
+
+      error.code =
+        "AUTO_PUBLISH_ACTIVE_GROUP_EXISTS";
+
+      error.existingPublicationId =
+        activeGroup.id;
+
+      error.existingPublicationGroupId =
+        activeGroup.publication_group_id;
+
+      throw error;
+    }
   }
 
   /*
@@ -960,6 +1263,18 @@ export default async function handler(req, res) {
         error:
           error?.message ||
           "Nao foi possivel gerar os banners do Briefing.",
+
+        code:
+          error?.code ||
+          null,
+
+        existing_publication_id:
+          error?.existingPublicationId ||
+          null,
+
+        existing_publication_group_id:
+          error?.existingPublicationGroupId ||
+          null,
       });
   }
 }

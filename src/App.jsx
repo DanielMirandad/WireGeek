@@ -2195,6 +2195,140 @@ const [edition,  setEdition]  = useState(null);
                   .publish_called,
             }
           );
+          /*
+           * =================================================
+           * SINCRONIZACAO DO PUBLICATION PANEL
+           * =================================================
+           *
+           * O MP4, container e preflight ja foram concluídos
+           * no backend.
+           *
+           * Alterar uma chave interna dos slides faz o
+           * PublicationPanel remontar e reidratar:
+           *
+           * - MP4 imutavel;
+           * - parent container;
+           * - status atual do grupo.
+           *
+           * Nenhuma chamada mutavel adicional e executada.
+           */
+
+          const publicationRefreshKey =
+            [
+              prepared
+                .publication_group_id,
+
+              prepared
+                .parent_container_id,
+
+              prepared
+                .asset_sha256,
+            ]
+              .filter(Boolean)
+              .join(":");
+
+          setEdition(
+            currentEdition => {
+              if (
+                !Array.isArray(
+                  currentEdition?.news
+                )
+              ) {
+                return currentEdition;
+              }
+
+              let changed =
+                false;
+
+              const syncedNews =
+                currentEdition.news.map(
+                  newsItem => {
+                    const currentNoticiaId =
+                      String(
+                        newsItem?.id ||
+                        newsItem?.noticia_id ||
+                        ""
+                      ).trim();
+
+                    if (
+                      currentNoticiaId !==
+                        noticiaId
+                    ) {
+                      return newsItem;
+                    }
+
+                    const slides =
+                      Array.isArray(
+                        newsItem
+                          ?.briefing_generated_banners
+                      )
+                        ? newsItem
+                            .briefing_generated_banners
+                        : [];
+
+                    if (!slides.length) {
+                      return newsItem;
+                    }
+
+                    changed =
+                      true;
+
+                    return {
+                      ...newsItem,
+
+                      briefing_generated_banners:
+                        slides.map(
+                          (
+                            slide,
+                            slideIndex
+                          ) => ({
+                            ...slide,
+
+                            _publication_refresh_key:
+                              slideIndex === 0
+                                ? publicationRefreshKey
+                                : String(
+                                    slide
+                                      ?._publication_refresh_key ||
+                                    ""
+                                  ),
+                          })
+                        ),
+                    };
+                  }
+                );
+
+              if (!changed) {
+                return currentEdition;
+              }
+
+              return {
+                ...currentEdition,
+                news:
+                  syncedNews,
+              };
+            }
+          );
+
+          console.log(
+            "WIRE/GEEK AUTO-PUBLISH: painel de publicacao sincronizado",
+            {
+              noticia_id:
+                noticiaId,
+
+              publication_id:
+                prepared
+                  .publication_id,
+
+              publication_group_id:
+                prepared
+                  .publication_group_id,
+
+              parent_container_id:
+                prepared
+                  .parent_container_id,
+            }
+          );
         }
         catch (
           autoPrepareError

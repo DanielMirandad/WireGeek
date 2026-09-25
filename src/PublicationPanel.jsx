@@ -1057,6 +1057,9 @@ function ReelPublicationPanel({ item }) {
           instagram_publish:
             true,
 
+          publish_origin:
+            "manual_button",
+
           publish_confirmation:
             `PUBLICAR_INSTAGRAM_${activePublicationId}`,
 

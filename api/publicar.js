@@ -1159,6 +1159,60 @@ export default async function handler(req, res) {
         .filter(Boolean)
         .length;
 
+    /*
+     * Metadados exclusivamente de auditoria.
+     *
+     * publishOrigin NUNCA participa da autorizacao
+     * do media_publish.
+     */
+    const requestMode =
+      wantsInstagramReelAsset
+        ? "instagram_reel_asset"
+        : wantsInstagramContainers
+          ? "instagram_containers"
+          : wantsInstagramPublishPreflight
+            ? "instagram_publish_preflight"
+            : wantsInstagramPublish
+              ? "instagram_publish"
+              : "default";
+
+    const rawPublishOrigin =
+      String(
+        req.body?.publish_origin ||
+        ""
+      ).trim();
+
+    const publishOrigin =
+      [
+        "manual_button",
+        "auto_media_publish",
+      ].includes(
+        rawPublishOrigin
+      )
+        ? rawPublishOrigin
+        : rawPublishOrigin
+          ? "unrecognized"
+          : "unspecified";
+
+    const autoPublishEnv =
+      String(
+        process.env.WIREGEEK_AUTO_PUBLISH ||
+        ""
+      )
+        .trim()
+        .toLowerCase() ===
+      "true";
+
+    const autoMediaPublishEnv =
+      autoPublishEnv &&
+      String(
+        process.env.WIREGEEK_AUTO_MEDIA_PUBLISH ||
+        ""
+      )
+        .trim()
+        .toLowerCase() ===
+      "true";
+
     if (instagramModeCount > 1) {
       return res.status(400).json({
         error:
@@ -1194,6 +1248,29 @@ export default async function handler(req, res) {
         error: "A publicacao precisa pertencer a um grupo de carrossel.",
       });
     }
+
+    console.log(
+      "WIRE/GEEK PUBLICAR: request recebido",
+      {
+        publication_id:
+          id,
+
+        publication_group_id:
+          selected.publication_group_id,
+
+        mode:
+          requestMode,
+
+        publish_origin:
+          publishOrigin,
+
+        auto_publish_env:
+          autoPublishEnv,
+
+        auto_media_publish_env:
+          autoMediaPublishEnv,
+      }
+    );
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
@@ -2779,6 +2856,32 @@ export default async function handler(req, res) {
        * A proxima chamada PUBLICA.
        */
 
+      console.log(
+        "WIRE/GEEK PUBLICAR: media_publish autorizado",
+        {
+          publication_id:
+            id,
+
+          publication_group_id:
+            selected.publication_group_id,
+
+          parent_container_id:
+            parentId,
+
+          publish_origin:
+            publishOrigin,
+
+          publish_attempt:
+            nextAttempt,
+
+          auto_publish_env:
+            autoPublishEnv,
+
+          auto_media_publish_env:
+            autoMediaPublishEnv,
+        }
+      );
+
       let publishedMedia;
 
       try {
@@ -2924,6 +3027,29 @@ return res.status(502).json({
       /*
        * META CONFIRMOU A PUBLICACAO.
        */
+
+      console.log(
+        "WIRE/GEEK PUBLICAR: media_publish confirmado",
+        {
+          publication_id:
+            id,
+
+          publication_group_id:
+            selected.publication_group_id,
+
+          parent_container_id:
+            parentId,
+
+          instagram_post_id:
+            mediaId,
+
+          publish_origin:
+            publishOrigin,
+
+          publish_attempt:
+            nextAttempt,
+        }
+      );
 
       const publishedAt =
         new Date().toISOString();

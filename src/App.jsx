@@ -859,6 +859,9 @@ async function autoPublishPreparedInstagramReel(
         instagram_publish:
           true,
 
+        publish_origin:
+          "auto_media_publish",
+
         publish_confirmation:
           `PUBLICAR_INSTAGRAM_${publicationId}`,
 

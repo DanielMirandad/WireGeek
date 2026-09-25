@@ -1,6 +1,6 @@
 ﻿import express from "express";
 import youtubeHandler from "./api/youtube.js";
-import tiktokHandler from "./api/tiktok.js";
+import tiktokHandler from "./lib/tiktok-handler.mjs";
 import cors from "cors";
 import dotenv from "dotenv";
 import newsHandler from "./api/news.js";

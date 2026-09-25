@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { hasValidSession } from './auth.js';
 import { CHANNELS, SCOPES, hash, channelKey, seal, unseal, metadata, checkGroup, uploadLocation, googleJSON, failure } from '../lib/youtube-core.mjs';
+import tiktokHandler from '../lib/tiktok-handler.mjs';
 
 const TABLE = 'wiregeek_youtube_';
 function config() {
@@ -50,6 +51,7 @@ async function verifiedAsset(db, groupId) {
 }
 
 export default async function handler(req,res) {
+  if (req.query?.platform === 'tiktok' || req.body?.platform === 'tiktok') return tiktokHandler(req, res);
   res.setHeader('Cache-Control','no-store');
   if(!hasValidSession(req))return res.status(401).json({error:'Faça login no WireGeek.'});
   try {

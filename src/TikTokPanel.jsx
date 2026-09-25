@@ -4,9 +4,9 @@ import { tiktokDraft } from './tiktok-draft.mjs';
 const button = 'border border-[#52656a] px-3 py-2 text-xs disabled:opacity-40';
 
 async function api(action, data = {}, method = 'POST') {
-  const response = await fetch('/api/tiktok' + (method === 'GET' ? '?' + new URLSearchParams({ action, ...data }) : ''), {
+  const response = await fetch('/api/tiktok' + (method === 'GET' ? '?' + new URLSearchParams({ action, platform: 'tiktok', ...data }) : ''), {
     method, credentials: 'same-origin',
-    ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...data }) } : {}),
+    ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, platform: 'tiktok', ...data }) } : {}),
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Não foi possível acessar o TikTok.');

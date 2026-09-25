@@ -22,6 +22,10 @@
     "api/youtube.js": {
       "memory": 1024,
       "maxDuration": 300
+    },
+    "api/tiktok.js": {
+      "memory": 1024,
+      "maxDuration": 300
     }
   }
 }

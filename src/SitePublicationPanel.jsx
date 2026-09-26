@@ -70,7 +70,7 @@ export default function SitePublicationPanel({
         try {
           const response =
             await fetch(
-              `/api/site-publish?noticia_id=${encodeURIComponent(
+              `/api/publicacoes?mode=site-publish&noticia_id=${encodeURIComponent(
                 noticiaId
               )}`,
               {
@@ -207,7 +207,7 @@ export default function SitePublicationPanel({
     try {
       const response =
         await fetch(
-          "/api/site-publish",
+          "/api/publicacoes?mode=site-publish",
           {
             method: "POST",
 

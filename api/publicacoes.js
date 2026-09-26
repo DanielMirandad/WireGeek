@@ -1,6 +1,7 @@
 import { previewInstagramProfiles } from "../lib/instagram-profiles.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
+import sitePublishHandler from "../lib/site-publish-handler.mjs";
 
 function getSupabase() {
   const url = String(process.env.SUPABASE_URL || "").trim();
@@ -261,6 +262,17 @@ async function resolveExistingInstagramReelAsset(
 }
 
 export default async function handler(req, res) {
+  if (
+    String(
+      req.query?.mode || ""
+    ).trim() === "site-publish"
+  ) {
+    return sitePublishHandler(
+      req,
+      res
+    );
+  }
+
   const sessionModule = await import("./auth.js");
 
   if (!sessionModule.hasValidSession(req)) {

@@ -30,4 +30,52 @@ jobs:
             exit 1
           fi
 
-          curl             --fail-with-body             --silent             --show-error             --connect-timeout 20             --max-time 330             -H "Authorization: Bearer ${CRON_SECRET}"             "https://wiregeek.vercel.app/api/cron-news"
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          if ! http_code="$(curl \
+            --silent \
+            --show-error \
+            --connect-timeout 20 \
+            --max-time 330 \
+            --output "$response_file" \
+            --write-out "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://wiregeek.vercel.app/api/cron-news")"; then
+            echo "WireGeek endpoint request failed."
+            exit 1
+          fi
+
+          cat "$response_file"
+          echo
+
+          case "$http_code" in
+            2??)
+              echo "WireGeek pipeline completed with HTTP $http_code."
+              ;;
+
+            409)
+              if grep -Eq '"code"[[:space:]]*:[[:space:]]*"NO_NEW_STORIES"' "$response_file"; then
+                echo "No new stories. Expected no-op."
+                exit 0
+              fi
+
+              echo "Unexpected HTTP 409 from WireGeek pipeline."
+              exit 1
+              ;;
+
+            422)
+              if grep -Eq '"candidatos_validos"[[:space:]]*:[[:space:]]*0([,}])' "$response_file"; then
+                echo "No valid candidates in this cycle. Expected no-op."
+                exit 0
+              fi
+
+              echo "Unexpected HTTP 422 from WireGeek pipeline."
+              exit 1
+              ;;
+
+            *)
+              echo "WireGeek pipeline failed with HTTP $http_code."
+              exit 1
+              ;;
+          esac

@@ -1,15 +1,5 @@
 ﻿import newsHandler from "./news.js";
 
-function getCalgaryHour() {
-  return Number(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Edmonton",
-      hour: "2-digit",
-      hour12: false,
-    }).format(new Date())
-  );
-}
-
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({
@@ -18,18 +8,74 @@ export default async function handler(req, res) {
     });
   }
 
-  const hour = getCalgaryHour();
+  const cronSecret =
+    String(
+      process.env.CRON_SECRET || ""
+    ).trim();
 
-  // O cron pode executar a cada hora.
-  // Somente a execucao correspondente as 7h de Calgary gera a edicao.
-  if (hour !== 7) {
-    return res.status(200).json({
-      success: true,
-      skipped: true,
-      message: "Fora do horario de geracao.",
-      calgaryHour: hour
+  if (!cronSecret) {
+    console.error(
+      "WIRE/GEEK: CRON_SECRET nao configurado."
+    );
+
+    return res.status(500).json({
+      success: false,
+      error:
+        "Cron nao configurado.",
     });
   }
+
+  const authorization =
+    String(
+      req.headers?.authorization || ""
+    ).trim();
+
+  if (
+    authorization !==
+    `Bearer ${cronSecret}`
+  ) {
+    console.warn(
+      "WIRE/GEEK: chamada de cron recusada."
+    );
+
+    return res.status(401).json({
+      success: false,
+      error:
+        "Cron nao autorizado.",
+    });
+  }
+
+  const automationKey =
+    String(
+      process.env.WIREGEEK_AUTOMATION_KEY || ""
+    ).trim();
+
+  if (!automationKey) {
+    console.error(
+      "WIRE/GEEK: WIREGEEK_AUTOMATION_KEY nao configurada."
+    );
+
+    return res.status(500).json({
+      success: false,
+      error:
+        "Automacao nao configurada.",
+    });
+  }
+
+  req.headers = {
+    ...(req.headers || {}),
+    "x-wiregeek-automation-key":
+      automationKey,
+  };
+
+  /*
+   * /api/news aceita somente POST.
+   * O Vercel Cron chama este endpoint
+   * por GET, entao a chamada interna
+   * precisa ser convertida para POST.
+   */
+  req.method =
+    "POST";
 
   req.body = {
     prompt:

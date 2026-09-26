@@ -1,0 +1,33 @@
+name: WireGeek News 2h
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: wiregeek-news-2h
+  cancel-in-progress: false
+
+jobs:
+  generate-news:
+    name: Generate WireGeek news
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger WireGeek pipeline
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET is not configured."
+            exit 1
+          fi
+
+          curl             --fail-with-body             --silent             --show-error             --connect-timeout 20             --max-time 330             -H "Authorization: Bearer ${CRON_SECRET}"             "https://wiregeek.vercel.app/api/cron-news"

@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { XMLParser } from "fast-xml-parser";
-import { persistEdition } from "./persistence.js";
-import { cleanEditorialText, EDITORIAL_RULES, BANNER_COPY_RULES, HIGHLIGHTS_SCHEMA, validateHighlights, validateEditorialItem } from "../lib/editorial-rules.mjs";
+import { persistEdition, loadRecentPublishedNews } from "./persistence.js";
+import { compareEditorialStories } from "../lib/editorial-dedup.mjs";
+import { cleanEditorialText, EDITORIAL_RULES, BANNER_COPY_RULES, HIGHLIGHTS_SCHEMA, validateHighlights, validateEditorialItem, EDITORIAL_CATEGORIES, ARTICLE_MIN_CHARS, ARTICLE_MAX_CHARS } from "../lib/editorial-rules.mjs";
 import { reviewEdition } from "../lib/editorial-review.mjs";
 import { collectSourceImages } from "../lib/banner-images.mjs";
 import { validateBannerCopy } from "../lib/banner-copy.mjs";
@@ -9,16 +10,11 @@ import { validateBannerCopy } from "../lib/banner-copy.mjs";
 const MODEL =
   process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
-const CATEGORIES = [
-  "games",
-  "geek",
-  "cinema",
-  "anime",
-];
+const CATEGORIES = EDITORIAL_CATEGORIES;
 
 
-const MIN_ARTICLE_CHARS = 500;
-const MAX_ARTICLE_CHARS = 2000;
+const MIN_ARTICLE_CHARS = ARTICLE_MIN_CHARS;
+const MAX_ARTICLE_CHARS = ARTICLE_MAX_CHARS;
 const SAFE_MIN_ARTICLE_CHARS = 560;
 const MIN_HIGHLIGHT_WORDS = 15;
 const MAX_HIGHLIGHT_WORDS = 25;
@@ -174,7 +170,15 @@ const NEWS_SCHEMA = {
             type: "string",
           },
 
-          titulo_curto: { type: "string" },
+          titulo_curto: {
+            type: "string",
+            minLength: 1,
+          },
+
+          manchete_curta: {
+            type: "string",
+            minLength: 1,
+          },
 
           publicado_em: {
             type: "string",
@@ -188,6 +192,8 @@ const NEWS_SCHEMA = {
 
           hashtags: {
             type: "array",
+            minItems: 5,
+            maxItems: 5,
             items: {
               type: "string",
             },
@@ -230,6 +236,7 @@ const NEWS_SCHEMA = {
           "categoria",
           "titulo",
           "titulo_curto",
+          "manchete_curta",
           "publicado_em",
           "materia",
           "highlights",
@@ -544,8 +551,7 @@ function isArticleStructurallyValid(text) {
     getArticleParagraphs(article);
 
   if (
-    paragraphs.length < 2 ||
-    paragraphs.length > 6
+    paragraphs.length !== 3
   ) {
     return false;
   }
@@ -818,55 +824,8 @@ function titleLooksEnglish(title) {
   );
 }
 function sameStory(a, b) {
-  const aTitle =
-    normalizeText(a?.titulo);
-
-  const bTitle =
-    normalizeText(b?.titulo);
-
-  if (!aTitle || !bTitle) {
-    return false;
-  }
-
-  if (aTitle === bTitle) {
-    return true;
-  }
-
-  const aWords = new Set(
-    aTitle
-      .split(/\s+/)
-      .filter(
-        (word) =>
-          word.length >= 5
-      )
-  );
-
-  const bWords =
-    bTitle
-      .split(/\s+/)
-      .filter(
-        (word) =>
-          word.length >= 5
-      );
-
-  if (!aWords.size || !bWords.length) {
-    return false;
-  }
-
-  const common =
-    bWords.filter(
-      (word) =>
-        aWords.has(word)
-    ).length;
-
-  const ratio =
-    common /
-    Math.max(
-      aWords.size,
-      bWords.length
-    );
-
-  return ratio >= 0.72;
+  // Callers pass the accepted story first, then the incoming candidate.
+  return compareEditorialStories(b, a).duplicate;
 }
 function isLowValueContent(title, article) {
   const text =
@@ -967,7 +926,7 @@ function normalizeHashtag(value) {
     .replace(/\s+/g, "");
 
   return cleaned
-    ? `#${cleaned}`
+    ? `#${cleaned.toLowerCase()}`
     : "";
 }
 
@@ -978,8 +937,7 @@ function normalizeHashtags(values) {
 
   return values
     .map(normalizeHashtag)
-    .filter(Boolean)
-    .slice(0, 5);
+    .filter(Boolean);
 }
 
 function findMatchingCandidate(newsItem, candidates) {
@@ -1303,13 +1261,21 @@ Não invente nem ajuste datas, horários, fontes ou URLs. Não duplique aconteci
 
 MATÉRIA: entre ${MIN_ARTICLE_CHARS} e ${MAX_ARTICLE_CHARS} caracteres, contando só materia.
 Para não ficar na borda da validação, mire entre ${SAFE_MIN_ARTICLE_CHARS} e 1800 caracteres.
-Organize a matéria em parágrafos naturais e bem separados, sem quantidade fixa de parágrafos.
-No JSON, represente essa separação por duas quebras de linha escapadas.
+Organize a matéria em exatamente 3 parágrafos naturais e bem separados.
+Cada parágrafo deve possuir pelo menos 80 caracteres.
+No JSON, represente a separação dos 3 parágrafos por duas quebras de linha escapadas.
 Distribua os fatos em uma sequência editorial natural: acontecimento principal, contexto confirmado e próximos passos quando existirem.
 Não repita os mesmos fatos entre os parágrafos nem acrescente contexto que não está na pesquisa.
 Não invente reações de fãs, relevância histórica, expectativas de mercado, vendas, bastidores ou consequências.
 Se faltarem fatos, não acrescente frases de preenchimento para atingir o tamanho.
 Escreva titulo em português, preservando nomes próprios. Gere exatamente 5 hashtags.
+MODELO CANÔNICO WIREGEEK SOCIAL (igual ao Briefing Diário): cada notícia deve conter
+categoria (games, geek, cinema ou anime), titulo, titulo_curto obrigatório, manchete_curta
+obrigatória, materia entre ${MIN_ARTICLE_CHARS} e ${MAX_ARTICLE_CHARS} caracteres,
+exatamente 2 highlights de 15 a 25 palavras cada, exatamente 5 hashtags em minúsculas
+e de 1 a 3 fontes. Não omita nenhum desses campos e não misture o formato do site Bagaça.
+Use titulo_curto como o nome curto do assunto e manchete_curta como a chamada editorial
+curta da notícia; mantenha ambos distintos do titulo completo.
 Em image_query, use uma consulta específica com o nome da obra, jogo, marca ou produto retratado.
 ${EDITORIAL_RULES}
 ${BANNER_COPY_RULES}
@@ -2663,8 +2629,70 @@ async function formatNews(
     );
   }
 
-  const validCandidates = filterValidCandidates(candidates);
+  let validCandidates =
+    filterValidCandidates(
+      candidates
+    );
 
+  const publishedHistory =
+    await loadRecentPublishedNews();
+
+  const {
+    fresh:
+      freshCandidates,
+    duplicates:
+      previouslyPublishedCandidates,
+  } =
+    splitPreviouslyPublishedCandidates(
+      validCandidates,
+      publishedHistory
+    );
+
+  console.log(
+    "WIRE/GEEK: cross-run dedup.",
+    {
+      candidatos_validos:
+        validCandidates.length,
+      historico_consultado:
+        publishedHistory.length,
+      duplicados_historicos:
+        previouslyPublishedCandidates.length,
+      candidatos_novos:
+        freshCandidates.length,
+    }
+  );
+
+  if (
+    previouslyPublishedCandidates.length
+  ) {
+    console.log(
+      "WIRE/GEEK: candidatos ja publicados descartados:",
+      previouslyPublishedCandidates.map(
+        ({
+          candidate,
+          previous,
+        }) => ({
+          titulo:
+            candidate?.titulo || "",
+          url:
+            candidate?.url || "",
+          noticia_existente_id:
+            previous?.id || null,
+          titulo_existente:
+            previous?.titulo || "",
+        })
+      )
+    );
+  }
+
+  if (!freshCandidates.length) {
+    const error = new Error("Nenhuma pauta nova após comparar os candidatos com as notícias salvas.");
+    error.code = "NO_NEW_STORIES";
+    throw error;
+  }
+
+  validCandidates =
+    freshCandidates;
 
   const formatPrompt =
     buildFormatPrompt(
@@ -2950,6 +2978,17 @@ async function discardInvalidNewsItems(news, errors, candidates) {
   const keptErrors = await validateFinalEdition(kept, candidates);
   return { news: kept, errors: keptErrors, blocked };
 }
+
+function splitPreviouslyPublishedCandidates(candidates, publishedNews) {
+  const fresh = [], duplicates = [];
+  for (const candidate of candidates) {
+    const previous = publishedNews.find(existing => compareEditorialStories(candidate, existing).duplicate);
+    if (previous) duplicates.push({ candidate, previous });
+    else fresh.push(candidate);
+  }
+  return { fresh, duplicates };
+}
+
 function deduplicateNews(
   news
 ) {
@@ -2963,16 +3002,7 @@ function deduplicateNews(
     const duplicate =
       result.some(
         (existing) =>
-          sameStory(
-            {
-              titulo:
-                existing.titulo,
-            },
-            {
-              titulo:
-                item.titulo,
-            }
-          )
+          sameStory(existing, item)
       );
 
     if (!duplicate) {
@@ -2999,7 +3029,7 @@ export default async function handler(
     });
   }
 
-  if (!sessionModule.hasValidSession(req)) {
+  if (!sessionModule.hasValidWireGeekAuth(req)) {
     console.warn("WIRE/GEEK: tentativa de acesso não autorizado.");
     return res.status(401).json({
       error: "Acesso não autorizado.",
@@ -3179,6 +3209,8 @@ let editorial =
     news = lockCandidateFields(deduplicateNews(news), researchData.candidatos).map(item => ({
       ...item,
       titulo: cleanEditorialText(item.titulo),
+      titulo_curto: cleanEditorialText(item.titulo_curto),
+      manchete_curta: cleanEditorialText(item.manchete_curta),
       materia: cleanEditorialText(item.materia),
       highlights: Array.isArray(item.highlights) ? item.highlights.map(cleanEditorialText) : [],
       hashtags: normalizeHashtags(item.hashtags),
@@ -3337,21 +3369,29 @@ let editorial =
     );
 
     console.log(
-      "WIRE/GEEK: persistindo edicao no SQLite."
+      "WIRE/GEEK: persistindo edicao no Supabase."
     );
 
     const persistedEdition =
-  await persistEdition({
+      await persistEdition({
         title: "Edição Wire/Geek",
         date: new Date().toISOString(),
         status: "publicada",
-        news: news.map(({ titulo_curto, imagens, ...stored }) => stored),
-      researchData,
+        news: news.map(({ imagens, ...stored }) => stored),
+        researchData,
       });
 
-    news.forEach((item, index) => {
-      item.id = persistedEdition.noticiaIds[index] || null;
-    });
+    if (!persistedEdition.noticiaIds.length) {
+      return res.status(409).json({
+        code: "NO_NEW_STORIES",
+        error: "Todas as pautas desta rodada já estão salvas. Nenhuma nova edição foi criada.",
+        deduplication: persistedEdition.deduplication,
+      });
+    }
+    news = persistedEdition.retainedIndexes.map((originalIndex, index) => ({
+      ...news[originalIndex],
+      id: persistedEdition.noticiaIds[index],
+    }));
 
     console.log(
       "WIRE/GEEK: edicao persistida:",
@@ -3389,6 +3429,9 @@ let editorial =
       persistedEdition,
     });
   } catch (error) {
+    if (error?.code === "NO_NEW_STORIES") {
+      return res.status(409).json({ code: error.code, error: error.message });
+    }
     console.error(
       "WIRE/GEEK: ERRO:",
       error

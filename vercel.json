@@ -3,7 +3,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/tiktok", "destination": "/api/youtube?platform=tiktok" }
+    {
+      "source": "/api/tiktok",
+      "destination": "/api/youtube?platform=tiktok"
+    }
   ],
   "functions": {
     "api/news.js": {
@@ -24,6 +27,9 @@
     },
     "api/youtube.js": {
       "memory": 1024,
+      "maxDuration": 300
+    },
+    "api/cron-news.js": {
       "maxDuration": 300
     }
   }

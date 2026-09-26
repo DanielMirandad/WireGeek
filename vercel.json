@@ -26,5 +26,11 @@
     "api/cron-news.js": {
       "maxDuration": 300
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/Codex",
+      "destination": "/"
+    }
+  ]
 }

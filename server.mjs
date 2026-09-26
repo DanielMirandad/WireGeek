@@ -1,6 +1,6 @@
 ﻿import express from "express";
 import youtubeHandler from "./api/youtube.js";
-import tiktokHandler from "./lib/tiktok-handler.mjs";
+
 import cors from "cors";
 import dotenv from "dotenv";
 import newsHandler from "./api/news.js";
@@ -25,7 +25,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 app.all("/api/youtube", youtubeHandler);
-app.all("/api/tiktok", tiktokHandler);
+
 
 app.all("/api/auth", async (req, res) => {
   console.log(`WIRE/GEEK: ${req.method} /api/auth recebido.`);

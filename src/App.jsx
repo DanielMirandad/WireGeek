@@ -42,7 +42,6 @@ https://youtube.com/@bagacastudios
 
 REDES SOCIAIS:
 Instagram: @bagacastudios
-TikTok: @bagacastudios
 Youtube: @bagacastudios
 
 SEJA VIP:

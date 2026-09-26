@@ -1,5 +1,4 @@
 import YouTubePanel from "./YouTubePanel.jsx";
-import TikTokPanel from "./TikTokPanel.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
@@ -2034,7 +2033,6 @@ function ReelPublicationPanel({ item }) {
 
 
       <YouTubePanel key={`${group?.publication_group_id || ""}:${reelAsset?.asset?.sha256 || ""}`} item={item} group={group} asset={reelAsset?.asset} />
-      <TikTokPanel key={`tiktok:${group?.publication_group_id || ""}:${reelAsset?.asset?.sha256 || ""}`} item={item} group={group} asset={reelAsset?.asset} />
 
       <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#5c6f6b]">
         Fluxo Reel: revisar MP4 → Preparar Reel → Publicar no Instagram. Nenhuma publicação automática.

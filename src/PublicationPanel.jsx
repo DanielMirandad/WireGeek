@@ -1,3 +1,4 @@
+import SitePublicationPanel from "./SitePublicationPanel.jsx";
 import YouTubePanel from "./YouTubePanel.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -2031,6 +2032,10 @@ function ReelPublicationPanel({ item }) {
         </>
       )}
 
+
+      <SitePublicationPanel
+        item={item}
+      />
 
       <YouTubePanel key={`${group?.publication_group_id || ""}:${reelAsset?.asset?.sha256 || ""}`} item={item} group={group} asset={reelAsset?.asset} />
 

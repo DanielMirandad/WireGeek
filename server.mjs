@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import youtubeHandler from "./api/youtube.js";
 
 import cors from "cors";
@@ -10,6 +10,7 @@ import bannerHandler from "./api/banner.js";
 import briefingBannerHandler from "./api/banner-briefing.js";
 import publicacoesHandler from "./api/publicacoes.js";
 import publicarHandler from "./api/publicar.js";
+import sitePublishHandler from "./api/site-publish.js";
 import briefingImportHandler from "./api/briefing-import.js";
 import canvaAuthHandler from "./api/canva-auth.js";
 
@@ -75,6 +76,34 @@ app.all("/api/publicacoes", async (req, res) => {
   }
 });
 
+app.all("/api/site-publish", async (req, res) => {
+  console.log(
+    `WIRE/GEEK: ${req.method} /api/site-publish recebido.`
+  );
+
+  try {
+    await sitePublishHandler(
+      req,
+      res
+    );
+  } catch (error) {
+    console.error(
+      "WIRE/GEEK: erro em site-publish:",
+      error
+    );
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        error:
+          "Erro no backend de publicacao do site.",
+
+        details:
+          error?.message ||
+          String(error),
+      });
+    }
+  }
+});
 app.post("/api/publicar", async (req, res) => {
   console.log("WIRE/GEEK: POST /api/publicar recebido.");
   try {

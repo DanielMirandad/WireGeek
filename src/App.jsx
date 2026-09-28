@@ -2,15 +2,21 @@ import BriefingBannerSection from "./briefing/BriefingBannerSection.jsx";
 import PublicationPanel from "./PublicationPanel.jsx";
 import { cleanBriefingText } from "../lib/briefing-text.mjs";
 import { parseBriefingRealInput } from "./briefing-real-input.mjs";
+import {
+  HIGHLIGHT_COUNT,
+  MIN_HIGHLIGHT_WORDS,
+  MAX_HIGHLIGHT_WORDS,
+  HASHTAG_COUNT,
+} from "../lib/wiregeek-contract.mjs";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createEditionSync, mergeLatestEdition, sameEdition } from "./latest-edition.mjs";
 import {
   AlertCircle, Check, CheckCircle2, Clock, Copy,
   Hash, Newspaper, Radio, RefreshCw, Zap, ImageIcon,
-  Calendar, Archive,
+  Archive,
 } from "lucide-react";
 
 import {
-  hasBriefingBannerSpecs,
   buildBriefingClientPayload,
 } from "./briefing/briefing-banner-contract.js";
 
@@ -50,7 +56,6 @@ https://linktr.ee/Bagacacast
 
 // --- HELPERS ---
 function todayKey()     { const d = new Date(); return `wire-geek:v3:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function schedulerKey() { return "wire-geek:scheduler"; }
 function sleep(ms)      { return new Promise(r => setTimeout(r, ms)); }
 
 function copyViaTextarea(text) {
@@ -1029,198 +1034,8 @@ function removeDashes(str) {
   return cleanBriefingText(str);
 }
 
-function deriveShortTitle(value) {
-  const source = removeDashes(value || "")
-    .replace(/[|/:].*$/, "")
-    .trim();
 
-  if (!source) return "";
-
-  const words = source
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (!words.length) return "";
-
-  const first = words[0];
-  const second = words[1] || "";
-
-  /*
-   * Siglas/franquias que normalmente usam
-   * um segundo token numerico ou nominal.
-   */
-  if (
-    /^(?:nhl|nba|fifa|fc|gta|ufc|f1)$/i.test(first) &&
-    second
-  ) {
-    return `${first} ${second}`.slice(0, 40);
-  }
-
-  /*
-   * Preservar nomes proprios compostos no inicio
-   * do titulo da noticia.
-   *
-   * Exemplos:
-   *
-   * Minha Melhor Amiga lidera...
-   * -> Minha Melhor Amiga
-   *
-   * Slow Horses é renovada...
-   * -> Slow Horses
-   *
-   * Kingdom Hearts em Fortnite...
-   * -> Kingdom Hearts
-   *
-   * Kia revela...
-   * -> Kia
-   */
-  const titleWords = [];
-
-  for (const word of words) {
-    const token = String(word)
-      .replace(
-        /^[("'“‘]+|[)"'”’.,;:!?]+$/g,
-        ""
-      )
-      .trim();
-
-    if (!token) {
-      continue;
-    }
-
-    if (titleWords.length === 0) {
-      titleWords.push(word);
-      continue;
-    }
-
-    const startsAsProperName =
-      /^[A-ZÁÉÍÓÚÀÃÕÂÊÔÇ0-9]/u.test(
-        token
-      );
-
-    if (!startsAsProperName) {
-      break;
-    }
-
-    const candidate =
-      [...titleWords, word]
-        .join(" ");
-
-    /*
-     * Nunca cortar uma entidade no meio.
-     * Se a entidade inteira ultrapassar esse
-     * limite, o renderer cuidara do layout.
-     */
-    if (candidate.length > 60) {
-      break;
-    }
-
-    titleWords.push(word);
-  }
-
-  if (titleWords.length >= 2) {
-    return titleWords.join(" ");
-  }
-
-  return first.slice(0, 40);
-}
-function buildAutomaticBannerTitle(text = "", fallback = "") {
-  const source = String(text || fallback || "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!source) {
-    return "NOVA ATUALIZAÇÃO";
-  }
-
-  return source
-    .split(" ")
-    .slice(0, 7)
-    .join(" ")
-    .replace(/[.,;:!?]+$/g, "")
-    .trim()
-    .toUpperCase();
-}
-
-function buildAutomaticBriefingBanners(item = {}) {
-  const highlights =
-    Array.isArray(item.highlights)
-      ? item.highlights
-          .map((value) =>
-            String(value || "").trim()
-          )
-          .filter(Boolean)
-          .slice(0, 2)
-      : [];
-
-  if (highlights.length !== 2) {
-    throw new Error(
-      `"${item?.titulo || "Notícia"}" precisa de exatamente 2 highlights para gerar os banners automaticamente.`
-    );
-  }
-
-  const baseContext =
-    String(
-      item.contexto_visual ||
-      item.titulo ||
-      ""
-    ).trim();
-
-  const baseQuery =
-    String(
-      item.image_query ||
-      item.titulo ||
-      ""
-    ).trim();
-
-  return highlights.map(
-    (highlight, index) => ({
-      type: "editorial",
-
-      banner_title:
-        buildAutomaticBannerTitle(
-          highlight,
-          item.titulo_curto ||
-          item.titulo
-        ),
-
-      highlight,
-
-      visual_subject:
-        baseContext ||
-        item.titulo ||
-        "",
-
-      contexto_visual:
-        index === 0
-          ? baseContext
-          : [
-              baseContext,
-              "Usar uma segunda imagem oficial claramente diferente do primeiro banner.",
-              "Priorizar outro enquadramento, cena, personagem, composição ou material promocional oficial relacionado ao mesmo assunto.",
-            ]
-              .filter(Boolean)
-              .join(" "),
-
-      image_query:
-        index === 0
-          ? baseQuery
-          : `${baseQuery} official alternate image still promotional`,
-    })
-  );
-}
-
-function prepareAutomaticBriefingItem(item = {}) {
-  if (hasBriefingBannerSpecs(item)) {
-    return item;
-  }
-
-  return {
-    ...item,
-    banners:
-      buildAutomaticBriefingBanners(item),
-  };
-}
+// --- BANNER PROMPT ---
 
 function normalizeNewsItem(item={}) {
   return {
@@ -1233,14 +1048,20 @@ function normalizeNewsItem(item={}) {
     titulo_curto: removeDashes(
       item.titulo_curto ||
       item.short_title ||
-      deriveShortTitle(item.titulo || item.title || "")
+      ""
     ),
+    manchete_curta: removeDashes(item.manchete_curta || ""),
     publicado_em:   item.publicado_em||"Últimas 48h",
     materia:        removeDashes(item.materia||""),
     resumo:         removeDashes(item.resumo||""),
     por_que_importa: removeDashes(item.por_que_importa||""),
     highlights:     Array.isArray(item.highlights)?item.highlights.map(removeDashes):[],
-    hashtags:       Array.isArray(item.hashtags)?item.hashtags.slice(0,5):[],
+    hashtags:       Array.isArray(item.hashtags)
+      ? item.hashtags
+          .filter((tag) => typeof tag === "string")
+          .map((tag) => tag.trim().toLowerCase())
+          .filter(Boolean)
+      : [],
     fontes:         Array.isArray(item.fontes)?item.fontes.slice(0,3):[],
     contexto_visual: removeDashes(item.contexto_visual||""),
     image_query:    item.image_query||item.titulo||"",
@@ -1263,16 +1084,15 @@ function validateEdition(news) {
     if (!item.titulo || !item.materia)
       return "Notícia sem título ou matéria.";
 
-    if (item.highlights.length !== 2) return `"${item.titulo}" precisa de 2 destaques.`;
+    if (item.highlights.length !== HIGHLIGHT_COUNT)
+      return `"${item.titulo}" precisa de ${HIGHLIGHT_COUNT} destaques.`;
 
-    if (item.hashtags.length !== 5)
-      return `"${item.titulo}" precisa de 5 hashtags.`;
+    if (item.hashtags.length !== HASHTAG_COUNT)
+      return `"${item.titulo}" precisa de ${HASHTAG_COUNT} hashtags.`;
   }
 
   return null;
 }
-
-// --- BANNER PROMPT ---
 
 const BRIEFING_ONLY_LOCAL =
   import.meta.env.DEV;
@@ -1632,11 +1452,11 @@ function BriefingLab() {
           <form onSubmit={loadRealItem} className="mt-4 space-y-3">
             <label htmlFor="briefing-real-json" className="block text-sm text-[#a9bab5]">JSON de um único item do Briefing</label>
             <p id="briefing-real-help" className="text-sm text-[#8fa39d]">
-              Informe categoria, titulo, fontes, contexto_visual, image_query e banners com dois editoriais (banner_title e highlight).
-              imagens pode estar vazia ou ausente para busca automática. O CTA será acrescentado na geração.
+              Informe categoria, titulo, titulo_curto, highlights, fontes, contexto_visual e image_query.
+              Os dois editoriais serão derivados de titulo_curto + highlights. imagens pode estar vazia ou ausente para busca automática. O CTA será acrescentado na geração.
             </p>
             <textarea id="briefing-real-json" aria-describedby="briefing-real-help" value={payloadText} onChange={event => setPayloadText(event.target.value)} rows={12} spellCheck={false} className="w-full rounded border border-[#263b36] bg-[#0f1a1c] p-3 font-mono text-xs text-white" />
-            <button type="submit" disabled={!payloadText.trim()} className="rounded border border-[#00d084] px-4 py-2 text-sm text-[#00d084] disabled:opacity-40">Carregar item e gerar 3 slides</button>
+            <button type="submit" disabled={!payloadText.trim()} className="rounded border border-[#00d084] px-4 py-2 text-sm text-[#00d084] disabled:opacity-40">Carregar item e gerar banners</button>
             {inputError && <p role="alert" className="text-sm text-red-400">{inputError}</p>}
             {realItem && <p role="status" className="text-sm text-[#8fa39d]">Item carregado abaixo. Alterações no JSON só serão aplicadas ao carregar novamente.</p>}
           </form>
@@ -1680,13 +1500,12 @@ function BriefingLab() {
         </div>
 
         <p className="mt-3 text-sm leading-6 text-[#8fa39d]">
-          Teste isolado do pipeline Briefing:
-          2 banners editoriais + CTA.
+          Teste isolado do pipeline Briefing: até 2 banners editoriais + CTA.
         </p>
 
       </div>
 
-      {fixture && <BriefingBannerSection deriveShortTitle={deriveShortTitle}
+      {fixture && <BriefingBannerSection
         key={inputMode === "real" ? `real-${loadVersion}` : fixtureKey}
         item={fixture}
       />}
@@ -1778,6 +1597,31 @@ function DispatchCard({
         >
           {item.titulo}
         </h3>
+
+        {(item.titulo_curto || item.manchete_curta) && (
+          <dl className="mt-3 space-y-2 border-l-2 border-[#344447] pl-3">
+            {item.titulo_curto && (
+              <div>
+                <dt className="font-mono text-[10px] uppercase tracking-wider text-[#7a8f8a]">
+                  Título curto
+                </dt>
+                <dd className="break-words text-sm font-bold text-[#f4f0e8]">
+                  {item.titulo_curto}
+                </dd>
+              </div>
+            )}
+            {item.manchete_curta && (
+              <div>
+                <dt className="font-mono text-[10px] uppercase tracking-wider text-[#7a8f8a]">
+                  Manchete curta
+                </dt>
+                <dd className="break-words text-sm leading-relaxed text-[#f4f0e8]">
+                  {item.manchete_curta}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
       </div>
 
       {bannerError && (
@@ -1884,9 +1728,9 @@ function DispatchCard({
 
     <div className="flex items-center justify-between border-b border-[#243436] pb-3">
       <div>
-        <Stamp>Sensacionalista</Stamp>
+        <Stamp>Destaques editoriais</Stamp>
         <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[#7a8f8a]">
-          1 destaque editorial • até 20 palavras
+          {HIGHLIGHT_COUNT} destaques editoriais • {MIN_HIGHLIGHT_WORDS}–{MAX_HIGHLIGHT_WORDS} palavras cada
         </p>
       </div>
 
@@ -1974,32 +1818,17 @@ function DispatchCard({
   );
 }
 
-function SchedulerBadge({ nextRun, isEnabled }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[10px] tracking-wider ${
-        isEnabled
-          ? "border-[#5fbf7a]/40 text-[#5fbf7a]"
-          : "border-[#3a4a4d] text-[#5c6f6b]"
-      }`}
-    >
-      <Clock size={11} />
-      {isEnabled
-        ? `AUTO ÀS 7H · ${nextRun || "ATIVO"}`
-        : "AUTO 7H DESATIVADO"}
-    </span>
-  );
-}
-
 export default function GeekNewsWire() {
   function openArchivedEdition(item) {
     const news = Array.isArray(item?.news)
       ? item.news.map(normalizeNewsItem)
       : [];
 
+    setFollowingLatest(false);
     setEdition({
+      id: item.id,
       title: item?.titulo || "Edição Wire/Geek",
-      generatedAt: item?.data_edicao || new Date().toISOString(),
+      generatedAt: item?.criado_em || item?.data_edicao || new Date().toISOString(),
       news,
     });
 
@@ -2017,6 +1846,7 @@ export default function GeekNewsWire() {
       const response = await fetch("/api/edicoes", {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
 
       const data = await response.json().catch(() => ({}));
@@ -2056,10 +1886,79 @@ export default function GeekNewsWire() {
   const [bannerErrors, setBannerErrors] = useState({});
 const [edition,  setEdition]  = useState(null);
   const [ticker,   setTicker]   = useState("PREPARANDO TRANSMISSAO");
-  const [schedulerEnabled, setSchedulerEnabled] = useState(false);
-  const [nextRun,  setNextRun]  = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
-  const schedulerRef = useRef(null);
+  const [followingLatest, setFollowingLatest] = useState(true);
+  const [latestSnapshot, setLatestSnapshot] = useState({ state: "loading", edition: undefined });
+  const syncRef = useRef(null);
+  const appliedSnapshotRef = useRef(undefined);
+  const syncPaused = status === "loading" || briefingImporting || Boolean(bannerGeneratingKey) || archiveOpen || archiveLoading || briefingImportOpen;
+  const syncPausedRef = useRef(syncPaused);
+  syncPausedRef.current = syncPaused;
+
+  useEffect(() => {
+    if (!authenticated || authChecking) return;
+    let storage;
+    try { storage = window.localStorage; } catch { /* Optional offline cache. */ }
+    const sync = createEditionSync({
+      storage,
+      visible: () => document.visibilityState !== "hidden",
+      onChange: update => setLatestSnapshot(previous => ({ ...previous, fromCache: false, ...update })),
+      onUnauthorized: () => {
+        setAuthenticated(false);
+        setFollowingLatest(true);
+        setEdition(null);
+        setLatestSnapshot({ state: "loading", edition: undefined });
+        appliedSnapshotRef.current = undefined;
+        setAuthError("Sua sessão expirou. Entre novamente para consultar as notícias.");
+      },
+    });
+    syncRef.current = sync;
+    sync.setPaused(syncPausedRef.current);
+    void sync.refresh();
+    const refresh = () => { void sync.refresh(); };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      sync.stop();
+      syncRef.current = null;
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [authenticated, authChecking]);
+
+  useEffect(() => { syncRef.current?.setPaused(syncPaused); }, [syncPaused]);
+
+  useEffect(() => {
+    const received = latestSnapshot.edition;
+    if (!authenticated || syncPaused || !followingLatest || received === undefined || appliedSnapshotRef.current === received) return;
+    appliedSnapshotRef.current = received;
+    const next = received ? { ...received, news: received.news.map(normalizeNewsItem) } : null;
+    // Existing banner cache may supply visual preparation only after the saved
+    // edition has been identified. It never selects the edition or its text.
+    let preparedCache = null;
+    if (next) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(todayKey()) || "null");
+        if (Array.isArray(saved?.news)) preparedCache = saved;
+      } catch { /* Optional visual cache. */ }
+    }
+    setEdition(current => {
+      const merged = mergeLatestEdition(current || preparedCache, next);
+      return JSON.stringify(current) === JSON.stringify(merged) ? current : merged;
+    });
+    if (status !== "error") setStatus(next ? "done" : "idle");
+    setTicker(next ? `EDIÇÃO CARREGADA · ${next.news.length} DESPACHOS` : "NENHUMA EDIÇÃO DISPONÍVEL");
+  }, [authenticated, latestSnapshot, followingLatest, syncPaused, status]);
+
+  function showLatestEdition() {
+    appliedSnapshotRef.current = undefined;
+    setFollowingLatest(true);
+    setActiveFilter("all");
+    setBannerErrors({});
+    void syncRef.current?.refresh();
+  }
 
   useEffect(() => {
     let active = true;
@@ -2131,40 +2030,6 @@ const [edition,  setEdition]  = useState(null);
     }
   }
 
-  function computeNextRun() { const n=new Date(),d=new Date(); d.setHours(7,0,0,0); if(n>=d)d.setDate(d.getDate()+1); return d; }
-  function formatNextRun(date) { return date.toLocaleString("pt-BR",{weekday:"short",hour:"2-digit",minute:"2-digit"}).toUpperCase(); }
-
-  function startScheduler() {
-    if(schedulerRef.current) clearInterval(schedulerRef.current);
-    setSchedulerEnabled(true); setNextRun(formatNextRun(computeNextRun()));
-    schedulerRef.current = setInterval(()=>{
-      const now=new Date();
-      if(now.getHours()===7&&now.getMinutes()===0) {
-        Promise.resolve(localStorage.getItem(todayKey())).then(saved=>{ if(!saved) generate(); }).catch(()=>generate());
-      }
-      setNextRun(formatNextRun(computeNextRun()));
-    },30000);
-  }
-  function stopScheduler() { if(schedulerRef.current) clearInterval(schedulerRef.current); schedulerRef.current=null; setSchedulerEnabled(false); setNextRun(""); }
-
-  useEffect(()=>{
-    (async()=>{
-      try {
-        if(!window.localStorage) return;
-        const savedValue = localStorage.getItem(todayKey());
-        if(savedValue) { const p=JSON.parse(savedValue); setEdition({...p,news:(p.news||[]).map(normalizeNewsItem)}); setStatus("done"); }
-        const schedValue = localStorage.getItem(schedulerKey());
-        if(schedValue==="enabled") startScheduler();
-      } catch {}
-    })();
-    return()=>{ if(schedulerRef.current) clearInterval(schedulerRef.current); };
-  },[]);
-
-  async function toggleScheduler() {
-    if(schedulerEnabled){ stopScheduler(); try{await Promise.resolve(localStorage.setItem(schedulerKey(), "disabled"));}catch{} }
-    else{ startScheduler(); try{await Promise.resolve(localStorage.setItem(schedulerKey(), "enabled"));}catch{} }
-  }
-
   const summary = useMemo(()=>{
     const news=edition?.news||[]; const byCategory={};
     for(const cat of CATEGORY_ORDER) byCategory[cat]=news.filter(n=>n.categoria===cat).length;
@@ -2192,10 +2057,7 @@ const [edition,  setEdition]  = useState(null);
       return;
     }
 
-    const item =
-      prepareAutomaticBriefingItem(
-        currentItem
-      );
+    let item = currentItem;
 
     const noticiaId =
       String(
@@ -2244,6 +2106,7 @@ const [edition,  setEdition]  = useState(null);
     );
 
     try {
+      // O servidor carrega os textos canônicos pelo ID da notícia.
       const briefingPayload =
         buildBriefingClientPayload(
           item
@@ -2301,7 +2164,7 @@ const [edition,  setEdition]  = useState(null);
         !Array.isArray(
           bannerData?.banners
         ) ||
-        bannerData.banners.length !== 3
+        (bannerData.banners.length < 2 || bannerData.banners.length > 3)
       ) {
         throw new Error(
           "A notícia não retornou os 3 slides esperados."
@@ -2323,7 +2186,8 @@ const [edition,  setEdition]  = useState(null);
         );
 
       if (
-        editorialSlides.length !== 2 ||
+        editorialSlides.length < 1 ||
+        editorialSlides.length > 2 ||
         ctaSlides.length !== 1
       ) {
         throw new Error(
@@ -3068,6 +2932,8 @@ async function importBriefing() {
     }
 
     setBriefingImporting(true);
+    appliedSnapshotRef.current = latestSnapshot.edition;
+    setFollowingLatest(true);
     setBriefingError("");
     setErrorMsg("");
 
@@ -3290,6 +3156,8 @@ async function importBriefing() {
   if (status === "loading") return;
 
   setStatus("loading");
+  appliedSnapshotRef.current = latestSnapshot.edition;
+  setFollowingLatest(true);
   setErrorMsg("");
   setEdition(null);
 
@@ -3321,9 +3189,7 @@ async function importBriefing() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          prompt: `Gere a edição de hoje com notícias reais. Se houver 12 ou mais notícias válidas, selecione as 12 melhores. Se houver de 1 a 11 notícias válidas, use todas. Se houver menos de 1 notícia válida, não publique. Preserve a categoria original de cada notícia (games, geek, cinema, anime). Considere notícias das últimas 48 horas. Busque na web antes de escrever. Nunca use travessão. Responda somente com o JSON solicitado.`,
-        }),
+        body: JSON.stringify({}),
       },
       {
         attempts: 4,
@@ -3404,7 +3270,8 @@ async function importBriefing() {
     }
 
     const newEdition = {
-      generatedAt: new Date().toISOString(),
+      id: data.persistedEdition?.editionId,
+      generatedAt: data.generated_at || new Date().toISOString(),
       news,
     };
 
@@ -3545,12 +3412,14 @@ async function importBriefing() {
           <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
             <CheckCircle2 size={11}/>ÚLTIMAS 48H
           </span>
+          <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#8fa39d]" title="Cadência configurada no servidor. Ativação pendente na etapa de produção.">
+            <Clock size={11}/>GERAÇÃO PREVISTA · 2H
+          </span>
           {CATEGORY_ORDER.map(cat=>(
             <span key={cat} className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider" style={{color:CATEGORY_COLOR[cat]}}>
               {CATEGORY_LABEL[cat]}
             </span>
           ))}
-          <SchedulerBadge nextRun={nextRun} isEnabled={schedulerEnabled}/>
         </div>
       </header>
 
@@ -3558,7 +3427,7 @@ async function importBriefing() {
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={generate} disabled={status==="loading"}
+            <button type="button" onClick={generate} disabled={status==="loading" || briefingImporting || Boolean(bannerGeneratingKey)}
               className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50">
               <RefreshCw size={14} className={status==="loading"?"animate-spin":""}/>
               {status==="loading"?"Apurando...":"Apurar Notícias"}
@@ -3566,7 +3435,7 @@ async function importBriefing() {
             <button
               type="button"
               onClick={loadArchive}
-              disabled={archiveLoading}
+              disabled={archiveLoading || status === "loading" || briefingImporting || Boolean(bannerGeneratingKey)}
               className="inline-flex items-center gap-2 border border-[#3a4a4d] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#d8dfd9] transition-colors hover:border-[#e0452f] hover:text-[#f4f0e8] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Archive size={14}/>
@@ -3580,25 +3449,42 @@ async function importBriefing() {
                 setBriefingImportOpen(current => !current);
                 setBriefingError("");
               }}
-              disabled={briefingImporting}
+              disabled={briefingImporting || status === "loading" || Boolean(bannerGeneratingKey)}
               className="inline-flex items-center gap-2 border border-[#3a4a4d] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#d8dfd9] transition-colors hover:border-[#e0452f] hover:text-[#f4f0e8] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Newspaper size={14}/>
               {briefingImportOpen ? "Fechar Briefing" : "Importar Briefing"}
             </button>
 
-            <button type="button" onClick={toggleScheduler}
-              className={`inline-flex items-center gap-2 border px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${schedulerEnabled?"border-[#5fbf7a]/50 text-[#5fbf7a] hover:bg-[#5fbf7a]/10":"border-[#3a4a4d] text-[#7a8f8a] hover:border-[#5fbf7a]/50 hover:text-[#5fbf7a]"}`}>
-              <Calendar size={14}/>{schedulerEnabled?"Auto às 7H · Ativo":"Ativar Auto às 7H"}
-            </button>
+
           </div>
           {edition && (
             <div className="text-right">
-              <div className="font-mono text-[10px] text-[#5c6f6b]">ÚLTIMA APURAÇÃO</div>
-              <div className="font-mono text-[11px] text-[#8fa39d]">{new Date(edition.generatedAt).toLocaleTimeString("pt-BR")}</div>
+              <div className="font-mono text-[10px] text-[#5c6f6b]">EDIÇÃO EM EXIBIÇÃO</div>
+              <div className="font-mono text-[11px] text-[#8fa39d]">{new Date(edition.generatedAt).toLocaleString("pt-BR")}</div>
             </div>
           )}
                </div>
+
+        <div role="status" aria-live="polite" className="mb-5 border border-[#243436] bg-[#0c1618] px-3 py-3 text-[12px] leading-5 text-[#8fa39d]">
+          {latestSnapshot.state === "loading" && "Consultando a edição mais recente no servidor…"}
+          {latestSnapshot.state === "pending" && "Uma nova rodada está em preparação. Ela aparecerá após ser salva."}
+          {latestSnapshot.state === "offline" && (edition
+            ? "Não foi possível atualizar. Exibindo a última edição disponível; tentaremos novamente automaticamente."
+            : "Não foi possível consultar as edições. Tentaremos novamente automaticamente.")}
+          {latestSnapshot.state === "ready" && "Novas rodadas são consultadas automaticamente enquanto esta página está aberta."}
+          {!followingLatest && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span>{latestSnapshot.edition && !sameEdition(edition, latestSnapshot.edition)
+                ? "Há uma edição mais recente disponível."
+                : "Esta edição será mantida durante sua leitura e preparação."}</span>
+              <button type="button" onClick={showLatestEdition} disabled={syncPaused}
+                className="border border-[#5fbf7a]/50 px-3 py-1 font-mono text-[10px] uppercase text-[#5fbf7a] disabled:opacity-50">
+                Ver edição mais recente
+              </button>
+            </div>
+          )}
+        </div>
 
         {briefingImportOpen && (
           <section className="mb-6 border border-[#243436] bg-[#0c1618]">
@@ -3690,7 +3576,7 @@ async function importBriefing() {
                   ARQUIVO DE EDIÇÕES
                 </div>
                 <div className="mt-1 font-mono text-[10px] text-[#5c6f6b]">
-                  {archive.length} edição{archive.length === 1 ? "" : "ões"} armazenada{archive.length === 1 ? "" : "s"}
+                  {archive.length} {archive.length === 1 ? "edição armazenada" : "edições armazenadas"}
                 </div>
               </div>
               <button
@@ -3720,6 +3606,12 @@ async function importBriefing() {
                   <div
                     key={item.id}
                     onClick={() => openArchivedEdition(item)}
+                    onKeyDown={event => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openArchivedEdition(item);
+                      }
+                    }}
                     role="button"
                     tabIndex={0}
                     className="cursor-pointer px-4 py-3 transition-colors hover:bg-[#101c1e]"
@@ -3735,9 +3627,9 @@ async function importBriefing() {
 
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-[#7a8f8a]">
                       <span>
-                        {item.data_edicao
-                          ? new Date(item.data_edicao).toLocaleDateString("pt-BR")
-                          : "Data não informada"}
+                        {item.criado_em
+                          ? new Date(item.criado_em).toLocaleString("pt-BR")
+                          : item.data_edicao || "Data não informada"}
                       </span>
                       <span>
                         {item.news?.length || 0} notícia{(item.news?.length || 0) === 1 ? "" : "s"}
@@ -3775,7 +3667,9 @@ async function importBriefing() {
         {status==="idle"&&!edition && (
           <div className="border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#5c6f6b]">
             <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">REDAÇÃO EM ESPERA</div>
-            Nenhuma edição gerada hoje. Inicie a apuração ou ative o agendamento para às 7h.
+            {latestSnapshot.state === "ready"
+              ? "Nenhuma edição disponível no servidor. As próximas rodadas aparecerão aqui automaticamente."
+              : "Aguardando a consulta das edições no servidor."}
           </div>
         )}
         {status==="loading"&&!edition && (
@@ -3805,10 +3699,10 @@ async function importBriefing() {
               <BriefingLab />
             )}
 
-            <div className="space-y-5">
+            <div className="space-y-5" onPointerDownCapture={() => setFollowingLatest(false)} onFocusCapture={() => setFollowingLatest(false)}>
               {filteredNews.map((item,index)=>(
                 <DispatchCard
-                  key={`${item.categoria}-${index}`}
+                  key={item.id || `${edition.id || edition.generatedAt}-${item.categoria}-${index}`}
                   item={item}
                   index={edition.news.indexOf(item)}
                   onGenerateBanner={generateBannerForNews}
@@ -3833,7 +3727,7 @@ async function importBriefing() {
       <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
         <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
           <span>WIRE/GEEK 3.0 · BAGAÇA STUDIOS</span>
-          <span>EDIÇÕES SALVAS · AUTO 7H · BANNERS COM IMAGENS REAIS</span>
+          <span>EDIÇÕES SALVAS · BANNERS COM IMAGENS REAIS</span>
         </div>
       </footer>
     </div>

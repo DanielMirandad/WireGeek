@@ -1,7 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 
-import { validateCanonicalShape } from "../lib/editorial-rules.mjs";
+import { validateCanonicalShape } from "../lib/wiregeek-contract.mjs";
 import { loadEditorialHistory, selectUnseenNews, compareEditorialStories, editorialEventSignature, primarySourceKey } from "../lib/editorial-dedup.mjs";
 
 function digest(value) {
@@ -30,13 +30,13 @@ async function insertUnseenNews(supabase, row, item) {
     .select("id,titulo,resumo,artigo,url,fontes(url)")
     .eq("dedup_key", row.dedup_key).maybeSingle();
   if (error || !previous) {
-    throw new Error(`Não foi possível conferir conflito de deduplicação: ${error?.message || "notícia anterior ausente"}`);
+    throw new Error(`NÃ£o foi possÃ­vel conferir conflito de deduplicaÃ§Ã£o: ${error?.message || "notÃ­cia anterior ausente"}`);
   }
   if (compareEditorialStories(item, previous).reason !== "novo_acontecimento") {
     return { data: null, error: null, duplicate: true, previousId: previous.id };
   }
   const signature = editorialEventSignature(item);
-  if (!signature) throw new Error("Atualização sem evidência de acontecimento novo.");
+  if (!signature) throw new Error("AtualizaÃ§Ã£o sem evidÃªncia de acontecimento novo.");
   result = await insert({ ...row, dedup_key: `${row.dedup_key}:event:${digest(signature)}` });
   return isDedupConflict(result.error)
     ? { data: null, error: null, duplicate: true, previousId: previous.id }
@@ -60,7 +60,7 @@ function prepareNewsItem(item, index) {
     ...item,
     titulo: normalizeText(item?.titulo),
     titulo_curto: normalizeText(item?.titulo_curto),
-    manchete_curta: normalizeText(item?.manchete_curta),
+
     categoria: normalizeText(item?.categoria),
     materia: normalizeText(item?.materia),
     highlights: normalizeArray(item?.highlights),
@@ -71,7 +71,7 @@ function prepareNewsItem(item, index) {
     }),
     fontes: Array.isArray(item?.fontes)
       ? item.fontes.map((source) => ({
-          nome: normalizeText(source?.nome),
+          titulo: normalizeText(source?.titulo),
           url: normalizeText(source?.url),
           publicado_em: normalizeText(source?.publicado_em),
         }))
@@ -80,14 +80,12 @@ function prepareNewsItem(item, index) {
 
   const errors = validateCanonicalShape(normalized);
   if (normalized.hashtags.some((tag) => typeof tag !== "string" || !tag)) {
-    errors.push("hashtags devem ser textos não vazios");
+    errors.push("hashtags devem ser textos nÃ£o vazios");
   }
-  if (normalized.fontes.some((source) => !source.url)) {
-    errors.push("cada fonte deve ter uma URL");
-  }
+
   if (errors.length) {
     throw new Error(
-      `Notícia ${index + 1} inválida para persistência: ${errors.join("; ")}`
+      `NotÃ­cia ${index + 1} invÃ¡lida para persistÃªncia: ${errors.join("; ")}`
     );
   }
 
@@ -124,6 +122,7 @@ async function persistEdition({
   status = "publicada",
   news,
   researchData,
+  execution,
 }) {
   if (!Array.isArray(news) || news.length === 0) {
     throw new Error(
@@ -133,13 +132,14 @@ async function persistEdition({
 
   // Validate the entire edition before its first database write.
   const validatedNews = news.map(prepareNewsItem);
+  await execution?.progress({ approved: validatedNews.length });
   const supabase = getSupabase();
   const { history, since } = await loadEditorialHistory(supabase);
   const deduplication = { ...selectUnseenNews(validatedNews, history), since };
   const candidateIndexes = deduplication.retainedIndexes;
   const preparedNews = candidateIndexes.map(index => validatedNews[index]);
   const retainedIndexes = [];
-  console.log("WIRE/GEEK: deduplicação entre rodadas", {
+  console.log("WIRE/GEEK: deduplicaÃ§Ã£o entre rodadas", {
     recebidas: validatedNews.length,
     historico: history.length,
     novas: preparedNews.length,
@@ -238,21 +238,20 @@ async function persistEdition({
   const noticiaIds = [];
 
   for (const [index, item] of preparedNews.entries()) {
+    await execution?.progress();
     const primarySource = item.fontes[0];
 
     const sourceName =
-      normalizeText(primarySource?.nome) ||
-      normalizeText(item.fonte);
+      normalizeText(primarySource?.titulo);
 
     const sourceUrl =
-      normalizeText(primarySource?.url) ||
-      normalizeText(item.url);
+      normalizeText(primarySource?.url);
 
     const { data: noticia, error: noticiaError, duplicate, previousId } =
       await insertUnseenNews(supabase, {
           titulo: normalizeText(item.titulo),
           titulo_curto: item.titulo_curto,
-          manchete_curta: item.manchete_curta,
+
           categoria: normalizeText(item.categoria),
           resumo: normalizeText(item.resumo),
           artigo: normalizeText(item.materia),
@@ -275,6 +274,7 @@ async function persistEdition({
     }
 
     const noticiaId = noticia.id;
+    await execution?.progress({ persisted: noticiaIds.length + 1 });
     if (editionId === null) editionId = await createEditionAndResearch();
     noticiaIds.push(noticiaId);
     retainedIndexes.push(candidateIndexes[index]);
@@ -298,7 +298,7 @@ async function persistEdition({
       .from("fontes")
       .insert(item.fontes.map((source) => ({
         noticia_id: noticiaId,
-        nome: source.nome || "Fonte",
+        nome: source.titulo,
         url: source.url,
         publicado_em:
           source.publicado_em || normalizeText(item.publicado_em) || null,
@@ -387,7 +387,7 @@ async function persistEdition({
   );
 
   deduplication.retainedIndexes = retainedIndexes;
-  console.log("WIRE/GEEK: resultado da deduplicação", {
+  console.log("WIRE/GEEK: resultado da deduplicaÃ§Ã£o", {
     persistidas: noticiaIds.length,
     duplicadas: deduplication.duplicates.length,
   });
@@ -398,3 +398,5 @@ export {
   persistEdition,
   loadRecentPublishedNews,
 };
+
+

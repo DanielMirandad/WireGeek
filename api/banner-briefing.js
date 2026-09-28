@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib/banner-renderer-briefing.mjs";
-import { buildBriefingBannerRequest } from "../lib/banner-request-briefing.mjs";
+import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canonical.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
@@ -684,6 +684,7 @@ async function handleBriefingGeneratedBanners(
     );
   }
 
+  const noticiaId = canonicalNewsId(body.noticia_id);
 
   /*
    * ========================================================
@@ -742,8 +743,15 @@ async function handleBriefingGeneratedBanners(
    * Este fluxo usa somente o pipeline do Briefing.
    */
 
-  const briefing =
-    buildBriefingBannerRequest(body);
+  const briefing = await loadCanonicalBannerRequest(
+    createClient(
+      String(process.env.SUPABASE_URL || "").trim(),
+      String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim(),
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    ),
+    noticiaId,
+    body
+  );
 
   const editorialBanners =
     briefing.banners.filter(
@@ -776,15 +784,15 @@ async function handleBriefingGeneratedBanners(
    * IMAGENS EDITORIAIS
    * ========================================================
    *
-   * resolveBriefingBannerImages já executa:
+   * resolveBriefingBannerImages jÃ¡ executa:
    *
-   * - candidatos explícitos;
+   * - candidatos explÃ­citos;
    * - fontes editoriais;
    * - busca externa;
    * - qualidade;
-   * - composição;
+   * - composiÃ§Ã£o;
    * - Gemini Vision;
-   * - distinção entre banner 1 e 2.
+   * - distinÃ§Ã£o entre banner 1 e 2.
    */
 
   const images =
@@ -794,20 +802,38 @@ async function handleBriefingGeneratedBanners(
 
   if (
     !Array.isArray(images) ||
-    images.length !== 2
+    images.length < 1 ||
+    images.length > 2
   ) {
     throw new Error(
-      "O Briefing nao conseguiu resolver exatamente duas imagens editoriais."
+      "O Briefing nao conseguiu resolver nenhum banner editorial valido."
+    );
+  }
+
+  const partialGeneration =
+    images.length === 1;
+
+  if (partialGeneration) {
+    console.warn(
+      "WIRE/GEEK BRIEFING: geracao parcial aceita",
+      {
+        noticia_id:
+          body.noticia_id ||
+          null,
+
+        editorial_count:
+          images.length,
+      }
     );
   }
 
   /*
-   * Mantém a categoria atual salva
-   * na notícia, preservando o comportamento atual.
+   * MantÃ©m a categoria atual salva
+   * na notÃ­cia, preservando o comportamento atual.
    */
 
   const currentCategory =
-    await resolveBannerCategory(
+    briefing.canonical_source ? briefing.categoria : await resolveBannerCategory(
       body.noticia_id,
       briefing.categoria
     );
@@ -817,14 +843,14 @@ async function handleBriefingGeneratedBanners(
    * RENDER EDITORIAL
    * ========================================================
    *
-   * Tudo é renderizado antes de qualquer upload.
+   * Tudo Ã© renderizado antes de qualquer upload.
    */
 
   const rendered = [];
 
   for (
     let index = 0;
-    index < editorialBanners.length;
+    index < images.length;
     index++
   ) {
     const banner =
@@ -832,12 +858,13 @@ async function handleBriefingGeneratedBanners(
 
     const image =
       images[index];
-
     if (!image?.imageBuffer) {
       throw new Error(
         `Imagem do banner editorial ${index + 1} nao possui buffer valido.`
       );
     }
+
+    const rendererCopy = banner;
 
     const normalized =
       normalizeBanner({
@@ -846,18 +873,18 @@ async function handleBriefingGeneratedBanners(
           briefing.categoria,
 
         banner_title:
-          banner.banner_title,
+          rendererCopy.banner_title,
 
         highlight:
-          banner.highlight,
+          rendererCopy.highlight,
 
         /*
          * Campo mantido apenas para
          * compatibilidade interna com
          * o renderer.
          *
-         * O renderer usa banner_title
-         * como headline final.
+         * O renderer junta banner_title e highlight
+         * no mesmo bloco visual.
          */
         titulo_curto:
           briefing.titulo_curto,
@@ -908,7 +935,7 @@ async function handleBriefingGeneratedBanners(
    * RENDER CTA
    * ========================================================
    *
-   * Não usa:
+   * NÃ£o usa:
    * - busca externa
    * - Gemini
    * - imagem editorial
@@ -944,9 +971,9 @@ async function handleBriefingGeneratedBanners(
   });
 
   /*
-   * Somente agora, depois dos três
-   * renders terem sido concluídos,
-   * começamos a persistência.
+   * Somente agora, depois dos trÃªs
+   * renders terem sido concluÃ­dos,
+   * comeÃ§amos a persistÃªncia.
    */
 
   const generationId =
@@ -982,7 +1009,7 @@ async function handleBriefingGeneratedBanners(
     uploaded.push({ item, storageId, bannerUrl });
   }
 
-  // Os três uploads precisam terminar antes de salvar os editoriais.
+  // Os trÃªs uploads precisam terminar antes de salvar os editoriais.
   const ctaUrl = uploaded.find(({ item }) => item.type === "cta")?.bannerUrl;
 
   if (!ctaUrl) {
@@ -999,8 +1026,8 @@ async function handleBriefingGeneratedBanners(
      * podendo gerar registros em
      * publicacoes.
      *
-     * O CTA é um slide institucional
-     * fixo e NÃO cria uma publicação
+     * O CTA Ã© um slide institucional
+     * fixo e NÃƒO cria uma publicaÃ§Ã£o
      * separada.
      */
 
@@ -1019,7 +1046,7 @@ async function handleBriefingGeneratedBanners(
         await createPublication(
           body.noticia_id,
           bannerUrl,
-          normalized.headline,
+          briefing.canonical_source ? briefing.highlights[item.bannerIndex] : normalized.headline,
           {
             url:
               sourceImage?.url ||
@@ -1091,7 +1118,7 @@ async function handleBriefingGeneratedBanners(
           normalized.shortTitle,
 
         headline:
-          normalized.headline,
+          briefing.canonical_source ? briefing.highlights[item.bannerIndex] : normalized.headline,
 
         image_url:
           item.sourceImage?.url ||
@@ -1197,7 +1224,10 @@ async function handleBriefingGeneratedBanners(
    * Se qualquer etapa anterior falhar,
    * esta funcao nunca e chamada.
    */
-  if (autoPublishEnabled) {
+  if (
+    autoPublishEnabled &&
+    !partialGeneration
+  ) {
     autoApproval =
       await autoApprovePublicationGroup({
         noticiaId:
@@ -1206,6 +1236,38 @@ async function handleBriefingGeneratedBanners(
         publicationGroupId:
           generationId,
       });
+  } else if (
+    autoPublishEnabled &&
+    partialGeneration
+  ) {
+    autoApproval = {
+      enabled:
+        true,
+
+      approved:
+        false,
+
+      partial:
+        true,
+
+      reason:
+        "PARTIAL_EDITORIAL_SET",
+
+      publication_group_id:
+        generationId,
+    };
+
+    console.warn(
+      "WIRE/GEEK AUTO-PUBLISH: grupo parcial mantido sem autoaprovacao",
+      {
+        noticia_id:
+          body.noticia_id ||
+          null,
+
+        publication_group_id:
+          generationId,
+      }
+    );
   }
 
   console.log(
@@ -1245,6 +1307,17 @@ async function handleBriefingGeneratedBanners(
 
       quantidade:
         completed.length,
+
+      partial:
+        partialGeneration,
+
+      editorial_count:
+        images.length,
+
+      aviso:
+        partialGeneration
+          ? "Somente um banner editorial foi resolvido apos a segunda tentativa. O resultado parcial foi mantido."
+          : null,
 
       auto_publish:
         autoPublishEnabled,
@@ -1289,6 +1362,8 @@ export default async function handler(req, res) {
           error?.code ||
           null,
 
+        details: error?.details || null,
+
         existing_publication_id:
           error?.existingPublicationId ||
           null,
@@ -1299,3 +1374,5 @@ export default async function handler(req, res) {
       });
   }
 }
+
+

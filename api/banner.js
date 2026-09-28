@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { resolveBannerImages } from "../lib/banner-images.mjs";
 import { validateVisualCandidates } from "../lib/banner-vision.mjs";
-import { validateHighlights } from "../lib/editorial-rules.mjs";
+import { validateHighlights } from "../lib/wiregeek-contract.mjs";
 import { validateBannerCopy } from "../lib/banner-copy.mjs";
 import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib/banner-renderer.mjs";
 

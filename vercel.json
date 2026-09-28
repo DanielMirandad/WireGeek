@@ -25,6 +25,9 @@
     },
     "api/cron-news.js": {
       "maxDuration": 300
+    },
+    "api/briefing-import.js": {
+      "maxDuration": 300
     }
   }
 }

@@ -1,4 +1,5 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { runEditorialRequest } from "../lib/editorial-execution.mjs";
+import { createClient } from "@supabase/supabase-js";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { persistEdition } from "./persistence.js";
 import { parseBriefingPayload } from "../lib/briefing-adapter.mjs";
@@ -64,19 +65,7 @@ async function resolveNewsIds(persisted) {
     .filter(Boolean);
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Metodo nao permitido.",
-    });
-  }
-
-  if (!hasValidWireGeekAuth(req)) {
-    return res.status(401).json({
-      error: "Acesso nao autorizado.",
-    });
-  }
-
+async function importBriefing(req, res, run) {
   try {
     const raw =
       req.body?.payload ??
@@ -84,6 +73,7 @@ export default async function handler(req, res) {
       req.body;
 
     const briefing = parseBriefingPayload(raw);
+    await run.progress({ researched: briefing.news.length });
 
     const researchData = {
       pesquisados: briefing.news.length,
@@ -119,18 +109,24 @@ export default async function handler(req, res) {
       news: briefing.news,
 
       researchData,
+      execution: run,
     });
+
+    if (!persisted.noticiaIds.length) {
+      return res.status(409).json({
+        error: "Todas as pautas deste briefing já estão salvas. Nenhuma nova edição foi criada.",
+        code: "NO_NEW_STORIES",
+        deduplication: persisted.deduplication,
+      });
+    }
 
     const noticiaIds =
       await resolveNewsIds(persisted);
 
-    const news = briefing.news.map(
-      (item, index) => ({
-        ...item,
-        id:
-          noticiaIds[index] ||
-          item.id ||
-          null,
+    const news = persisted.retainedIndexes.map(
+      (originalIndex, index) => ({
+        ...briefing.news[originalIndex],
+        id: noticiaIds[index],
       })
     );
 
@@ -144,6 +140,7 @@ export default async function handler(req, res) {
       },
 
       persisted: true,
+      deduplication: persisted.deduplication,
 
       noticia_ids_resolvidos:
         noticiaIds.length,
@@ -165,4 +162,11 @@ export default async function handler(req, res) {
           "Erro desconhecido.",
       });
   }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Método não permitido." });
+  if (!hasValidWireGeekAuth(req)) return res.status(401).json({ error: "Acesso não autorizado." });
+  const result = await runEditorialRequest({ source: "import" }, (output, run) => importBriefing(req, output, run));
+  return res.status(result.status).json(result.body);
 }

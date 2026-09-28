@@ -1,88 +1,20 @@
-﻿import newsHandler from "./news.js";
+﻿import { timingSafeEqual } from 'node:crypto';
+import { generateNews } from './news.js';
+import { cronSlot, runEditorialRequest } from '../lib/editorial-execution.mjs';
 
-export default async function handler(req, res) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res.status(405).json({
-      success: false,
-      error: "Metodo nao permitido."
-    });
+export default async function handler(req,res) {
+  res.setHeader('Cache-Control','no-store');
+  if(!['GET','POST'].includes(req.method)) return res.status(405).json({error:'Método não permitido.'});
+  const secret=process.env.SUPABASE_CRON_SECRET?.trim() || process.env.CRON_SECRET?.trim();
+  if(!secret) return res.status(503).json({error:'Cron não configurado.'});
+  const provided=req.headers?.authorization;
+  const expected=Buffer.from(`Bearer ${secret}`);
+  if(typeof provided!=='string' || Buffer.byteLength(provided)!==expected.length ||
+      !timingSafeEqual(Buffer.from(provided),expected)) return res.status(401).json({error:'Acesso não autorizado.'});
+  if(process.env.VERCEL_ENV && process.env.VERCEL_ENV!=='production') {
+    return res.status(409).json({error:'O cron está disponível somente em produção.'});
   }
-
-  const cronSecret =
-    String(
-      process.env.CRON_SECRET || ""
-    ).trim();
-
-  if (!cronSecret) {
-    console.error(
-      "WIRE/GEEK: CRON_SECRET nao configurado."
-    );
-
-    return res.status(500).json({
-      success: false,
-      error:
-        "Cron nao configurado.",
-    });
-  }
-
-  const authorization =
-    String(
-      req.headers?.authorization || ""
-    ).trim();
-
-  if (
-    authorization !==
-    `Bearer ${cronSecret}`
-  ) {
-    console.warn(
-      "WIRE/GEEK: chamada de cron recusada."
-    );
-
-    return res.status(401).json({
-      success: false,
-      error:
-        "Cron nao autorizado.",
-    });
-  }
-
-  const automationKey =
-    String(
-      process.env.WIREGEEK_AUTOMATION_KEY || ""
-    ).trim();
-
-  if (!automationKey) {
-    console.error(
-      "WIRE/GEEK: WIREGEEK_AUTOMATION_KEY nao configurada."
-    );
-
-    return res.status(500).json({
-      success: false,
-      error:
-        "Automacao nao configurada.",
-    });
-  }
-
-  req.headers = {
-    ...(req.headers || {}),
-    "x-wiregeek-automation-key":
-      automationKey,
-  };
-
-  /*
-   * /api/news aceita somente POST.
-   * O Vercel Cron chama este endpoint
-   * por GET, entao a chamada interna
-   * precisa ser convertida para POST.
-   */
-  req.method =
-    "POST";
-
-  req.body = {
-    prompt:
-      "Gere a edicao automatica do WIRE/GEEK de hoje com noticias reais disponiveis na pesquisa. A edicao deve conter entre 1 e 12 noticias validas. Se houver 12 ou mais candidatos validos, selecione as 12 melhores. Se houver entre 1 e 11 candidatos validos, utilize todas as noticias validas disponiveis. Se houver menos de 1 candidato valido, nao finalize a edicao. A distribuicao entre categorias e livre. Nao crie noticias para completar quantidade. Considere acontecimentos das ultimas 48 horas. Use busca na web antes de escrever. Responda somente com JSON valido."
-  };
-
-  return newsHandler(req, res);
+  const request={method:'POST',body:{}};
+  const result=await runEditorialRequest({source:'cron',slot:cronSlot()},(output,run)=>generateNews(request,output,run));
+  return res.status(result.status).json(result.body);
 }
-
-

@@ -1,17 +1,13 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import {
-  ImageIcon,
-} from "lucide-react";
-import {
   hasBriefingBannerSpecs,
   buildBriefingClientPayload,
 } from "./briefing-banner-contract.js";
-export default function BriefingBannerSection({ item, deriveShortTitle }) {
+export default function BriefingBannerSection({ item }) {
   const briefingReady = hasBriefingBannerSpecs(item);
 
   const bannerMode = "briefing";
@@ -25,13 +21,9 @@ export default function BriefingBannerSection({ item, deriveShortTitle }) {
   const [error, setError] = useState("");
   const [updatingPublication, setUpdatingPublication] = useState(null);
 
-  const [shortTitle, setShortTitle] = useState(item.titulo_curto || "");
-  const [imageOverrides, setImageOverrides] = useState(["", ""]);
   const autoGenerationRef = useRef("");
 
   useEffect(() => {
-setShortTitle(item.titulo_curto || "");
-    setImageOverrides(["", ""]);
     setBanners(
       Array.isArray(item.final_banners)
         ? item.final_banners
@@ -54,7 +46,6 @@ setShortTitle(item.titulo_curto || "");
     try {
       let payload;
       let endpoint;
-      let expectedCount;
 
       /*
        * ==============================================
@@ -71,7 +62,7 @@ setShortTitle(item.titulo_curto || "");
           )
         ) {
           throw new Error(
-            "O modo Briefing exige dois banners editoriais completos."
+            "O modo Briefing exige titulo_curto canônico e exatamente dois highlights editoriais."
           );
         }
 
@@ -83,7 +74,6 @@ setShortTitle(item.titulo_curto || "");
         endpoint =
           "/api/banner-briefing";
 
-        expectedCount = 3;
 
         console.log(
           "WIRE/GEEK: geração pelo modo Briefing",
@@ -147,8 +137,7 @@ setShortTitle(item.titulo_curto || "");
         !Array.isArray(
           data.banners
         ) ||
-        data.banners.length !==
-          expectedCount
+        (data.banners.length < 2 || data.banners.length > 3)
       ) {
         const details =
           Array.isArray(
@@ -163,8 +152,7 @@ setShortTitle(item.titulo_curto || "");
           [
             details ||
               data.error ||
-              `Não foi possível gerar os ${expectedCount} banners/slides.`,
-
+              "Não foi possível gerar os banners do Briefing.",
             data.aviso,
           ]
             .filter(Boolean)
@@ -272,9 +260,7 @@ setShortTitle(item.titulo_curto || "");
       {
         noticia_id: item.id || null,
         titulo: item.titulo,
-        titulo_curto:
-          item.titulo_curto ||
-          deriveShortTitle(item.titulo),
+        titulo_curto: item.titulo_curto || "",
       }
     );
 
@@ -388,7 +374,7 @@ setShortTitle(item.titulo_curto || "");
           <h3 className="mt-1 text-lg font-bold text-white">
             {item.briefing_source
               ? "Banners finais do Briefing"
-              : "Gerar carrossel de 3 slides"}
+              : "Gerar banners do Briefing"}
           </h3>
           <p className="mt-2 text-sm leading-6 text-[#a9bab5]">
             {item.briefing_source
@@ -423,7 +409,7 @@ setBanners([]);
                 : ""
             }`}
           >
-            BRIEFING · 3 SLIDES
+            BRIEFING
           </button>
 
 
@@ -431,59 +417,9 @@ setBanners([]);
 
         {!briefingReady && (
           <div className="mb-4 rounded-lg border border-[#263b36] bg-[#07110f] p-3 text-xs leading-5 text-[#7f9690]">
-            O modo Briefing ficará disponível quando esta notícia tiver dois banner_title e dois highlights editoriais completos.
+            O modo Briefing ficará disponível quando esta notícia tiver titulo_curto canônico e exatamente dois highlights editoriais completos.
           </div>
         )}
-
-        <div className="hidden">
-        <label className="mb-4 block text-sm text-[#a9bab5]">
-          Título do banner
-          <input
-            value={shortTitle}
-            onChange={event => setShortTitle(event.target.value)}
-            maxLength={24}
-            disabled={generating}
-            placeholder="Nome do assunto, como One Piece"
-            className="mt-2 w-full rounded-lg border border-[#263b36] bg-[#0f1a1c] px-3 py-2 text-white"
-          />
-        </label>
-
-        <details className="mb-4 text-sm text-[#a9bab5]">
-          <summary className="cursor-pointer">Escolher as duas imagens</summary>
-          <p className="my-2">
-            Deixe os campos vazios para buscar imagens. Para escolher as fotos, informe as duas URLs.
-          </p>
-          {imageOverrides.map((url, index) => (
-            <label key={index} className="mb-3 block">
-              Imagem {index + 1}
-              <input
-                type="url"
-                value={url}
-                onChange={event =>
-                  setImageOverrides(current =>
-                    current.map((value, position) =>
-                      position === index ? event.target.value : value
-                    )
-                  )
-                }
-                disabled={generating}
-                placeholder="https://.../foto.jpg"
-                className="mt-1 w-full rounded-lg border border-[#263b36] bg-[#0f1a1c] px-3 py-2 text-white"
-              />
-            </label>
-          ))}
-        </details>
-
-        <button
-          type="button"
-          onClick={generateBanner}
-          disabled={generating}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#00d084] px-4 py-3 font-semibold text-black transition hover:bg-[#22e59b] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <ImageIcon size={18} />
-          {generating ? "Gerando banners..." : "Gerar carrossel de 3 slides"}
-        </button>
-        </div>
 
         {banners.length === 0 && !error && (
           <div className="rounded-lg border border-[#263b36] bg-[#07110f] p-3 text-sm text-[#a9bab5]">
@@ -502,7 +438,7 @@ setBanners([]);
         {banners.length > 0 && (
           <div className="mt-4 space-y-4">
             <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#5c6f6b]">
-              3 SLIDES GERADOS
+              {banners.length} SLIDES GERADOS
             </div>
 
             {banners.map((bannerItem, index) => {

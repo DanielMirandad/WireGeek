@@ -1,3 +1,4 @@
+import cronNewsHandler from "./api/cron-news.js";
 import express from "express";
 import youtubeHandler from "./api/youtube.js";
 
@@ -26,6 +27,8 @@ app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 app.all("/api/youtube", youtubeHandler);
 
+
+app.all("/api/cron-news", cronNewsHandler);
 
 app.all("/api/auth", async (req, res) => {
   console.log(`WIRE/GEEK: ${req.method} /api/auth recebido.`);

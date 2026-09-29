@@ -1572,14 +1572,22 @@ function ReelPublicationPanel({ item }) {
       {!error &&
         !loading &&
         group &&
-        rows.length !== 2 && (
-          <div className="border border-[#e0452f]/50 bg-[#1a1214] px-3 py-3 font-mono text-[10px] text-[#f0a89a]">
-            Grupo inconsistente: esperados 2 editoriais, recebidos {rows.length}.
+        rows.length === 1 && (
+          <div className="border border-[#b88a32]/50 bg-[#18150c] px-3 py-3 font-mono text-[10px] text-[#d8bd7a]">
+            Resultado parcial: 1 editorial disponível. A publicação automática requer 2 editoriais.
           </div>
         )}
 
+      {!error &&
+        !loading &&
+        group &&
+        (rows.length === 0 || rows.length > 2) && (
+          <div className="border border-[#e0452f]/50 bg-[#1a1214] px-3 py-3 font-mono text-[10px] text-[#f0a89a]">
+            Grupo inconsistente: esperados 1 ou 2 editoriais, recebidos {rows.length}.
+          </div>
+        )}
 
-      {rows.length === 2 && (
+      {(rows.length === 1 || rows.length === 2) && (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             {rows.map(

@@ -5,65 +5,82 @@ import {
   resolveBriefingBannerImages,
 } from "../lib/banner-images-briefing.mjs";
 
-function request() {
+function makeRequest() {
   return {
     mode: "briefing",
-    titulo: "Notícia de teste",
+    titulo: "Noticia de teste",
     titulo_curto: "TESTE",
-    source_urls: [
-      "https://example.com/noticia",
-    ],
+    source_urls: [],
     banners: [
       {
         type: "editorial",
         index: 0,
         banner_title: "TESTE",
         highlight:
-          "Primeiro highlight editorial factual para validar o resolvedor de imagens.",
+          "Primeiro highlight factual usado no teste do resolvedor.",
       },
       {
         type: "editorial",
         index: 1,
         banner_title: "TESTE",
         highlight:
-          "Segundo highlight editorial factual para validar uma imagem diferente.",
+          "Segundo highlight factual usado no teste do resolvedor.",
       },
     ],
   };
 }
 
-const first = {
-  url: "https://img.example.com/1.jpg",
-};
+function fp(id) {
+  return {
+    width: 1200,
+    height: 1600,
+    exactHash: id,
+    fullHash: id,
+    cropHash: id,
+  };
+}
 
-const second = {
-  url: "https://img.example.com/2.jpg",
-};
+function image(url, id) {
+  return {
+    url,
+    imageBuffer:
+      Buffer.from("buffer-" + id),
+    fingerprint: fp(id),
+  };
+}
+
+const first =
+  image(
+    "https://img.example.com/1.jpg",
+    "first"
+  );
+
+const second =
+  image(
+    "https://img.example.com/2.jpg",
+    "second"
+  );
 
 test(
-  "retorna duas imagens quando os dois banners possuem imagens distintas",
+  "retorna duas imagens editoriais distintas",
   async () => {
     let calls = 0;
 
     const result =
       await resolveBriefingBannerImages(
-        request(),
+        makeRequest(),
         {
           collectSourceImages:
             async () => [],
           resolveOneBanner:
             async () => {
               calls += 1;
-
               return calls === 1
                 ? first
                 : second;
             },
-          verifyPair:
-            async () => [
-              first,
-              second,
-            ],
+          sameImage:
+            () => false,
         }
       );
 
@@ -77,13 +94,13 @@ test(
 );
 
 test(
-  "retorna somente a primeira imagem quando a segunda nao pode ser resolvida",
+  "mantem resultado parcial quando somente a primeira imagem existe",
   async () => {
     let calls = 0;
 
     const result =
       await resolveBriefingBannerImages(
-        request(),
+        makeRequest(),
         {
           collectSourceImages:
             async () => [],
@@ -99,12 +116,8 @@ test(
                 "segunda indisponivel"
               );
             },
-          verifyPair:
-            async () => {
-              throw new Error(
-                "nao deveria verificar"
-              );
-            },
+          sameImage:
+            () => false,
         }
       );
 
@@ -113,21 +126,17 @@ test(
       [first]
     );
 
-    assert.equal(
-      calls,
-      3,
-      "deve tentar resolver o segundo banner duas vezes"
-    );
+    assert.equal(calls, 3);
   }
 );
 
 test(
-  "falha quando a primeira imagem nao pode ser resolvida",
+  "falha quando a primeira imagem nao existe",
   async () => {
     await assert.rejects(
       () =>
         resolveBriefingBannerImages(
-          request(),
+          makeRequest(),
           {
             collectSourceImages:
               async () => [],
@@ -137,8 +146,6 @@ test(
                   "nenhuma imagem"
                 );
               },
-            verifyPair:
-              async () => null,
           }
         ),
       /nenhuma imagem/
@@ -147,19 +154,20 @@ test(
 );
 
 test(
-  "rejeita o primeiro candidato do segundo banner quando o par e semelhante e tenta outro",
+  "rejeita segunda imagem semelhante e tenta outra",
   async () => {
-    const duplicate = {
-      url:
+    const duplicate =
+      image(
         "https://img.example.com/duplicate.jpg",
-    };
+        "duplicate"
+      );
 
     let calls = 0;
-    let pairChecks = 0;
+    let comparisons = 0;
 
     const result =
       await resolveBriefingBannerImages(
-        request(),
+        makeRequest(),
         {
           collectSourceImages:
             async () => [],
@@ -183,24 +191,14 @@ test(
 
               return second;
             },
-          verifyPair:
-            async (
-              left,
-              right
-            ) => {
-              pairChecks += 1;
+          sameImage:
+            (left, right) => {
+              comparisons += 1;
 
-              if (
-                right.url ===
-                duplicate.url
-              ) {
-                return null;
-              }
-
-              return [
-                left,
-                right,
-              ];
+              return (
+                right ===
+                duplicate.fingerprint
+              );
             },
         }
       );
@@ -210,24 +208,156 @@ test(
       [first, second]
     );
 
-    assert.equal(pairChecks, 2);
     assert.equal(calls, 3);
+    assert.equal(comparisons, 2);
   }
 );
 
 test(
-  "exige exatamente dois banners editoriais no contrato de entrada",
+  "baixa uma vez, valida o buffer e preserva buffer e fingerprint",
   async () => {
-    const invalid = request();
+    const urls = [
+      "https://img.example.com/real-1.jpg",
+      "https://img.example.com/real-2.jpg",
+    ];
 
-    invalid.banners =
-      invalid.banners.slice(0, 1);
+    const request =
+      makeRequest();
+
+    request.banners[0].image_url =
+      urls[0];
+
+    request.banners[1].image_url =
+      urls[1];
+
+    const originals = new Map([
+      [
+        urls[0],
+        image(urls[0], "real-1"),
+      ],
+      [
+        urls[1],
+        image(urls[1], "real-2"),
+      ],
+    ]);
+
+    const downloaded = [];
+    const validated = [];
+
+    const result =
+      await resolveBriefingBannerImages(
+        request,
+        {
+          collectSourceImages:
+            async () => [],
+
+          downloadImage:
+            async (url) => {
+              downloaded.push(url);
+
+              const current =
+                originals.get(url);
+
+              assert.ok(current);
+
+              return current;
+            },
+
+          validateVisualCandidates:
+            async ({
+              images,
+            }) => {
+              assert.equal(
+                images.length,
+                1
+              );
+
+              assert.ok(
+                Buffer.isBuffer(
+                  images[0].imageBuffer
+                )
+              );
+
+              validated.push(
+                images[0]
+              );
+
+              return {
+                distinct: true,
+                images: [
+                  {
+                    index: 0,
+                    approved: true,
+                    reason: "ok",
+                  },
+                ],
+              };
+            },
+
+          sameImage:
+            () => false,
+        }
+      );
+
+    assert.deepEqual(
+      downloaded,
+      urls
+    );
+
+    assert.equal(
+      validated.length,
+      2
+    );
+
+    assert.equal(
+      result.length,
+      2
+    );
+
+    assert.strictEqual(
+      result[0].imageBuffer,
+      originals.get(urls[0])
+        .imageBuffer
+    );
+
+    assert.strictEqual(
+      result[0].fingerprint,
+      originals.get(urls[0])
+        .fingerprint
+    );
+
+    assert.strictEqual(
+      result[1].imageBuffer,
+      originals.get(urls[1])
+        .imageBuffer
+    );
+
+    assert.strictEqual(
+      result[1].fingerprint,
+      originals.get(urls[1])
+        .fingerprint
+    );
+
+    assert.equal(
+      downloaded.length,
+      2
+    );
+  }
+);
+
+test(
+  "exige exatamente dois banners editoriais",
+  async () => {
+    const request =
+      makeRequest();
+
+    request.banners =
+      request.banners.slice(0, 1);
 
     await assert.rejects(
       () =>
         resolveBriefingBannerImages(
-          invalid,
-          {}
+          request
         ),
       /exatamente 2 banners editoriais/
     );

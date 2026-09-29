@@ -10,7 +10,6 @@
                     "test":  "node --test tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs"
                 },
     "dependencies":  {
-                         "@google/genai":  "^2.17.1",
                          "@supabase/supabase-js":  "^2.112.4",
                          "@vitejs/plugin-react":  "latest",
                          "autoprefixer":  "latest",

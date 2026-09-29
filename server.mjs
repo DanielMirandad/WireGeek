@@ -155,15 +155,6 @@ app.listen(PORT, () => {
   console.log("=================================");
   console.log(`BRIEFING: http://localhost:${PORT}/api/briefing-import`);
   console.log(`AUTH: http://localhost:${PORT}/api/auth`);
-  console.log(
-    "Gemini:",
-    Boolean(
-      process.env.GOOGLE_GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY
-    )
-      ? "CONFIGURADO"
-      : "NAO CONFIGURADO"
-  );
   console.log("=================================");
   console.log("");
 });

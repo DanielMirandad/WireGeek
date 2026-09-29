@@ -1,134 +1,128 @@
 import { runEditorialRequest } from "../lib/editorial-execution.mjs";
-import { createClient } from "@supabase/supabase-js";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { persistEdition } from "./persistence.js";
-import { parseBriefingPayload } from "../lib/briefing-adapter.mjs";
+import { validateCanonicalShape } from "../lib/wiregeek-contract.mjs";
 
-function getSupabase() {
-  const url = String(process.env.SUPABASE_URL || "").trim();
-  const serviceRoleKey = String(
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-  ).trim();
+export function parseCanonicalPayload(raw) {
+  const parsed = raw;
 
-  if (!url || !serviceRoleKey) {
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed)
+  ) {
     throw new Error(
-      "SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY sao obrigatorios."
+      "O payload do Briefing Geek 2h deve ser um objeto JSON."
     );
   }
 
-  return createClient(url, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
+  if (!Array.isArray(parsed.news)) {
+    throw new Error(
+      "O payload do Briefing Geek 2h deve possuir o array news."
+    );
+  }
+
+  if (
+    parsed.news.length < 1 ||
+    parsed.news.length > 12
+  ) {
+    throw new Error(
+      "O Briefing Geek 2h deve conter entre 1 e 12 noticias."
+    );
+  }
+
+  parsed.news.forEach((item, index) => {
+    const errors = validateCanonicalShape(item);
+
+    if (errors.length) {
+      throw new Error(
+        `Noticia ${index + 1} invalida: ${errors.join("; ")}`
+      );
+    }
   });
+
+  return {
+    title:
+      typeof parsed.title === "string" &&
+      parsed.title.trim()
+        ? parsed.title.trim()
+        : "Briefing Geek 2h",
+
+    generatedAt:
+      typeof parsed.generatedAt === "string" &&
+      parsed.generatedAt.trim()
+        ? parsed.generatedAt.trim()
+        : new Date().toISOString(),
+
+    news: parsed.news,
+  };
 }
 
-async function resolveNewsIds(persisted) {
-  if (persisted && typeof persisted === "object") {
-    const direct = Array.isArray(persisted.noticiaIds)
-      ? persisted.noticiaIds
-      : Array.isArray(persisted.newsIds)
-        ? persisted.newsIds
-        : [];
+function buildImportMetadata(news) {
+  return {
+    pesquisados: news.length,
 
-    if (direct.length) {
-      return direct;
-    }
-  }
+    candidatos: news.map((item) => ({
+      titulo: item.titulo,
+      categoria: item.categoria,
+      publicado_em:
+        item.fontes[0]?.publicado_em || "",
+      resumo: "",
+      url: item.fontes[0]?.url || "",
+      fonte: item.fontes[0]?.titulo || "",
+      image_query: item.image_query,
+    })),
 
-  const editionId =
-    persisted && typeof persisted === "object"
-      ? persisted.editionId || persisted.id || null
-      : persisted;
-
-  if (!editionId) {
-    return [];
-  }
-
-  const supabase = getSupabase();
-
-  const { data, error } = await supabase
-    .from("edicao_noticias")
-    .select("noticia_id,ordem")
-    .eq("edicao_id", editionId)
-    .order("ordem", { ascending: true });
-
-  if (error) {
-    throw new Error(
-      `Nao foi possivel recuperar os IDs importados: ${error.message}`
-    );
-  }
-
-  return (data || [])
-    .map((row) => row.noticia_id)
-    .filter(Boolean);
+    errosValidacao: [],
+  };
 }
 
 async function importBriefing(req, res, run) {
   try {
-    const raw =
-      req.body?.payload ??
-      req.body?.text ??
-      req.body;
+    const briefing = parseCanonicalPayload(req.body);
 
-    const briefing = parseBriefingPayload(raw);
-    await run.progress({ researched: briefing.news.length });
-
-    const researchData = {
-      pesquisados: briefing.news.length,
-
-      candidatos: briefing.news.map((item) => ({
-        titulo: item.titulo,
-        categoria: item.categoria,
-        publicado_em: item.publicado_em,
-        resumo:
-          item.resumo ||
-          item.por_que_importa ||
-          "",
-        url: item.fontes[0]?.url || "",
-        fonte: item.fontes[0]?.nome || "",
-        contexto_visual: item.contexto_visual,
-        image_query: item.image_query,
-      })),
-
-      errosValidacao: [],
-    };
+    await run.progress({
+      researched: briefing.news.length,
+    });
 
     const persisted = await persistEdition({
-      title:
-        briefing.title ||
-        "Briefing Geek Diário",
-
-      date:
-        briefing.generatedAt ||
-        new Date().toISOString(),
-
+      title: briefing.title,
+      date: briefing.generatedAt,
       status: "publicada",
-
       news: briefing.news,
-
-      researchData,
+      researchData: buildImportMetadata(
+        briefing.news
+      ),
       execution: run,
     });
 
     if (!persisted.noticiaIds.length) {
       return res.status(409).json({
-        error: "Todas as pautas deste briefing já estão salvas. Nenhuma nova edição foi criada.",
+        error:
+          "Todas as pautas deste briefing ja estao salvas. Nenhuma nova edicao foi criada.",
         code: "NO_NEW_STORIES",
         deduplication: persisted.deduplication,
       });
     }
 
-    const noticiaIds =
-      await resolveNewsIds(persisted);
+    const noticiaIds = persisted.noticiaIds;
 
-    const news = persisted.retainedIndexes.map(
-      (originalIndex, index) => ({
-        ...briefing.news[originalIndex],
-        id: noticiaIds[index],
-      })
-    );
+    if (
+      noticiaIds.length !==
+      persisted.retainedIndexes.length
+    ) {
+      throw new Error(
+        "Persistencia retornou IDs inconsistentes com as noticias retidas."
+      );
+    }
+
+    const news =
+      persisted.retainedIndexes.map(
+        (originalIndex, index) => ({
+          ...briefing.news[originalIndex],
+          id: noticiaIds[index],
+        })
+      );
 
     return res.status(200).json({
       success: true,
@@ -147,7 +141,7 @@ async function importBriefing(req, res, run) {
     });
   } catch (error) {
     console.error(
-      "WIRE/GEEK: erro ao importar Briefing Geek Diário:",
+      "WIRE/GEEK: erro ao importar Briefing Geek 2h:",
       error
     );
 
@@ -155,7 +149,7 @@ async function importBriefing(req, res, run) {
       .status(error?.statusCode || 400)
       .json({
         error:
-          "Nao foi possivel importar o Briefing Geek Diário.",
+          "Nao foi possivel importar o Briefing Geek 2h.",
 
         details:
           error?.message ||
@@ -165,8 +159,29 @@ async function importBriefing(req, res, run) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Método não permitido." });
-  if (!hasValidWireGeekAuth(req)) return res.status(401).json({ error: "Acesso não autorizado." });
-  const result = await runEditorialRequest({ source: "import" }, (output, run) => importBriefing(req, output, run));
-  return res.status(result.status).json(result.body);
+  if (req.method !== "POST") {
+    return res
+      .status(405)
+      .json({
+        error: "Metodo nao permitido.",
+      });
+  }
+
+  if (!hasValidWireGeekAuth(req)) {
+    return res
+      .status(401)
+      .json({
+        error: "Acesso nao autorizado.",
+      });
+  }
+
+  const result = await runEditorialRequest(
+    { source: "import" },
+    (output, run) =>
+      importBriefing(req, output, run)
+  );
+
+  return res
+    .status(result.status)
+    .json(result.body);
 }

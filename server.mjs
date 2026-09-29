@@ -1,10 +1,10 @@
-import cronNewsHandler from "./api/cron-news.js";
+
 import express from "express";
 import youtubeHandler from "./api/youtube.js";
 
 import cors from "cors";
 import dotenv from "dotenv";
-import newsHandler from "./api/news.js";
+
 import authHandler from "./api/auth.js";
 import edicoesHandler from "./api/edicoes.js";
 import bannerHandler from "./api/banner.js";
@@ -28,7 +28,7 @@ app.use(express.json({ limit: "1mb" }));
 app.all("/api/youtube", youtubeHandler);
 
 
-app.all("/api/cron-news", cronNewsHandler);
+
 
 app.all("/api/auth", async (req, res) => {
   console.log(`WIRE/GEEK: ${req.method} /api/auth recebido.`);
@@ -103,7 +103,7 @@ app.post("/api/briefing-import", async (req, res) => {
 
     if (!res.headersSent) {
       res.status(500).json({
-        error: "Erro ao importar Briefing Geek Diário.",
+        error: "Erro ao importar Briefing Geek 2h.",
         details: error?.message || String(error),
       });
     }
@@ -146,25 +146,6 @@ app.post("/api/banner", async (req, res) => {
   }
 });
 
-app.post("/api/news", async (req, res) => {
-  console.log("WIRE/GEEK: POST /api/news recebido.");
-  console.log("WIRE/GEEK: body:", req.body);
-
-  try {
-    await newsHandler(req, res);
-    console.log("WIRE/GEEK: handler finalizado.");
-  } catch (error) {
-    console.error("WIRE/GEEK: erro no handler:", error);
-
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: "Erro no backend.",
-        details: error?.message || String(error),
-      });
-    }
-  }
-});
-
 const PORT = 3001;
 
 app.listen(PORT, () => {
@@ -172,7 +153,7 @@ app.listen(PORT, () => {
   console.log("=================================");
   console.log(" WIRE/GEEK LOCAL BACKEND");
   console.log("=================================");
-  console.log(`API: http://localhost:${PORT}/api/news`);
+  console.log(`BRIEFING: http://localhost:${PORT}/api/briefing-import`);
   console.log(`AUTH: http://localhost:${PORT}/api/auth`);
   console.log(
     "Gemini:",

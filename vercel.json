@@ -3,9 +3,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/news.js": {
-      "maxDuration": 300
-    },
     "api/banner.js": {
       "maxDuration": 300
     },
@@ -21,9 +18,6 @@
     },
     "api/youtube.js": {
       "memory": 1024,
-      "maxDuration": 300
-    },
-    "api/cron-news.js": {
       "maxDuration": 300
     },
     "api/briefing-import.js": {

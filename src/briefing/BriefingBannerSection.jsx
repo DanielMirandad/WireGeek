@@ -378,7 +378,7 @@ export default function BriefingBannerSection({ item }) {
           </h3>
           <p className="mt-2 text-sm leading-6 text-[#a9bab5]">
             {item.briefing_source
-              ? "Os banners desta notícia foram criados pelo Briefing Geek Diário e importados diretamente."
+              ? "Os banners desta notícia foram criados pelo Briefing Geek 2h e importados diretamente."
               : "Dois highlights, duas imagens diferentes e o modelo visual aprovado."}
           </p>
         </div>

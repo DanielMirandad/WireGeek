@@ -73,21 +73,6 @@ function copyToClipboard(text) {
   if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).catch(() => copyViaTextarea(text));
   return copyViaTextarea(text);
 }
-async function fetchWithRetry(url, options, { attempts=4, onRetry }={}) {
-  let lastError;
-  for (let i=0; i<attempts; i++) {
-    let response=null;
-    try { response = await fetch(url, options); } catch(e) { lastError=e; }
-    if (response?.ok) return response;
-    const status = response?.status ?? null;
-    const transient = status===429||status===503||status===529||status===null;
-    if (!transient || i===attempts-1) { if (response) return response; throw lastError||new Error("Falha de rede."); }
-    const wait = Math.round(1000*Math.pow(2,i)+Math.random()*500);
-    onRetry?.(status,i+1,attempts,wait);
-    await sleep(wait);
-  }
-  throw lastError||new Error("Falha após múltiplas tentativas.");
-}
 async function postPublisherMode(
   payload
 ) {
@@ -1443,7 +1428,7 @@ function BriefingLab() {
         <label className="mt-4 block text-sm text-[#a9bab5]">
           Origem do teste
           <select value={inputMode} onChange={event => setInputMode(event.target.value)} className="ml-3 rounded border border-[#263b36] bg-[#0f1a1c] p-2 text-white">
-            <option value="real">Item real do Briefing Geek Diário</option>
+            <option value="real">Item real do Briefing Geek 2h</option>
             <option value="fixtures">Regressão · 4 fixtures aprovadas</option>
           </select>
         </label>
@@ -2881,83 +2866,59 @@ async function importBriefing() {
 
     if (!payload) {
       setBriefingError(
-        "Cole o bloco WIREGEEK_JSON do Briefing Geek Diário."
+        "Cole o JSON canônico do Briefing Geek 2h."
       );
       return;
     }
 
-    /*
-     * O JSON original é a fonte de verdade do contrato visual.
-     * /api/briefing-import continua responsável pela persistência
-     * e pelos IDs das notícias.
-     */
-    let originalBriefing;
+    let canonicalBriefing;
 
     try {
-      const jsonStart = payload.indexOf("{");
-      const jsonEnd = payload.lastIndexOf("}");
-
-      if (
-        jsonStart < 0 ||
-        jsonEnd < jsonStart
-      ) {
-        throw new Error(
-          "Bloco JSON não encontrado."
-        );
-      }
-
-      originalBriefing = JSON.parse(
-        payload.slice(
-          jsonStart,
-          jsonEnd + 1
-        )
-      );
-    } catch (error) {
+      canonicalBriefing = JSON.parse(payload);
+    } catch {
       setBriefingError(
-        "Não foi encontrado JSON válido no bloco do Briefing Geek Diário."
+        "O Briefing Geek 2h deve ser um JSON válido."
       );
       return;
     }
 
-    const originalNews =
-      Array.isArray(originalBriefing?.news)
-        ? originalBriefing.news
-        : [];
-
-    if (!originalNews.length) {
+    if (
+      !canonicalBriefing ||
+      typeof canonicalBriefing !== "object" ||
+      Array.isArray(canonicalBriefing) ||
+      !Array.isArray(canonicalBriefing.news) ||
+      canonicalBriefing.news.length < 1
+    ) {
       setBriefingError(
-        "O Briefing não contém notícias em news."
+        "O JSON canônico deve possuir o array news com pelo menos uma notícia."
       );
       return;
     }
 
     setBriefingImporting(true);
-    appliedSnapshotRef.current = latestSnapshot.edition;
+    appliedSnapshotRef.current =
+      latestSnapshot.edition;
     setFollowingLatest(true);
     setBriefingError("");
     setErrorMsg("");
 
     setTicker(
-      "IMPORTANDO BRIEFING GEEK DIÁRIO"
+      "IMPORTANDO BRIEFING GEEK 2H"
     );
 
     try {
-      /*
-       * ETAPA 1
-       * Mantém o importador existente responsável por
-       * validar/salvar a edição e devolver as notícias com ID.
-       */
       const response = await fetch(
         "/api/briefing-import",
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
           },
           credentials: "include",
-          body: JSON.stringify({
-            text: payload,
-          }),
+          body: JSON.stringify(
+            canonicalBriefing
+          ),
         }
       );
 
@@ -2968,7 +2929,8 @@ async function importBriefing() {
       if (
         !response.ok ||
         !data?.success ||
-        !Array.isArray(data?.edition?.news)
+        !data?.edition ||
+        !Array.isArray(data.edition.news)
       ) {
         throw new Error(
           data?.details ||
@@ -2977,97 +2939,16 @@ async function importBriefing() {
         );
       }
 
-      const persistedNews =
+      const news =
         data.edition.news.map(
           normalizeNewsItem
         );
 
-      if (
-        persistedNews.length !==
-        originalNews.length
-      ) {
+      if (!news.length) {
         throw new Error(
-          `O Briefing possui ${originalNews.length} notícias, mas o importador retornou ${persistedNews.length}.`
+          "O importador não retornou notícias persistidas."
         );
       }
-
-      /*
-       * A resposta persistida fornece ID e dados canônicos.
-       * O JSON original fornece o contrato visual aprovado.
-       *
-       * Não deixar /api/briefing-import apagar:
-       * - fontes
-       * - contexto_visual
-       * - image_query
-       * - imagens
-       * - banners
-       */
-      const news =
-        persistedNews.map(
-          (persistedItem, index) => {
-            const originalItem =
-              normalizeNewsItem(
-                originalNews[index] || {}
-              );
-
-            return {
-              ...persistedItem,
-
-              fontes:
-                originalItem.fontes,
-
-              contexto_visual:
-                originalItem.contexto_visual,
-
-              image_query:
-                originalItem.image_query,
-
-              image_url:
-                originalItem.image_url,
-
-              imagens:
-                originalItem.imagens,
-
-              banners:
-                originalItem.banners,
-
-              /*
-               * Os dois highlights também fazem parte
-               * do contrato editorial do Briefing.
-               */
-              highlights:
-                originalItem.highlights.length
-                  ? originalItem.highlights
-                  : persistedItem.highlights,
-            };
-          }
-        );
-
-      console.log(
-        "WIRE/GEEK: CONTRATO VISUAL DO BRIEFING PRESERVADO",
-        news.map((item, index) => ({
-          noticia: index + 1,
-          id: item.id || null,
-          categoria: item.categoria,
-          titulo: item.titulo,
-          fontes:
-            Array.isArray(item.fontes)
-              ? item.fontes.length
-              : 0,
-          banners:
-            Array.isArray(item.banners)
-              ? item.banners.length
-              : 0,
-          imagens:
-            Array.isArray(item.imagens)
-              ? item.imagens.length
-              : 0,
-          image_query:
-            Boolean(item.image_query),
-          contexto_visual:
-            Boolean(item.contexto_visual),
-        }))
-      );
 
       const validationError =
         validateEdition(news);
@@ -3076,35 +2957,12 @@ async function importBriefing() {
         throw new Error(validationError);
       }
 
-            /*
-       * ETAPA 2
-       *
-       * Importação sem geração automática.
-       *
-       * Busca de imagem e renderização somente
-       * acontecem quando Gerar banner for clicado.
-       */
       const newEdition = {
         ...data.edition,
-
-        title:
-          data.edition.title ||
-          data.edition.titulo ||
-          "Briefing Geek Diário",
-
-        generatedAt:
-          data.edition.generatedAt ||
-          data.edition.generated_at ||
-          data.edition.data_edicao ||
-          new Date().toISOString(),
-
-        news: news,
+        news,
       };
 
-      setEdition(
-        newEdition
-      );
-
+      setEdition(newEdition);
       setStatus("done");
 
       setTicker(
@@ -3112,193 +2970,45 @@ async function importBriefing() {
       );
 
       setActiveFilter("all");
-
-      setBriefingImportOpen(
-        false
-      );
-
+      setBriefingImportOpen(false);
       setBriefingText("");
 
       try {
         localStorage.setItem(
           todayKey(),
-          JSON.stringify(
-            newEdition
-          )
+          JSON.stringify(newEdition)
         );
       } catch {}
 
       console.log(
-        "WIRE/GEEK: BRIEFING IMPORTADO SEM GERACAO AUTOMATICA",
+        "WIRE/GEEK: BRIEFING GEEK 2H IMPORTADO",
         {
-          noticias: news.length,
+          recebidas:
+            canonicalBriefing.news.length,
+          persistidas:
+            news.length,
+          deduplicacao:
+            data.deduplication || null,
         }
       );
     } catch (error) {
       console.error(
-        "WIRE/GEEK: falha no Briefing automático:",
+        "WIRE/GEEK: falha ao importar Briefing Geek 2h:",
         error
       );
 
       setBriefingError(
         error?.message ||
-        "Não foi possível importar e gerar o Briefing Geek Diário."
+        "Não foi possível importar o Briefing Geek 2h."
       );
 
       setTicker(
-        "FALHA NA GERAÇÃO DO BRIEFING"
+        "FALHA NA IMPORTAÇÃO DO BRIEFING"
       );
     } finally {
       setBriefingImporting(false);
     }
   }
-  async function generate() {
-  if (status === "loading") return;
-
-  setStatus("loading");
-  appliedSnapshotRef.current = latestSnapshot.edition;
-  setFollowingLatest(true);
-  setErrorMsg("");
-  setEdition(null);
-
-  const phases = [
-    "CONECTANDO AO FIO INTERNACIONAL",
-    "VARRENDO PORTAIS DE GAMES, GEEK, CINEMA E ANIME",
-    "FILTRANDO PUBLICAÇÕES DAS ÚLTIMAS 48H",
-    "VALIDANDO DATA E FONTE",
-    "APURANDO OS FATOS",
-    "REDIGINDO COM VOZ PRÓPRIA",
-    "LAPIDANDO CHAMADAS",
-    "FORMATANDO PARA REDES SOCIAIS",
-  ];
-
-  let phaseIndex = 0;
-
-  const interval = setInterval(() => {
-    phaseIndex = (phaseIndex + 1) % phases.length;
-    setTicker(phases[phaseIndex]);
-  }, 1800);
-
-  setTicker(phases[0]);
-
-  try {
-    const response = await fetchWithRetry(
-      "/api/news",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({}),
-      },
-      {
-        attempts: 4,
-        onRetry: (s, a, t, w) => {
-          setTicker(
-            `SERVIDOR OCUPADO: TENTATIVA ${a}/${t - 1} EM ${Math.round(
-              w / 1000
-            )}S`
-          );
-        },
-      }
-    );
-
-        if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      let message = body;
-      try {
-        const problem = JSON.parse(body);
-        message = [problem.error, ...(Array.isArray(problem.details) ? problem.details : [problem.details])].filter(Boolean).join(" ");
-      } catch { /* Keep the server message if it did not return JSON. */ }
-      throw new Error(message || `Backend respondeu com HTTP ${response.status}.`);
-    }
-
-    const contentType = response.headers.get("content-type") || "";
-
-    if (!contentType.toLowerCase().includes("application/json")) {
-      const body = await response.text().catch(() => "");
-      throw new Error(
-        `Backend não retornou JSON. Content-Type: ${contentType || "desconhecido"}${
-          body ? ` | Resposta: ${body.slice(0, 300)}` : ""
-        }`
-      );
-    }
-
-    const data = await response.json();
-
-    let news = [];
-
-    if (Array.isArray(data?.news)) {
-      news = data.news;
-    } else {
-      const text = String(data?.text || "").trim();
-
-      if (!text) {
-        throw new Error("Backend não retornou notícias.");
-      }
-
-      const cleaned = text
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-
-      let parsed;
-
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        const start = cleaned.indexOf("{");
-        const end = cleaned.lastIndexOf("}");
-
-        if (start < 0 || end <= start) {
-          throw new Error("JSON inválido retornado pelo backend.");
-        }
-
-        parsed = JSON.parse(cleaned.slice(start, end + 1));
-      }
-
-      news = Array.isArray(parsed?.news) ? parsed.news : [];
-    }
-
-    news = news.map(normalizeNewsItem);
-
-    const validationError = validateEdition(news);
-
-    if (validationError) {
-      throw new Error(validationError);
-    }
-
-    const newEdition = {
-      id: data.persistedEdition?.editionId,
-      generatedAt: data.generated_at || new Date().toISOString(),
-      news,
-    };
-
-    const blockedCount = Array.isArray(data?.bloqueadas)
-      ? data.bloqueadas.length
-      : 0;
-
-    setEdition(newEdition);
-    setStatus("done");
-    setTicker(
-      `APURAÇÃO CONCLUÍDA · ${news.length} DESPACHOS` +
-      (blockedCount ? ` · ${blockedCount} BLOQUEADA(S)` : "")
-    );
-    setActiveFilter("all");
-
-    try {
-      localStorage.setItem(todayKey(), JSON.stringify(newEdition));
-    } catch {}
-  } catch (err) {
-    setErrorMsg(err?.message || "Falha desconhecida.");
-    setStatus("error");
-    setTicker("FALHA NA APURAÇÃO");
-  } finally {
-    clearInterval(interval);
-  }
-}
-
   if (authChecking) {
     return (
       <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9] flex items-center justify-center p-6"
@@ -3406,14 +3116,14 @@ async function importBriefing() {
           <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">GAMES · GEEK · CINEMA · ANIME</span>
         </div>
         <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
-          Central editorial para apuração diária. 4 categorias, de 1 a 12 notícias, banners com imagens reais.
+          Central editorial do Briefing Geek 2h, com notícias importadas em contrato canônico e banners sob demanda.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
-            <CheckCircle2 size={11}/>ÚLTIMAS 48H
+            <CheckCircle2 size={11}/>BRIEFING GEEK 2H
           </span>
           <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#8fa39d]" title="Cadência configurada no servidor. Ativação pendente na etapa de produção.">
-            <Clock size={11}/>GERAÇÃO PREVISTA · 2H
+            <Clock size={11}/>IMPORTAÇÃO CANÔNICA
           </span>
           {CATEGORY_ORDER.map(cat=>(
             <span key={cat} className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider" style={{color:CATEGORY_COLOR[cat]}}>
@@ -3427,11 +3137,7 @@ async function importBriefing() {
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={generate} disabled={status==="loading" || briefingImporting || Boolean(bannerGeneratingKey)}
-              className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50">
-              <RefreshCw size={14} className={status==="loading"?"animate-spin":""}/>
-              {status==="loading"?"Apurando...":"Apurar Notícias"}
-            </button>
+
             <button
               type="button"
               onClick={loadArchive}
@@ -3490,11 +3196,11 @@ async function importBriefing() {
           <section className="mb-6 border border-[#243436] bg-[#0c1618]">
             <div className="border-b border-[#243436] px-4 py-3">
               <div className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#e0452f]">
-                IMPORTAR BRIEFING GEEK DIÁRIO
+                IMPORTAR BRIEFING GEEK 2H
               </div>
 
               <p className="mt-2 text-[12px] leading-5 text-[#8fa39d]">
-                Cole o WIREGEEK_JSON. O Wire/Geek preservará o contrato editorial do Briefing.
+                Cole o JSON canônico do Briefing Geek 2h. O Wire/Geek validará o contrato e persistirá somente as notícias novas.
                 Nenhuma imagem será buscada durante a importação. Depois, use Gerar banner
                 somente nas notícias que realmente serão utilizadas.
               </p>
@@ -3509,7 +3215,7 @@ async function importBriefing() {
                 disabled={briefingImporting}
                 rows={14}
                 spellCheck={false}
-                placeholder={'WIREGEEK_JSON\n{\n  "title": "Briefing Geek Diário",\n  "news": [\n    {\n      "categoria": "anime",\n      "titulo": "...",\n      "contexto_visual": "...",\n      "image_query": "...",\n      "imagens": [],\n      "banners": [...]\n    }\n  ]\n}'}
+                placeholder={'{\n  "news": [\n    {\n      "titulo": "...",\n      "titulo_curto": "...",\n      "categoria": "...",\n      "materia": "...\\n\\n...\\n\\n...",\n      "highlights": ["...", "..."],\n      "hashtags": ["#...", "#...", "#...", "#...", "#..."],\n      "fontes": [{"titulo": "...", "url": "..."}],\n      "fonte_oficial_primaria": {"encontrada": true, "titulo": "...", "url": "..."},\n      "image_query": "..."\n    }\n  ]\n}'}
                 className="w-full resize-y border border-[#3a4a4d] bg-[#07110f] px-3 py-3 font-mono text-[11px] leading-5 text-[#d8dfd9] outline-none transition focus:border-[#e0452f] disabled:opacity-60"
               />
 

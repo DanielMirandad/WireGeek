@@ -13,7 +13,7 @@ export function parseBriefingRealInput(text) {
     item = JSON.parse(text);
   } catch {
     throw new Error(
-      "JSON inválido. Cole um único item do Briefing Geek Diário."
+      "JSON inválido. Cole um único item do Briefing Geek 2h."
     );
   }
 

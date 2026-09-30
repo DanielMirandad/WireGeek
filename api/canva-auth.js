@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { hasValidSession } from "./auth.js";
 
 const pending = new Map();
 let canvaTokens = null;
@@ -88,6 +89,12 @@ export default async function handler(req, res) {
     const action = String(req.query?.action || (isDataset ? "dataset" : isAutofill ? "autofill" : isCallback ? "callback" : "authorize"));
     if (req.method !== "GET" && !(req.method === "POST" && action === "autofill")) {
       return res.status(405).json({ error: "Metodo nao permitido." });
+    }
+
+    if (!hasValidSession(req)) {
+      return res.status(401).json({
+        error: "Acesso nao autorizado.",
+      });
     }
 
   try {

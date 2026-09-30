@@ -369,6 +369,11 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Metodo nao permitido" });
   }
+  if (!hasValidWireGeekAuth(req)) {
+    return res.status(401).json({
+      error: "Acesso nao autorizado.",
+    });
+  }
 
   const requestUrl = new URL(
     req.url || "/api/banner",

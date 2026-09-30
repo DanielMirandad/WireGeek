@@ -15,16 +15,117 @@ declare
   v_ready integer;
   v_safe_instagram integer;
   v_updated integer;
+  v_existing_active_groups integer;
 begin
   /*
-   * Trava as linhas do grupo enquanto validamos
-   * e aprovamos os dois editoriais.
+   * Serializa a auto-aprovacao por noticia.
+   *
+   * Duas geracoes concorrentes da mesma noticia
+   * nao podem aprovar dois grupos diferentes.
+   */
+  perform pg_advisory_xact_lock(
+    p_noticia_id
+  );
+
+  /*
+   * Trava as linhas do grupo atual.
    */
   perform 1
   from public.publicacoes
   where publication_group_id = p_group_id
   order by id
   for update;
+
+  /*
+   * DUPLICATE GUARD.
+   *
+   * Qualquer OUTRO grupo da mesma noticia que
+   * ja tenha avancado no ciclo editorial/Instagram
+   * impede a auto-aprovacao deste novo grupo.
+   *
+   * REJEITADO sem evidencia de Instagram nao bloqueia.
+   * Um grupo meramente pendente tambem nao bloqueia.
+   */
+  select
+    count(
+      distinct publication_group_id
+    )
+
+  into
+    v_existing_active_groups
+
+  from public.publicacoes
+  where noticia_id = p_noticia_id
+    and publication_group_id is not null
+    and publication_group_id <> p_group_id
+    and (
+      status in (
+        'APROVADO',
+        'PUBLICANDO',
+        'PUBLICADO'
+      )
+
+      or published_at is not null
+
+      or nullif(
+        trim(
+          coalesce(
+            instagram_post_id,
+            ''
+          )
+        ),
+        ''
+      ) is not null
+
+      or nullif(
+        trim(
+          coalesce(
+            instagram_parent_container_id,
+            ''
+          )
+        ),
+        ''
+      ) is not null
+
+      or coalesce(
+        cardinality(
+          instagram_child_container_ids
+        ),
+        0
+      ) > 0
+
+      or coalesce(
+        publish_attempts,
+        0
+      ) > 0
+
+      or nullif(
+        trim(
+          coalesce(
+            idempotency_key,
+            ''
+          )
+        ),
+        ''
+      ) is not null
+
+      or instagram_status in (
+        'PUBLICANDO',
+        'VERIFICAR_MANUALMENTE',
+        'PUBLICADO'
+      )
+    );
+
+  if
+    v_existing_active_groups > 0
+  then
+    /*
+     * Retorno vazio e deliberado.
+     *
+     * Nenhuma linha do grupo novo e aprovada.
+     */
+    return;
+  end if;
 
   select
     count(*),
@@ -53,7 +154,9 @@ begin
         instagram_status = 'NAO_SELECIONADO'
         and instagram_parent_container_id is null
         and coalesce(
-          cardinality(instagram_child_container_ids),
+          cardinality(
+            instagram_child_container_ids
+          ),
           0
         ) = 0
         and publish_attempts = 0
@@ -71,23 +174,20 @@ begin
   from public.publicacoes
   where publication_group_id = p_group_id;
 
-  /*
-   * Nada e aprovado parcialmente.
-   *
-   * O grupo precisa possuir exatamente:
-   * - 2 registros;
-   * - posicoes 1 e 2;
-   * - mesma noticia;
-   * - ambos pendentes;
-   * - nenhum vestigio de publicacao Instagram.
-   */
   if
-    v_total <> 2
+    v_total not in (1, 2)
     or v_position_1 <> 1
-    or v_position_2 <> 1
-    or v_same_news <> 2
-    or v_ready <> 2
-    or v_safe_instagram <> 2
+    or (
+      v_total = 1
+      and v_position_2 <> 0
+    )
+    or (
+      v_total = 2
+      and v_position_2 <> 1
+    )
+    or v_same_news <> v_total
+    or v_ready <> v_total
+    or v_safe_instagram <> v_total
   then
     return;
   end if;
@@ -106,17 +206,20 @@ begin
     and instagram_status = 'NAO_SELECIONADO'
     and instagram_parent_container_id is null
     and coalesce(
-      cardinality(instagram_child_container_ids),
+      cardinality(
+        instagram_child_container_ids
+      ),
       0
     ) = 0
     and publish_attempts = 0
     and idempotency_key is null;
 
-  get diagnostics v_updated = row_count;
+  get diagnostics
+    v_updated = row_count;
 
-  if v_updated <> 2 then
+  if v_updated <> v_total then
     raise exception
-      'Nao foi possivel auto-aprovar atomicamente os dois editoriais.';
+      'Nao foi possivel auto-aprovar atomicamente o conjunto editorial.';
   end if;
 
   return query

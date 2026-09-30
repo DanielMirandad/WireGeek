@@ -384,10 +384,19 @@ async function autoApprovePublicationGroup({
           a - b
       );
 
+  const validPositions =
+    (
+      rows.length === 1 &&
+      positions[0] === 1
+    ) ||
+    (
+      rows.length === 2 &&
+      positions[0] === 1 &&
+      positions[1] === 2
+    );
+
   const valid =
-    rows.length === 2 &&
-    positions[0] === 1 &&
-    positions[1] === 2 &&
+    validPositions &&
     rows.every(
       (row) =>
         row?.status ===
@@ -1212,22 +1221,17 @@ async function handleBriefingGeneratedBanners(
   };
 
   /*
-   * A auto-aprovacao so acontece depois que:
+   * A auto-aprovacao acontece depois que:
    *
-   * - as duas imagens foram aprovadas;
-   * - o par visual foi aprovado;
-   * - os dois editoriais foram renderizados;
+   * - pelo menos uma imagem editorial foi aprovada;
+   * - os editoriais disponiveis foram renderizados;
    * - o CTA foi renderizado;
-   * - os tres PNGs foram enviados;
-   * - os dois registros foram materializados.
+   * - os PNGs foram enviados;
+   * - os registros editoriais foram materializados.
    *
-   * Se qualquer etapa anterior falhar,
-   * esta funcao nunca e chamada.
+   * O conjunto pode conter um ou dois editoriais.
    */
-  if (
-    autoPublishEnabled &&
-    !partialGeneration
-  ) {
+  if (autoPublishEnabled) {
     autoApproval =
       await autoApprovePublicationGroup({
         noticiaId:
@@ -1236,38 +1240,19 @@ async function handleBriefingGeneratedBanners(
         publicationGroupId:
           generationId,
       });
-  } else if (
-    autoPublishEnabled &&
-    partialGeneration
-  ) {
-    autoApproval = {
-      enabled:
-        true,
+  }
 
-      approved:
-        false,
 
-      partial:
-        true,
-
-      reason:
-        "PARTIAL_EDITORIAL_SET",
-
-      publication_group_id:
-        generationId,
-    };
-
-    console.warn(
-      "WIRE/GEEK AUTO-PUBLISH: grupo parcial mantido sem autoaprovacao",
-      {
-        noticia_id:
-          body.noticia_id ||
-          null,
-
-        publication_group_id:
-          generationId,
+  if (autoApproval.approved) {
+    for (const item of completed) {
+      if (
+        item.type === "editorial" &&
+        item.publication_id
+      ) {
+        item.status =
+          "APROVADO";
       }
-    );
+    }
   }
 
   console.log(

@@ -35,4 +35,4 @@ create table if not exists public.wiregeek_tiktok_uploads (
 create index if not exists wiregeek_tiktok_uploads_group_idx on public.wiregeek_tiktok_uploads (group_id);
 alter table public.wiregeek_tiktok_channels enable row level security;
 alter table public.wiregeek_tiktok_oauth enable row level security;
-alter table public.wiregeek_tiktok_uploads enable row level security;
+alter table public.wiregeek_tiktok_uploads enable row level security;;

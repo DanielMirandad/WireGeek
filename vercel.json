@@ -22,6 +22,9 @@
     },
     "api/briefing-import.js": {
       "maxDuration": 300
+    },
+    "api/briefing-executor.js": {
+      "maxDuration": 300
     }
   }
 }

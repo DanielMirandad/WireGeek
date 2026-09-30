@@ -41,7 +41,7 @@ jobs:
             --output "$response_file" \
             --write-out "%{http_code}" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "https://wiregeek.vercel.app/api/cron-news")"; then
+            "https://wiregeek.vercel.app/api/briefing-executor")"; then
             echo "WireGeek endpoint request failed."
             exit 1
           fi

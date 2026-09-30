@@ -1,4 +1,5 @@
 import {
+  cronSlot,
   runEditorialRequest,
 } from "../lib/editorial-execution.mjs";
 
@@ -44,7 +45,10 @@ export default async function handler(req, res) {
   try {
     const result =
       await runEditorialRequest(
-        { source: "briefing-openai-cron" },
+        {
+          source: "cron",
+          slot: cronSlot(),
+        },
         async (output, run) => {
           const executed =
             await executeBriefing(run);

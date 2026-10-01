@@ -3352,6 +3352,45 @@ async function importBriefing() {
                         {item.news?.length || 0} notícia{(item.news?.length || 0) === 1 ? "" : "s"}
                       </span>
                     </div>
+
+                    <div className="mt-3 space-y-1.5 border-t border-wg-border pt-3">
+                      <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-wg-muted">
+                        EDICAO #{item.id}
+                      </div>
+
+                      {(item.news || []).slice(0, 3).map((newsItem, newsIndex) => (
+                        <div
+                          key={newsItem.id || newsItem.noticia_id || newsIndex}
+                          className="flex min-w-0 items-center gap-2 font-mono text-[10px]"
+                        >
+                          <span className="shrink-0 text-wg-muted">
+                            #{newsItem.id || newsItem.noticia_id || "—"}
+                          </span>
+
+                          <span className="shrink-0 text-wg-border">
+                            ·
+                          </span>
+
+                          <span className="shrink-0 uppercase text-wg-muted">
+                            {CATEGORY_LABEL[newsItem.categoria] || newsItem.categoria || "SEM CATEGORIA"}
+                          </span>
+
+                          <span className="shrink-0 text-wg-border">
+                            ·
+                          </span>
+
+                          <span className="min-w-0 truncate text-wg-secondary">
+                            {newsItem.titulo_curto || newsItem.titulo || "Sem titulo"}
+                          </span>
+                        </div>
+                      ))}
+
+                      {(item.news?.length || 0) > 3 && (
+                        <div className="font-mono text-[9px] text-wg-muted">
+                          +{item.news.length - 3} noticias
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

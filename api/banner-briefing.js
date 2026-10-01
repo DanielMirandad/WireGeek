@@ -887,6 +887,9 @@ async function handleBriefingGeneratedBanners(
         highlight:
           rendererCopy.highlight,
 
+        editorial_copy:
+          rendererCopy.editorial_copy,
+
         /*
          * Campo mantido apenas para
          * compatibilidade interna com

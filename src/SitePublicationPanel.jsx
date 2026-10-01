@@ -100,6 +100,7 @@ function validateSiteEditorialDraft({
 
 export default function SitePublicationPanel({
   item,
+  publications = [],
 }) {
   const noticiaId =
     Number(
@@ -136,10 +137,29 @@ export default function SitePublicationPanel({
     useState("");
 
   const [
-    imageUrl,
+    manualImageUrl,
     setImageUrl,
   ] =
-    useState("");
+    useState(null);
+
+  const approvedImageUrl = publications
+    .filter((row) =>
+      Number(row?.noticia_id) === noticiaId &&
+      ["APROVADO", "PUBLICANDO", "PUBLICADO"].includes(row?.status)
+    )
+    .sort((a, b) => Number(a.carousel_position) - Number(b.carousel_position))
+    .map((row) => String(row.source_image_url || "").trim())
+    .find((url) => {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === "https:" && !parsed.username && !parsed.password;
+      } catch {
+        return false;
+      }
+    }) || "";
+
+  // An explicit manual edit, including clearing the field, wins over hydration.
+  const imageUrl = manualImageUrl ?? (publication?.image_url || approvedImageUrl);
 
   const [
     generating,
@@ -221,14 +241,6 @@ export default function SitePublicationPanel({
             current
           );
 
-          if (current?.image_url) {
-            setImageUrl(
-              (currentValue) =>
-                currentValue ||
-                current.image_url
-            );
-          }
-
           if (current?.excerpt) {
             setSiteExcerpt(
               (currentValue) =>
@@ -273,7 +285,8 @@ export default function SitePublicationPanel({
     );
 
   useEffect(() => {
-    setImageUrl("");
+    setImageUrl(null);
+    setPublication(null);
     setSiteExcerpt("");
     setSiteBody("");
     setEditorialApproved(false);
@@ -830,7 +843,7 @@ export default function SitePublicationPanel({
         />
 
         <div className="mt-2 font-mono text-[9px] leading-4 text-wg-muted">
-          Use somente uma imagem real oficial ou primaria ligada diretamente a noticia.
+          A imagem editorial aprovada e preenchida automaticamente quando disponivel. Voce pode substituir por outra imagem real oficial ou primaria ligada diretamente a noticia.
         </div>
       </div>
 

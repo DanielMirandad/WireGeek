@@ -2043,6 +2043,7 @@ function ReelPublicationPanel({ item }) {
 
       <SitePublicationPanel
         item={item}
+        publications={rows}
       />
 
       <YouTubePanel key={`${group?.publication_group_id || ""}:${reelAsset?.asset?.sha256 || ""}`} item={item} group={group} asset={reelAsset?.asset} />

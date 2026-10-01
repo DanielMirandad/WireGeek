@@ -611,12 +611,12 @@ export default function SitePublicationPanel({
     noticiaId <= 0
   ) {
     return (
-      <div className="border border-[#3a4a4d] bg-[#0b1416] p-3">
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#7a8f8a]">
+      <div className="border border-wg-border-strong bg-wg-surface p-3">
+        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-wg-muted">
           Site
         </div>
 
-        <div className="mt-2 font-mono text-[10px] text-[#5c6f6b]">
+        <div className="mt-2 font-mono text-[10px] text-wg-muted">
           Noticia ainda sem ID persistido.
         </div>
       </div>
@@ -629,15 +629,15 @@ export default function SitePublicationPanel({
     );
 
   return (
-    <div className="border border-[#344447] bg-[#0b1416] p-3">
-      <div className="mb-3 border border-[#243436] bg-[#101b1e] p-3">
+    <div className="border border-wg-border bg-wg-surface p-3">
+      <div className="mb-3 border border-wg-border bg-wg-raised p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f4f0e8]">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-wg-text">
               Materia editorial do site
             </div>
 
-            <div className="mt-1 max-w-2xl font-mono text-[9px] leading-4 text-[#5c6f6b]">
+            <div className="mt-1 max-w-2xl font-mono text-[9px] leading-4 text-wg-muted">
               Gere a versao expandida, revise o texto e aprove manualmente antes de publicar.
             </div>
           </div>
@@ -652,7 +652,7 @@ export default function SitePublicationPanel({
               generating ||
               publishing
             }
-            className="border border-[#3a4a4d] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#9aaca8] disabled:cursor-not-allowed disabled:opacity-40"
+            className="border border-wg-border-strong px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted disabled:cursor-not-allowed disabled:opacity-40"
           >
             {generating
               ? "Gerando materia..."
@@ -665,7 +665,7 @@ export default function SitePublicationPanel({
         <div className="mt-4">
           <label
             htmlFor={`site-excerpt-${noticiaId}`}
-            className="block font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#9aaca8]"
+            className="block font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted"
           >
             Resumo do site
           </label>
@@ -690,10 +690,10 @@ export default function SitePublicationPanel({
             }
             rows={3}
             placeholder="Gere a materia para criar o resumo editorial."
-            className="mt-2 w-full resize-y border border-[#344447] bg-[#081012] px-3 py-2 font-mono text-[10px] leading-5 text-[#f4f0e8] outline-none placeholder:text-[#455552] focus:border-[#e0452f] disabled:opacity-50"
+            className="wg-field mt-2 resize-y font-mono leading-5"
           />
 
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-[#5c6f6b]">
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-wg-muted">
             <span>
               {editorialValidation.excerptLength}/280 caracteres
             </span>
@@ -707,7 +707,7 @@ export default function SitePublicationPanel({
         <div className="mt-4">
           <label
             htmlFor={`site-body-${noticiaId}`}
-            className="block font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#9aaca8]"
+            className="block font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted"
           >
             Materia completa
           </label>
@@ -732,10 +732,10 @@ export default function SitePublicationPanel({
             }
             rows={16}
             placeholder="A materia expandida aparecera aqui para revisao."
-            className="mt-2 w-full resize-y border border-[#344447] bg-[#081012] px-3 py-2 font-mono text-[10px] leading-5 text-[#f4f0e8] outline-none placeholder:text-[#455552] focus:border-[#e0452f] disabled:opacity-50"
+            className="wg-field mt-2 resize-y font-mono leading-5"
           />
 
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-[#5c6f6b]">
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-wg-muted">
             <span>
               {editorialValidation.bodyLength}/3500 caracteres
             </span>
@@ -754,16 +754,16 @@ export default function SitePublicationPanel({
           </div>
         </div>
 
-        <div className="mt-4 border-t border-[#243436] pt-3">
+        <div className="mt-4 border-t border-wg-border pt-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div
                 className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${
                   editorialApproved
-                    ? "text-[#5fbf7a]"
+                    ? "text-wg-success"
                     : editorialValidation.valid
-                      ? "text-[#d7b45d]"
-                      : "text-[#7a8f8a]"
+                      ? "text-wg-warning"
+                      : "text-wg-muted"
                 }`}
               >
                 {editorialApproved
@@ -778,7 +778,7 @@ export default function SitePublicationPanel({
                   siteBody ||
                   siteExcerpt
                 ) && (
-                  <div className="mt-1 font-mono text-[9px] leading-4 text-[#9a6f6f]">
+                  <div className="mt-1 font-mono text-[9px] leading-4 text-wg-danger">
                     {editorialValidation.errors[0]}
                   </div>
                 )}
@@ -794,7 +794,7 @@ export default function SitePublicationPanel({
                 publishing ||
                 !editorialValidation.valid
               }
-              className="border border-[#5fbf7a] bg-[#5fbf7a]/10 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#5fbf7a] disabled:cursor-not-allowed disabled:opacity-40"
+              className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
             >
               {editorialApproved
                 ? "Materia aprovada"
@@ -804,10 +804,10 @@ export default function SitePublicationPanel({
         </div>
       </div>
 
-      <div className="border border-[#243436] bg-[#101b1e] p-3">
+      <div className="border border-wg-border bg-wg-raised p-3">
         <label
           htmlFor={`site-image-${noticiaId}`}
-          className="block font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#9aaca8]"
+          className="block font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted"
         >
           Imagem oficial da materia
         </label>
@@ -826,21 +826,21 @@ export default function SitePublicationPanel({
             generating
           }
           placeholder="https://..."
-          className="mt-2 w-full border border-[#344447] bg-[#081012] px-3 py-2 font-mono text-[10px] text-[#f4f0e8] outline-none placeholder:text-[#455552] focus:border-[#e0452f] disabled:opacity-50"
+          className="wg-field mt-2 font-mono"
         />
 
-        <div className="mt-2 font-mono text-[9px] leading-4 text-[#5c6f6b]">
+        <div className="mt-2 font-mono text-[9px] leading-4 text-wg-muted">
           Use somente uma imagem real oficial ou primaria ligada diretamente a noticia.
         </div>
       </div>
 
 <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f4f0e8]">
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-wg-text">
             Site Bagaca
           </div>
 
-          <div className="mt-1 font-mono text-[9px] text-[#5c6f6b]">
+          <div className="mt-1 font-mono text-[9px] text-wg-muted">
             {loading
               ? "Verificando publicacao..."
               : published
@@ -860,7 +860,7 @@ export default function SitePublicationPanel({
               generating ||
               publishing
             }
-            className="border border-[#3a4a4d] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#9aaca8] disabled:opacity-40"
+            className="wg-button wg-button-secondary wg-button-compact font-mono uppercase tracking-[0.12em]"
           >
             Verificar status
           </button>
@@ -875,7 +875,7 @@ export default function SitePublicationPanel({
               !editorialApproved ||
               !editorialValidation.valid
             }
-            className="border border-[#e0452f] bg-[#e0452f]/10 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#e0452f] disabled:cursor-not-allowed disabled:opacity-40"
+            className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
           >
             {publishing
               ? "Publicando..."
@@ -888,14 +888,14 @@ export default function SitePublicationPanel({
 
       {published &&
         publication?.site_url && (
-          <div className="mt-3 border-t border-[#243436] pt-3">
+          <div className="mt-3 border-t border-wg-border pt-3">
             <a
               href={
                 publication.site_url
               }
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#5fbf7a] underline underline-offset-4"
+              className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-wg-success underline underline-offset-4"
             >
               Abrir materia
             </a>
@@ -903,7 +903,7 @@ export default function SitePublicationPanel({
         )}
 
       {error && (
-        <div className="mt-3 border border-[#7a3030] bg-[#2a1414] px-3 py-2 font-mono text-[10px] leading-5 text-[#e89999]">
+        <div className="mt-3 border border-wg-danger bg-wg-danger-soft px-3 py-2 font-mono text-[10px] leading-5 text-wg-danger">
           {error}
         </div>
       )}

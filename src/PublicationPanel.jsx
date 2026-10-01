@@ -1453,12 +1453,12 @@ function ReelPublicationPanel({ item }) {
     !noticiaId
   ) {
     return (
-      <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-4">
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#7a8f8a]">
+      <div className="border border-wg-border-strong bg-wg-surface px-3 py-4">
+        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-wg-muted">
           Publicação indisponível
         </div>
 
-        <p className="mt-2 font-mono text-[11px] leading-5 text-[#5c6f6b]">
+        <p className="mt-2 font-mono text-[11px] leading-5 text-wg-muted">
           Esta notícia ainda não possui publicações materializadas pelo modo Briefing.
         </p>
       </div>
@@ -1469,20 +1469,20 @@ function ReelPublicationPanel({ item }) {
   return (
     <div className="space-y-4">
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#243436] pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-wg-border pb-3">
         <div>
           <div className="flex items-center gap-2">
             <Radio
               size={13}
-              className="text-[#e0452f]"
+              className="text-wg-secondary"
             />
 
-            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#f4f0e8]">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-wg-text">
               Publicação
             </span>
           </div>
 
-          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-[#667b77]">
+          <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-wg-muted">
             2 editoriais + CTA · Instagram Reel
           </p>
         </div>
@@ -1494,7 +1494,7 @@ function ReelPublicationPanel({ item }) {
             loading ||
             Boolean(publisherBusy)
           }
-          className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-wider text-[#8fa39d] transition hover:border-[#e0452f] hover:text-[#e0452f] disabled:cursor-not-allowed disabled:opacity-40"
+          className="wg-button wg-button-secondary wg-button-compact font-mono uppercase tracking-wider"
         >
           <RefreshCw
             size={11}
@@ -1513,7 +1513,7 @@ function ReelPublicationPanel({ item }) {
 
 
       {error && (
-        <div className="flex items-start gap-2 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 font-mono text-[10px] leading-5 text-[#f0a89a]">
+        <div className="flex items-start gap-2 border border-wg-danger/50 bg-wg-danger-soft px-3 py-2.5 font-mono text-[10px] leading-5 text-wg-danger">
           <AlertCircle
             size={14}
             className="mt-0.5 shrink-0"
@@ -1525,7 +1525,7 @@ function ReelPublicationPanel({ item }) {
 
 
       {actionError && (
-        <div className="flex items-start gap-2 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 font-mono text-[10px] leading-5 text-[#f0a89a]">
+        <div className="flex items-start gap-2 border border-wg-danger/50 bg-wg-danger-soft px-3 py-2.5 font-mono text-[10px] leading-5 text-wg-danger">
           <AlertCircle
             size={14}
             className="mt-0.5 shrink-0"
@@ -1537,7 +1537,7 @@ function ReelPublicationPanel({ item }) {
 
 
       {publisherError && (
-        <div className="flex items-start gap-2 border border-[#e0452f]/60 bg-[#1a1214] px-3 py-3 font-mono text-[10px] leading-5 text-[#f0a89a]">
+        <div className="flex items-start gap-2 border border-wg-danger/60 bg-wg-danger-soft px-3 py-3 font-mono text-[10px] leading-5 text-wg-danger">
           <AlertCircle
             size={14}
             className="mt-0.5 shrink-0"
@@ -1549,7 +1549,7 @@ function ReelPublicationPanel({ item }) {
 
 
       {publisherInfo && (
-        <div className="flex items-start gap-2 border border-[#5fbf7a]/40 bg-[#0c1813] px-3 py-3 font-mono text-[10px] leading-5 text-[#9ed8ad]">
+        <div className="flex items-start gap-2 border border-wg-success/40 bg-wg-success-soft px-3 py-3 font-mono text-[10px] leading-5 text-wg-success">
           <CheckCircle2
             size={14}
             className="mt-0.5 shrink-0"
@@ -1563,7 +1563,7 @@ function ReelPublicationPanel({ item }) {
       {!error &&
         loading &&
         rows.length === 0 && (
-          <div className="border border-[#263b36] bg-[#0b1416] px-3 py-4 font-mono text-[11px] text-[#7a8f8a]">
+          <div className="border border-wg-border bg-wg-surface px-3 py-4 font-mono text-[11px] text-wg-muted">
             Carregando grupo de publicação...
           </div>
         )}
@@ -1573,7 +1573,7 @@ function ReelPublicationPanel({ item }) {
         !loading &&
         group &&
         rows.length === 1 && (
-          <div className="border border-[#b88a32]/50 bg-[#18150c] px-3 py-3 font-mono text-[10px] text-[#d8bd7a]">
+          <div className="border border-wg-warning/50 bg-wg-warning-soft px-3 py-3 font-mono text-[10px] text-wg-warning">
             Resultado parcial: 1 editorial disponível. A publicação automática requer 2 editoriais.
           </div>
         )}
@@ -1582,7 +1582,7 @@ function ReelPublicationPanel({ item }) {
         !loading &&
         group &&
         (rows.length === 0 || rows.length > 2) && (
-          <div className="border border-[#e0452f]/50 bg-[#1a1214] px-3 py-3 font-mono text-[10px] text-[#f0a89a]">
+          <div className="border border-wg-danger/50 bg-wg-danger-soft px-3 py-3 font-mono text-[10px] text-wg-danger">
             Grupo inconsistente: esperados 1 ou 2 editoriais, recebidos {rows.length}.
           </div>
         )}
@@ -1605,12 +1605,12 @@ function ReelPublicationPanel({ item }) {
                 return (
                   <div
                     key={row.id}
-                    className="border border-[#344447] bg-[#101b1e] p-3"
+                    className="border border-wg-border bg-wg-raised p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
 
                       <div>
-                        <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#667b77]">
+                        <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-wg-muted">
                           Editorial{" "}
                           {row.carousel_position ||
                             index + 1}
@@ -1619,10 +1619,10 @@ function ReelPublicationPanel({ item }) {
                         <div
                           className={`mt-1 flex items-center gap-1.5 font-mono text-[10px] font-bold ${
                             success
-                              ? "text-[#5fbf7a]"
+                              ? "text-wg-success"
                               : status === "REJEITADO"
-                                ? "text-[#e0452f]"
-                                : "text-[#d8dfd9]"
+                                ? "text-wg-danger"
+                                : "text-wg-secondary"
                           }`}
                         >
                           {success && (
@@ -1635,7 +1635,7 @@ function ReelPublicationPanel({ item }) {
                         </div>
                       </div>
 
-                      <span className="font-mono text-[9px] text-[#5c6f6b]">
+                      <span className="font-mono text-[9px] text-wg-muted">
                         ID {row.id}
                       </span>
                     </div>
@@ -1647,7 +1647,7 @@ function ReelPublicationPanel({ item }) {
                           href={row.banner_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block overflow-hidden border border-[#263b36] bg-[#0b1416]"
+                          className="block overflow-hidden border border-wg-border bg-wg-surface"
                         >
                           <img
                             src={row.banner_url}
@@ -1664,7 +1664,7 @@ function ReelPublicationPanel({ item }) {
                           href={row.banner_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-block font-mono text-[9px] uppercase tracking-wider text-[#7a8f8a] underline hover:text-[#f4f0e8]"
+                          className="inline-block font-mono text-[9px] uppercase tracking-wider text-wg-muted underline hover:text-wg-text"
                         >
                           Abrir banner
                         </a>
@@ -1687,7 +1687,7 @@ function ReelPublicationPanel({ item }) {
                             actionId !== null ||
                             Boolean(publisherBusy)
                           }
-                          className="border border-[#5fbf7a]/60 bg-[#0c1813] px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-wider text-[#5fbf7a] transition hover:bg-[#10241a] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="wg-button wg-button-primary wg-button-compact w-full font-mono uppercase tracking-wider"
                         >
                           {actionId === row.id
                             ? "Processando..."
@@ -1706,7 +1706,7 @@ function ReelPublicationPanel({ item }) {
                             actionId !== null ||
                             Boolean(publisherBusy)
                           }
-                          className="border border-[#e0452f]/60 bg-[#1a1214] px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-wider text-[#e0452f] transition hover:bg-[#241619] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="border border-wg-danger/60 bg-wg-danger-soft px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-wider text-wg-danger transition hover:bg-wg-danger-soft disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {actionId === row.id
                             ? "Processando..."
@@ -1717,9 +1717,9 @@ function ReelPublicationPanel({ item }) {
 
 
                     {row.instagram_status && (
-                      <div className="mt-3 border-t border-[#243436] pt-2 font-mono text-[9px] text-[#667b77]">
+                      <div className="mt-3 border-t border-wg-border pt-2 font-mono text-[9px] text-wg-muted">
                         Instagram:{" "}
-                        <span className="text-[#8fa39d]">
+                        <span className="text-wg-muted">
                           {row.instagram_status}
                         </span>
                       </div>
@@ -1731,29 +1731,29 @@ function ReelPublicationPanel({ item }) {
           </div>
 
 
-          <div className="border border-[#263b36] bg-[#0b1416] p-3">
-            <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-[#667b77]">
+          <div className="border border-wg-border bg-wg-surface p-3">
+            <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-wg-muted">
               Grupo
             </div>
 
-            <div className="mt-1 break-all font-mono text-[10px] text-[#8fa39d]">
+            <div className="mt-1 break-all font-mono text-[10px] text-wg-muted">
               {group.publication_group_id}
             </div>
           </div>
 
 
           {manualReview && (
-            <div className="border border-[#e0452f]/60 bg-[#1a1214] p-3">
-              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#f0a89a]">
+            <div className="border border-wg-danger/60 bg-wg-danger-soft p-3">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-wg-danger">
                 Verificação manual obrigatória
               </div>
 
-              <p className="mt-2 font-mono text-[10px] leading-5 text-[#d9a59b]">
+              <p className="mt-2 font-mono text-[10px] leading-5 text-wg-danger">
                 O resultado de uma tentativa de publicação é incerto. Não execute uma nova publicação antes de verificar o Instagram e reconciliar o estado do grupo.
               </p>
 
               {lastInstagramError && (
-                <p className="mt-2 break-words font-mono text-[9px] leading-5 text-[#8f7772]">
+                <p className="mt-2 break-words font-mono text-[9px] leading-5 text-wg-muted">
                   {lastInstagramError}
                 </p>
               )}
@@ -1763,12 +1763,12 @@ function ReelPublicationPanel({ item }) {
 
           {publishingEvidence &&
             !published && (
-            <div className="border border-[#d8b45f]/40 bg-[#18160d] p-3">
-              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#d8b45f]">
+            <div className="border border-wg-warning/40 bg-wg-warning-soft p-3">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-wg-warning">
                 Publicação em estado intermediário
               </div>
 
-              <p className="mt-2 font-mono text-[10px] leading-5 text-[#a99c73]">
+              <p className="mt-2 font-mono text-[10px] leading-5 text-wg-warning">
                 O grupo está PUBLICANDO. Nenhuma nova tentativa será liberada pela interface.
               </p>
             </div>
@@ -1776,23 +1776,23 @@ function ReelPublicationPanel({ item }) {
 
 
           {hasLegacyChildren && (
-            <div className="border border-[#e0452f]/50 bg-[#1a1214] p-3 font-mono text-[10px] leading-5 text-[#f0a89a]">
+            <div className="border border-wg-danger/50 bg-wg-danger-soft p-3 font-mono text-[10px] leading-5 text-wg-danger">
               Existem child containers de carrossel persistidos neste grupo. O Reel permanece bloqueado até auditoria manual.
             </div>
           )}
 
 
           {groupInconsistent && (
-            <div className="border border-[#e0452f]/50 bg-[#1a1214] p-3 font-mono text-[10px] leading-5 text-[#f0a89a]">
+            <div className="border border-wg-danger/50 bg-wg-danger-soft p-3 font-mono text-[10px] leading-5 text-wg-danger">
               Há mais de um parent container persistido no grupo. Publicação bloqueada.
             </div>
           )}
 
 
           {published && (
-            <div className="border border-[#5fbf7a]/40 bg-[#0c1813] p-3">
+            <div className="border border-wg-success/40 bg-wg-success-soft p-3">
 
-              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#5fbf7a]">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-wg-success">
                 Publicado no Instagram
               </div>
 
@@ -1801,7 +1801,7 @@ function ReelPublicationPanel({ item }) {
                   href={permalink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-block font-mono text-[10px] text-[#d8dfd9] underline hover:text-[#5fbf7a]"
+                  className="mt-2 inline-block font-mono text-[10px] text-wg-secondary underline hover:text-wg-success"
                 >
                   Abrir publicação
                 </a>
@@ -1815,37 +1815,37 @@ function ReelPublicationPanel({ item }) {
             !publishingEvidence &&
             !hasLegacyChildren &&
             !groupInconsistent && (
-            <div className="space-y-3 border border-[#344447] bg-[#0d1719] p-4">
+            <div className="space-y-3 border border-wg-border bg-wg-surface p-4">
 
               <div>
-                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f4f0e8]">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-wg-text">
                   Instagram Reel
                 </div>
 
-                <p className="mt-1 font-mono text-[9px] leading-5 text-[#667b77]">
+                <p className="mt-1 font-mono text-[9px] leading-5 text-wg-muted">
                   Revise o MP4 → Preparar Reel → Publicar no Instagram. A publicação depende do seu clique final.
                 </p>
               </div>
 
 
               <div className="grid gap-2 sm:grid-cols-2">
-                <div className="border border-[#263b36] bg-[#0b1416] p-2.5">
-                  <div className="font-mono text-[8px] uppercase tracking-wider text-[#5c6f6b]">
+                <div className="border border-wg-border bg-wg-surface p-2.5">
+                  <div className="font-mono text-[8px] uppercase tracking-wider text-wg-muted">
                     Container
                   </div>
 
-                  <div className="mt-1 break-all font-mono text-[9px] text-[#8fa39d]">
+                  <div className="mt-1 break-all font-mono text-[9px] text-wg-muted">
                     {currentParentId ||
                       "Ainda não preparado"}
                   </div>
                 </div>
 
-                <div className="border border-[#263b36] bg-[#0b1416] p-2.5">
-                  <div className="font-mono text-[8px] uppercase tracking-wider text-[#5c6f6b]">
+                <div className="border border-wg-border bg-wg-surface p-2.5">
+                  <div className="font-mono text-[8px] uppercase tracking-wider text-wg-muted">
                     Editoriais
                   </div>
 
-                  <div className="mt-1 font-mono text-[9px] text-[#8fa39d]">
+                  <div className="mt-1 font-mono text-[9px] text-wg-muted">
                     {allApproved
                       ? "2 / 2 APROVADOS"
                       : "Aguardando aprovação"}
@@ -1860,7 +1860,7 @@ function ReelPublicationPanel({ item }) {
                   type="button"
                   onClick={prepareReelAsset}
                   disabled={!canGenerateAsset}
-                  className="w-full border border-[#d8b45f]/60 bg-[#18160d] px-3 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#d8b45f] transition hover:bg-[#211e10] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="wg-button wg-button-secondary w-full font-mono uppercase tracking-wider"
                 >
                   {publisherBusy ===
                   "asset"
@@ -1872,16 +1872,16 @@ function ReelPublicationPanel({ item }) {
 
               {assetReady && (
                 <div className="space-y-2">
-                  <div className="border border-[#5fbf7a]/40 bg-[#0c1813] p-3">
-                    <div className="font-mono text-[9px] font-bold uppercase tracking-wider text-[#5fbf7a]">
+                  <div className="border border-wg-success/40 bg-wg-success-soft p-3">
+                    <div className="font-mono text-[9px] font-bold uppercase tracking-wider text-wg-success">
                       MP4 imutável validado
                     </div>
 
-                    <div className="mt-2 break-all font-mono text-[8px] leading-5 text-[#8fa39d]">
+                    <div className="mt-2 break-all font-mono text-[8px] leading-5 text-wg-muted">
                       {reelAsset?.asset?.storage_path}
                     </div>
 
-                    <div className="mt-1 font-mono text-[8px] text-[#667b77]">
+                    <div className="mt-1 font-mono text-[8px] text-wg-muted">
                       SHA256:{" "}
                       {String(
                         reelAsset
@@ -1900,7 +1900,7 @@ function ReelPublicationPanel({ item }) {
                       }
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 inline-block font-mono text-[9px] uppercase tracking-wider text-[#9ab8c4] underline hover:text-[#d8dfd9]"
+                      className="mt-2 inline-block font-mono text-[9px] uppercase tracking-wider text-wg-secondary underline hover:text-wg-secondary"
                     >
                       Revisar MP4
                     </a>
@@ -1909,16 +1909,16 @@ function ReelPublicationPanel({ item }) {
                 </div>
               )}
 
-              <div className="border border-[#263b36] bg-[#0b1416] p-3">
-                <div className="font-mono text-[9px] font-bold uppercase text-[#9ab8c4]">
+              <div className="border border-wg-border bg-wg-surface p-3">
+                <div className="font-mono text-[9px] font-bold uppercase text-wg-secondary">
                   Menções e marcações
                 </div>
-                <p className="mt-2 font-mono text-[10px] leading-5 text-[#d8dfd9]">
+                <p className="mt-2 font-mono text-[10px] leading-5 text-wg-secondary">
                   {(preflight?.caption?.profile_usernames ?? (currentParentId ? null : profileUsernames))?.map((name) => "@" + name).join(" ") ||
                     (currentParentId ? "Container existente: os perfis originais serão preservados." : "Aguardando a lista de perfis da notícia.")}
                 </p>
                 {!currentParentId && (
-                  <p className="mt-2 font-mono text-[9px] leading-5 text-[#667b77]">
+                  <p className="mt-2 font-mono text-[9px] leading-5 text-wg-muted">
                     Os três perfis fixos entram sempre. Até três perfis oficiais do catálogo são incluídos quando citados na notícia. Confira a lista antes de preparar o Reel.
                   </p>
                 )}
@@ -1929,7 +1929,7 @@ function ReelPublicationPanel({ item }) {
                   type="button"
                   onClick={prepareInstagramReel}
                   disabled={!canPrepareReel}
-                  className="w-full border border-[#5b7c89] bg-[#101a1e] px-3 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#9ab8c4] transition hover:bg-[#142229] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="w-full border border-wg-border-strong bg-wg-raised px-3 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider text-wg-secondary transition hover:bg-wg-raised disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {publisherBusy === "prepare" ? "Preparando Reel..." : "Preparar Reel"}
                 </button>
@@ -1938,16 +1938,16 @@ function ReelPublicationPanel({ item }) {
 
               {publishLocked &&
                 !preflightReady && (
-                <div className="border border-[#e0452f]/40 bg-[#1a1214] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#d9a59b]">
+                <div className="border border-wg-danger/40 bg-wg-danger-soft px-3 py-2.5 font-mono text-[9px] leading-5 text-wg-danger">
                   Preparação bloqueada por segurança. Atualize o status e audite o container antes de qualquer nova tentativa.
                 </div>
               )}
 
 
               {preflightReady && (
-                <div className="space-y-3 border border-[#5fbf7a]/40 bg-[#0c1813] p-3">
+                <div className="space-y-3 border border-wg-success/40 bg-wg-success-soft p-3">
 
-                  <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-[#5fbf7a]">
+                  <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-wg-success">
                     <CheckCircle2
                       size={13}
                     />
@@ -1958,41 +1958,41 @@ function ReelPublicationPanel({ item }) {
 
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div>
-                      <div className="font-mono text-[8px] uppercase tracking-wider text-[#667b77]">
+                      <div className="font-mono text-[8px] uppercase tracking-wider text-wg-muted">
                         Conta Instagram
                       </div>
 
-                      <div className="mt-1 break-all font-mono text-[9px] text-[#d8dfd9]">
+                      <div className="mt-1 break-all font-mono text-[9px] text-wg-secondary">
                         {preflightAccountId}
                       </div>
                     </div>
 
                     <div>
-                      <div className="font-mono text-[8px] uppercase tracking-wider text-[#667b77]">
+                      <div className="font-mono text-[8px] uppercase tracking-wider text-wg-muted">
                         Parent container
                       </div>
 
-                      <div className="mt-1 break-all font-mono text-[9px] text-[#d8dfd9]">
+                      <div className="mt-1 break-all font-mono text-[9px] text-wg-secondary">
                         {preflightParentId}
                       </div>
                     </div>
 
                     <div>
-                      <div className="font-mono text-[8px] uppercase tracking-wider text-[#667b77]">
+                      <div className="font-mono text-[8px] uppercase tracking-wider text-wg-muted">
                         Tipo
                       </div>
 
-                      <div className="mt-1 font-mono text-[9px] text-[#d8dfd9]">
+                      <div className="mt-1 font-mono text-[9px] text-wg-secondary">
                         REELS · share_to_feed=true
                       </div>
                     </div>
 
                     <div>
-                      <div className="font-mono text-[8px] uppercase tracking-wider text-[#667b77]">
+                      <div className="font-mono text-[8px] uppercase tracking-wider text-wg-muted">
                         Caption
                       </div>
 
-                      <div className="mt-1 font-mono text-[9px] text-[#d8dfd9]">
+                      <div className="mt-1 font-mono text-[9px] text-wg-secondary">
                         {preflight?.caption?.caption_length} caracteres · {preflight?.caption?.hashtags_count} hashtags
                       </div>
                     </div>
@@ -2010,14 +2010,14 @@ function ReelPublicationPanel({ item }) {
                       }
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-block font-mono text-[9px] uppercase tracking-wider text-[#9ab8c4] underline hover:text-[#d8dfd9]"
+                      className="inline-block font-mono text-[9px] uppercase tracking-wider text-wg-secondary underline hover:text-wg-secondary"
                     >
                       Abrir MP4 aprovado
                     </a>
                   )}
 
 
-                  <p className="font-mono text-[9px] leading-5 text-[#9aa9a5]">
+                  <p className="font-mono text-[9px] leading-5 text-wg-muted">
                     Ao clicar em Publicar no Instagram, você confirma a publicação deste Reel na conta exibida. Não haverá nova tentativa automática.
                   </p>
 
@@ -2026,7 +2026,7 @@ function ReelPublicationPanel({ item }) {
                     type="button"
                     onClick={publishReel}
                     disabled={!canPublish}
-                    className="w-full border border-[#e0452f] bg-[#351714] px-3 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#f2a596] transition hover:bg-[#4a1d18] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="wg-button wg-button-primary w-full font-mono uppercase tracking-[0.14em]"
                   >
                     {publisherBusy ===
                     "publish"
@@ -2047,7 +2047,7 @@ function ReelPublicationPanel({ item }) {
 
       <YouTubePanel key={`${group?.publication_group_id || ""}:${reelAsset?.asset?.sha256 || ""}`} item={item} group={group} asset={reelAsset?.asset} />
 
-      <div className="border border-[#3a4a4d] bg-[#0b1416] px-3 py-2.5 font-mono text-[9px] leading-5 text-[#5c6f6b]">
+      <div className="border border-wg-border-strong bg-wg-surface px-3 py-2.5 font-mono text-[9px] leading-5 text-wg-muted">
         Fluxo Reel: revisar MP4 → Preparar Reel → Publicar no Instagram. Nenhuma publicação automática.
       </div>
 

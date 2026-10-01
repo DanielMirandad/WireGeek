@@ -1219,7 +1219,7 @@ function CopyButton({ text, label = "Copiar" }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] text-[#8fa39d] transition hover:border-[#e0452f] hover:text-[#e0452f]"
+      className="wg-button wg-button-secondary wg-button-compact font-mono"
     >
       <Copy size={11} />
       {copied ? "Copiado" : label}
@@ -1229,7 +1229,7 @@ function CopyButton({ text, label = "Copiar" }) {
 
 function Stamp({ children }) {
   return (
-    <span className="border border-[#e0452f]/50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-[#e0452f]">
+    <span className="wg-badge font-mono text-[9px] uppercase tracking-[0.16em]">
       {children}
     </span>
   );
@@ -1237,7 +1237,7 @@ function Stamp({ children }) {
 
 function FormattedArticle({ text }) {
   return (
-    <div className="space-y-3 text-[15px] leading-7 text-[#cfd8d4]">
+    <div className="max-w-4xl space-y-4 text-[16px] leading-8 text-wg-secondary" style={{ fontFamily: "'Source Serif 4', Georgia, serif" }}>
       {String(text || "")
         .split(/\n+/)
         .filter(Boolean)
@@ -1417,17 +1417,17 @@ function BriefingLab() {
   ];
 
   return (
-    <section className="mb-8 border border-[#00d084]/40 bg-[#07110f] p-4 sm:p-5">
+    <section className="mb-8 border border-wg-success/40 bg-wg-inset p-4 sm:p-5">
 
-      <div className="mb-5 border-b border-[#263b36] pb-4">
+      <div className="mb-5 border-b border-wg-border pb-4">
 
-        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#00d084]">
+        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-wg-success">
           BRIEFING LAB
         </div>
 
-        <label className="mt-4 block text-sm text-[#a9bab5]">
+        <label className="mt-4 block text-sm text-wg-secondary">
           Origem do teste
-          <select value={inputMode} onChange={event => setInputMode(event.target.value)} className="ml-3 rounded border border-[#263b36] bg-[#0f1a1c] p-2 text-white">
+          <select value={inputMode} onChange={event => setInputMode(event.target.value)} className="ml-3 rounded border border-wg-border bg-wg-surface p-2 text-white">
             <option value="real">Item real do Briefing Geek 2h</option>
             <option value="fixtures">Regressão · 4 fixtures aprovadas</option>
           </select>
@@ -1435,15 +1435,15 @@ function BriefingLab() {
 
         {inputMode === "real" && (
           <form onSubmit={loadRealItem} className="mt-4 space-y-3">
-            <label htmlFor="briefing-real-json" className="block text-sm text-[#a9bab5]">JSON de um único item do Briefing</label>
-            <p id="briefing-real-help" className="text-sm text-[#8fa39d]">
+            <label htmlFor="briefing-real-json" className="block text-sm text-wg-secondary">JSON de um único item do Briefing</label>
+            <p id="briefing-real-help" className="text-sm text-wg-muted">
               Informe categoria, titulo, titulo_curto, highlights, fontes, contexto_visual e image_query.
               Os dois editoriais serão derivados de titulo_curto + highlights. imagens pode estar vazia ou ausente para busca automática. O CTA será acrescentado na geração.
             </p>
-            <textarea id="briefing-real-json" aria-describedby="briefing-real-help" value={payloadText} onChange={event => setPayloadText(event.target.value)} rows={12} spellCheck={false} className="w-full rounded border border-[#263b36] bg-[#0f1a1c] p-3 font-mono text-xs text-white" />
-            <button type="submit" disabled={!payloadText.trim()} className="rounded border border-[#00d084] px-4 py-2 text-sm text-[#00d084] disabled:opacity-40">Carregar item e gerar banners</button>
+            <textarea id="briefing-real-json" aria-describedby="briefing-real-help" value={payloadText} onChange={event => setPayloadText(event.target.value)} rows={12} spellCheck={false} className="w-full rounded border border-wg-border bg-wg-surface p-3 font-mono text-xs text-white" />
+            <button type="submit" disabled={!payloadText.trim()} className="wg-button wg-button-primary">Carregar item e gerar banners</button>
             {inputError && <p role="alert" className="text-sm text-red-400">{inputError}</p>}
-            {realItem && <p role="status" className="text-sm text-[#8fa39d]">Item carregado abaixo. Alterações no JSON só serão aplicadas ao carregar novamente.</p>}
+            {realItem && <p role="status" className="text-sm text-wg-muted">Item carregado abaixo. Alterações no JSON só serão aplicadas ao carregar novamente.</p>}
           </form>
         )}
 
@@ -1460,8 +1460,8 @@ function BriefingLab() {
               }
               className={`rounded-lg border px-3 py-2 font-mono text-[10px] font-bold tracking-wider transition ${
                 fixtureKey === option.id
-                  ? "border-[#00d084] bg-[#00d084]/10 text-[#00d084]"
-                  : "border-[#263b36] text-[#8ca39d]"
+                  ? "border-wg-success bg-wg-success/10 text-wg-success"
+                  : "border-wg-border text-wg-muted"
               }`}
             >
               {option.label}
@@ -1470,21 +1470,21 @@ function BriefingLab() {
 
         </div>}
 
-        <h2 className="mt-4 text-xl font-black leading-tight text-[#f4f0e8]">
+        <h2 className="mt-4 text-xl font-black leading-tight text-wg-text">
           {fixture?.titulo || "Nenhum item real carregado"}
         </h2>
 
         <div className="mt-2 flex items-center gap-2">
-          <span className="border border-[#263b36] px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[#8ca39d]">
+          <span className="rounded border border-wg-border-strong bg-wg-raised px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-wg-secondary">
             {fixture?.categoria || "BRIEFING"}
           </span>
 
-          <span className="font-mono text-[9px] uppercase tracking-wider text-[#5c6f6b]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-wg-muted">
             {inputMode === "fixtures" ? "IMAGENS 100% AUTOMÁTICAS" : "TESTE COM ITEM REAL"}
           </span>
         </div>
 
-        <p className="mt-3 text-sm leading-6 text-[#8fa39d]">
+        <p className="mt-3 text-[15px] leading-7 text-wg-secondary">
           Teste isolado do pipeline Briefing: até 2 banners editoriais + CTA.
         </p>
 
@@ -1525,36 +1525,47 @@ function DispatchCard({
   ];
 
   return (
-    <article className="relative border border-[#3a4a4d] bg-[#0f1a1c]">
+    <article className="relative overflow-hidden rounded-xl border border-wg-border bg-wg-surface">
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#3a4a4d] bg-[#132025] px-4 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-wg-border bg-wg-raised px-5 py-3">
         <div className="flex flex-wrap items-center gap-3">
 
-          <span className="font-mono text-[10px] text-[#7a8f8a]">
+          <span className="font-mono text-[10px] text-wg-muted">
             DESPACHO {String(index + 1).padStart(2, "0")}
           </span>
 
-          <span
-            className="border px-1.5 py-0.5 font-mono text-[10px] tracking-[0.2em]"
-            style={{
-              borderColor: `${catColor}80`,
-              color: catColor
-            }}
-          >
+          <span className="font-mono text-[10px] text-wg-border">
+            ·
+          </span>
+
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold tracking-[0.12em] text-wg-secondary">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: catColor }}
+            />
             {CATEGORY_LABEL[item.categoria] || "PAUTA"}
           </span>
 
           {item.publicado_em && (
-            <span className="border border-[#5fbf7a]/40 px-1.5 py-0.5 font-mono text-[10px] text-[#5fbf7a]">
-              {item.publicado_em}
-            </span>
+            <>
+              <span className="font-mono text-[10px] text-wg-border">
+                ·
+              </span>
+
+              <span className="font-mono text-[10px] text-wg-muted">
+                PUBLICADO{" "}
+                {new Date(item.publicado_em).toLocaleDateString("pt-BR")}
+                {" · "}
+                {new Date(item.publicado_em).toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[10px] text-[#5c6f6b]">
-            {new Date().toLocaleDateString("pt-BR")}
-          </span>
 
           <button
             type="button"
@@ -1562,7 +1573,7 @@ function DispatchCard({
               onGenerateBanner(index)
             }
             disabled={generatingBanner}
-            className="inline-flex items-center gap-1.5 border border-[#e0452f]/60 px-2.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[#e0452f] transition-colors hover:bg-[#e0452f] hover:text-[#0a1315] disabled:cursor-not-allowed disabled:opacity-50"
+            className="wg-button wg-button-primary min-w-[142px] font-mono uppercase tracking-[0.08em]"
           >
             <ImageIcon size={12} />
 
@@ -1575,32 +1586,32 @@ function DispatchCard({
         </div>
       </div>
 
-      <div className="px-4 pb-2 pt-4">
+      <div className="px-5 pb-3 pt-5">
         <h3
-          className="text-xl font-black leading-tight text-[#f4f0e8] sm:text-2xl"
+          className="max-w-4xl text-2xl font-black leading-[1.15] text-wg-text sm:text-[28px]"
           style={{ fontFamily: "'Archivo Black', sans-serif" }}
         >
           {item.titulo}
         </h3>
 
         {(item.titulo_curto || item.manchete_curta) && (
-          <dl className="mt-3 space-y-2 border-l-2 border-[#344447] pl-3">
+          <dl className="mt-3 space-y-2 border-l-2 border-wg-border pl-3">
             {item.titulo_curto && (
               <div>
-                <dt className="font-mono text-[10px] uppercase tracking-wider text-[#7a8f8a]">
+                <dt className="font-mono text-[10px] uppercase tracking-wider text-wg-muted">
                   Título curto
                 </dt>
-                <dd className="break-words text-sm font-bold text-[#f4f0e8]">
+                <dd className="break-words text-sm font-bold text-wg-text">
                   {item.titulo_curto}
                 </dd>
               </div>
             )}
             {item.manchete_curta && (
               <div>
-                <dt className="font-mono text-[10px] uppercase tracking-wider text-[#7a8f8a]">
+                <dt className="font-mono text-[10px] uppercase tracking-wider text-wg-muted">
                   Manchete curta
                 </dt>
-                <dd className="break-words text-sm leading-relaxed text-[#f4f0e8]">
+                <dd className="break-words text-sm leading-relaxed text-wg-text">
                   {item.manchete_curta}
                 </dd>
               </div>
@@ -1610,21 +1621,21 @@ function DispatchCard({
       </div>
 
       {bannerError && (
-        <div className="mx-4 mb-3 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[11px] leading-5 text-[#f0a89a]">
+        <div className="mx-4 mb-3 border border-wg-danger/50 bg-wg-danger-soft px-3 py-2.5 text-[11px] leading-5 text-wg-danger">
           {bannerError}
         </div>
       )}
 
-      <div className="flex gap-1 overflow-x-auto border-b border-[#243436] px-4">
+      <div className="flex gap-2 overflow-x-auto border-b border-wg-border px-5">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             type="button"
             onClick={() => setTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-[10px] font-mono uppercase tracking-wider ${
+            className={`wg-tab shrink-0 gap-1.5 font-mono uppercase ${
               tab === id
-                ? "border-[#e0452f] text-[#f4f0e8]"
-                : "border-transparent text-[#7a8f8a]"
+                ? "wg-tab-active"
+                : ""
             }`}
           >
             <Icon size={12} />
@@ -1633,13 +1644,13 @@ function DispatchCard({
         ))}
       </div>
 
-      <div className="p-4">
+      <div className="p-5 sm:p-6">
 
         {tab === "materia" && (
           <div>
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-[#5c6f6b]">
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-wg-muted">
                 <Clock size={11} />
                 {minutes} min · {words} palavras · {item.materia.length} caracteres
               </span>
@@ -1655,7 +1666,7 @@ function DispatchCard({
               className="mb-4 border-l-2 pl-3"
               style={{ borderColor: catColor }}
             >
-              <h5 className="text-[15px] font-black leading-snug text-[#f4f0e8]">
+              <h5 className="text-[15px] font-black leading-snug text-wg-text">
                 {item.titulo}
               </h5>
             </div>
@@ -1663,16 +1674,16 @@ function DispatchCard({
             <FormattedArticle text={item.materia} />
 
             <div
-              className="mt-6 border-t border-[#243436] pt-5"
+              className="mt-6 border-t border-wg-border pt-5"
               style={{ fontFamily: "'Source Serif 4', Georgia, serif" }}
             >
               <FormattedArticle text={RODAPE_FIXO} />
             </div>
 
             {item.fontes.length > 0 && (
-              <div className="mt-5 border-t border-[#243436] pt-3">
+              <div className="mt-5 border-t border-wg-border pt-3">
 
-                <span className="mb-2 block font-mono text-[9px] tracking-[0.2em] text-[#5c6f6b]">
+                <span className="mb-2 block font-mono text-[9px] tracking-[0.2em] text-wg-muted">
                   FONTES DA APURAÇÃO
                 </span>
 
@@ -1680,14 +1691,14 @@ function DispatchCard({
                   {item.fontes.map((source, i) => (
                     <li
                       key={i}
-                      className="font-mono text-[10px] text-[#7a8f8a]"
+                      className="font-mono text-[10px] text-wg-muted"
                     >
                       {source.url ? (
                         <a
                           href={source.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="underline hover:text-[#e0452f]"
+                          className="underline hover:text-wg-accent"
                         >
                           {source.nome || source.url}
                         </a>
@@ -1711,10 +1722,10 @@ function DispatchCard({
 
   <div className="space-y-4">
 
-    <div className="flex items-center justify-between border-b border-[#243436] pb-3">
+    <div className="flex items-center justify-between border-b border-wg-border pb-3">
       <div>
         <Stamp>Destaques editoriais</Stamp>
-        <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-[#7a8f8a]">
+        <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-wg-muted">
           {HIGHLIGHT_COUNT} destaques editoriais • {MIN_HIGHLIGHT_WORDS}–{MAX_HIGHLIGHT_WORDS} palavras cada
         </p>
       </div>
@@ -1730,26 +1741,26 @@ function DispatchCard({
       {item.highlights.map((highlight, i) => (
         <div
           key={i}
-          className="group relative overflow-hidden border border-[#344447] bg-[#121e21] px-4 py-4 transition-all hover:border-[#e0452f]/70"
+          className="wg-panel group relative overflow-hidden px-4 py-4 transition-colors hover:border-wg-border-strong"
         >
 
-          <div className="absolute left-0 top-0 h-full w-1 bg-[#e0452f]" />
+          <div className="absolute left-0 top-0 h-full w-1 bg-wg-border-strong" />
 
           <div className="flex items-start gap-4">
 
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-[#e0452f]/50 bg-[#1b282b]">
-              <span className="font-mono text-[11px] font-bold text-[#e0452f]">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-wg-border-strong bg-wg-inset">
+              <span className="font-mono text-[11px] font-bold text-wg-secondary">
                 {String(i + 1).padStart(2, "0")}
               </span>
             </div>
 
             <div className="min-w-0 flex-1">
 
-              <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-[#667b77]">
+              <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.2em] text-wg-muted">
                 Destaque {String(i + 1).padStart(2, "0")}
               </div>
 
-              <p className="font-mono text-[13px] font-medium leading-relaxed text-[#f4f0e8]">
+              <p className="font-mono text-[13px] font-medium leading-relaxed text-wg-text">
                 {highlight}
               </p>
 
@@ -1779,7 +1790,7 @@ function DispatchCard({
               {item.hashtags.map((tag, i) => (
                 <span
                   key={i}
-                  className="border border-[#e0452f]/40 px-2 py-1 font-mono text-[11px] text-[#e0452f]"
+                  className="wg-chip font-mono text-[11px]"
                 >
                   {tag}
                 </span>
@@ -1793,7 +1804,7 @@ function DispatchCard({
 
       </div>
       {tab === "publicacao" && (
-        <div className="border-t border-[#243436] p-4">
+        <div className="border-t border-wg-border p-4">
           <PublicationPanel item={item} />
         </div>
       )}
@@ -3011,13 +3022,13 @@ async function importBriefing() {
   }
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9] flex items-center justify-center p-6"
+      <div className="min-h-screen bg-wg-bg text-wg-secondary flex items-center justify-center p-6"
         style={{ fontFamily: "\x27IBM Plex Mono\x27, monospace" }}>
-        <div className="w-full max-w-md border border-[#3a4a4d] bg-[#0f1a1c] p-6 text-center">
-          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.25em] text-[#e0452f]">
+        <div className="w-full max-w-md border border-wg-border-strong bg-wg-surface p-6 text-center">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.25em] text-wg-accent">
             WIRE/GEEK
           </div>
-          <div className="font-mono text-sm text-[#8fa39d]">
+          <div className="font-mono text-sm text-wg-muted">
             VERIFICANDO SESSAO...
           </div>
         </div>
@@ -3027,18 +3038,18 @@ async function importBriefing() {
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9] flex items-center justify-center p-6"
+      <div className="min-h-screen bg-wg-bg text-wg-secondary flex items-center justify-center p-6"
         style={{ fontFamily: "\x27IBM Plex Mono\x27, monospace" }}>
-        <div className="w-full max-w-md border border-[#3a4a4d] bg-[#0f1a1c] p-6">
+        <div className="w-full max-w-md border border-wg-border-strong bg-wg-surface p-6">
           <div className="mb-6">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-[#e0452f]">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-wg-accent">
               ACESSO ADMINISTRATIVO
             </div>
-            <h1 className="mt-2 text-2xl font-black text-[#f4f0e8]"
+            <h1 className="mt-2 text-2xl font-black text-wg-text"
               style={{ fontFamily: "\x27Archivo Black\x27, sans-serif" }}>
               WIRE/GEEK
             </h1>
-            <p className="mt-2 text-xs leading-5 text-[#7a8f8a]">
+            <p className="mt-2 text-xs leading-5 text-wg-muted">
               Informe a chave administrativa para acessar o painel de apuracao.
             </p>
           </div>
@@ -3051,7 +3062,7 @@ async function importBriefing() {
             className="space-y-4"
           >
             <div>
-              <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-[#8fa39d]">
+              <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-wg-muted">
                 Chave administrativa
               </label>
               <input
@@ -3063,13 +3074,13 @@ async function importBriefing() {
                 spellCheck={false}
                 name="wiregeek-admin-key"
                 autoFocus
-                className="w-full border border-[#3a4a4d] bg-[#07110f] px-3 py-3 font-mono text-sm text-[#f4f0e8] outline-none transition focus:border-[#e0452f]"
+                className="wg-field font-mono"
                 placeholder="Digite a chave de acesso"
               />
             </div>
 
             {authError && (
-              <div className="flex gap-2 border border-[#e0452f]/40 bg-[#1a1010] p-3 text-xs text-[#e0452f]">
+              <div className="flex gap-2 border border-wg-danger/40 bg-wg-danger-soft p-3 text-xs text-wg-danger">
                 <AlertCircle size={15} className="mt-0.5 shrink-0" />
                 <span>{authError}</span>
               </div>
@@ -3078,7 +3089,7 @@ async function importBriefing() {
             <button
               type="submit"
               disabled={authChecking}
-              className="flex w-full items-center justify-center gap-2 bg-[#e0452f] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
+              className="wg-button wg-button-primary w-full font-mono uppercase tracking-wider"
             >
               {authChecking ? "Autenticando..." : "Entrar"}
             </button>
@@ -3089,44 +3100,44 @@ async function importBriefing() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a1315] text-[#d8dfd9]" style={{fontFamily:"'IBM Plex Mono', monospace"}}>
+    <div className="min-h-screen bg-wg-bg text-wg-secondary" style={{fontFamily:"system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"}}>
       <link rel="preconnect" href="https://fonts.googleapis.com"/>
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin=""/>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap');`}</style>
 
       {/* Ticker */}
-      <div className="overflow-hidden whitespace-nowrap border-b border-[#3a4a4d] bg-[#132025]">
+      <div className="hidden">
         <div className="flex items-center gap-2 px-4 py-2">
-          <Radio size={13} className="shrink-0 text-[#e0452f]"/>
-          <span className="shrink-0 font-mono text-[10px] font-bold tracking-[0.2em] text-[#e0452f]">AO VIVO</span>
-          <span className="text-[#5c6f6b]">/</span>
-          <span className="truncate font-mono text-[10px] tracking-[0.15em] text-[#8fa39d]">{ticker}</span>
+          <Radio size={13} className="shrink-0 text-wg-accent"/>
+          <span className="shrink-0 font-mono text-[10px] font-bold tracking-[0.2em] text-wg-accent">AO VIVO</span>
+          <span className="text-wg-muted">/</span>
+          <span className="truncate font-mono text-[10px] tracking-[0.15em] text-wg-muted">{ticker}</span>
         </div>
       </div>
 
       {/* Header */}
-      <header className="mx-auto max-w-3xl border-b border-[#243436] px-4 pb-6 pt-8 sm:px-6">
+      <header className="mx-auto max-w-6xl px-6 pb-5 pt-7 lg:px-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-[#f4f0e8] sm:text-4xl" style={{fontFamily:"'Archivo Black', sans-serif"}}>
-              WIRE<span className="text-[#e0452f]">/</span>GEEK
+            <h1 className="text-3xl font-black tracking-tight text-wg-text sm:text-4xl" style={{fontFamily:"'Archivo Black', sans-serif"}}>
+              WIRE<span className="text-wg-accent">/</span>GEEK
             </h1>
-            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-[#5c6f6b]">BAGAÇA STUDIOS · NEWSROOM 3.0</div>
+            <div className="mt-1 font-mono text-[9px] tracking-[0.25em] text-wg-muted">BAGAÇA STUDIOS · NEWSROOM 3.0</div>
           </div>
-          <span className="font-mono text-[10px] tracking-[0.2em] text-[#5c6f6b]">GAMES · GEEK · CINEMA · ANIME</span>
+          <span className="font-mono text-[10px] tracking-[0.2em] text-wg-muted">GAMES · GEEK · CINEMA · ANIME</span>
         </div>
-        <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[#8fa39d]">
+        <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-wg-muted">
           Central editorial do Briefing Geek 2h, com notícias importadas em contrato canônico e banners sob demanda.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-1.5 border border-[#5fbf7a]/40 px-2 py-1 font-mono text-[10px] tracking-wider text-[#5fbf7a]">
+          <span className="inline-flex items-center gap-1.5 border border-wg-success/40 px-2 py-1 font-mono text-[10px] tracking-wider text-wg-success">
             <CheckCircle2 size={11}/>BRIEFING GEEK 2H
           </span>
-          <span className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider text-[#8fa39d]" title="Cadência configurada no servidor. Ativação pendente na etapa de produção.">
+          <span className="inline-flex items-center gap-1.5 border border-wg-border-strong px-2 py-1 font-mono text-[10px] tracking-wider text-wg-muted" title="Cadência configurada no servidor. Ativação pendente na etapa de produção.">
             <Clock size={11}/>IMPORTAÇÃO CANÔNICA
           </span>
           {CATEGORY_ORDER.map(cat=>(
-            <span key={cat} className="inline-flex items-center gap-1.5 border border-[#3a4a4d] px-2 py-1 font-mono text-[10px] tracking-wider" style={{color:CATEGORY_COLOR[cat]}}>
+            <span key={cat} className="inline-flex items-center gap-1.5 border border-wg-border px-2 py-1 font-mono text-[10px] tracking-wider text-wg-muted">
               {CATEGORY_LABEL[cat]}
             </span>
           ))}
@@ -3134,7 +3145,7 @@ async function importBriefing() {
       </header>
 
       {/* Main */}
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-6xl px-6 py-6 lg:px-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
 
@@ -3142,7 +3153,7 @@ async function importBriefing() {
               type="button"
               onClick={loadArchive}
               disabled={archiveLoading || status === "loading" || briefingImporting || Boolean(bannerGeneratingKey)}
-              className="inline-flex items-center gap-2 border border-[#3a4a4d] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#d8dfd9] transition-colors hover:border-[#e0452f] hover:text-[#f4f0e8] disabled:cursor-not-allowed disabled:opacity-50"
+              className="wg-button wg-button-secondary font-mono uppercase tracking-wider"
             >
               <Archive size={14}/>
               {archiveLoading ? "Carregando..." : "Arquivo de Edições"}
@@ -3156,7 +3167,7 @@ async function importBriefing() {
                 setBriefingError("");
               }}
               disabled={briefingImporting || status === "loading" || Boolean(bannerGeneratingKey)}
-              className="inline-flex items-center gap-2 border border-[#3a4a4d] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#d8dfd9] transition-colors hover:border-[#e0452f] hover:text-[#f4f0e8] disabled:cursor-not-allowed disabled:opacity-50"
+              className="wg-button wg-button-secondary font-mono uppercase tracking-wider"
             >
               <Newspaper size={14}/>
               {briefingImportOpen ? "Fechar Briefing" : "Importar Briefing"}
@@ -3166,13 +3177,13 @@ async function importBriefing() {
           </div>
           {edition && (
             <div className="text-right">
-              <div className="font-mono text-[10px] text-[#5c6f6b]">EDIÇÃO EM EXIBIÇÃO</div>
-              <div className="font-mono text-[11px] text-[#8fa39d]">{new Date(edition.generatedAt).toLocaleString("pt-BR")}</div>
+              <div className="font-mono text-[10px] text-wg-muted">EDIÇÃO EM EXIBIÇÃO</div>
+              <div className="font-mono text-[11px] text-wg-muted">{new Date(edition.generatedAt).toLocaleString("pt-BR")}</div>
             </div>
           )}
                </div>
 
-        <div role="status" aria-live="polite" className="mb-5 border border-[#243436] bg-[#0c1618] px-3 py-3 text-[12px] leading-5 text-[#8fa39d]">
+        <div role="status" aria-live="polite" className="wg-status mb-5 text-wg-muted">
           {latestSnapshot.state === "loading" && "Consultando a edição mais recente no servidor…"}
           {latestSnapshot.state === "pending" && "Uma nova rodada está em preparação. Ela aparecerá após ser salva."}
           {latestSnapshot.state === "offline" && (edition
@@ -3185,7 +3196,7 @@ async function importBriefing() {
                 ? "Há uma edição mais recente disponível."
                 : "Esta edição será mantida durante sua leitura e preparação."}</span>
               <button type="button" onClick={showLatestEdition} disabled={syncPaused}
-                className="border border-[#5fbf7a]/50 px-3 py-1 font-mono text-[10px] uppercase text-[#5fbf7a] disabled:opacity-50">
+                className="wg-button wg-button-secondary wg-button-compact font-mono uppercase">
                 Ver edição mais recente
               </button>
             </div>
@@ -3193,13 +3204,13 @@ async function importBriefing() {
         </div>
 
         {briefingImportOpen && (
-          <section className="mb-6 border border-[#243436] bg-[#0c1618]">
-            <div className="border-b border-[#243436] px-4 py-3">
-              <div className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#e0452f]">
+          <section className="mb-6 border border-wg-border bg-wg-inset">
+            <div className="border-b border-wg-border px-4 py-3">
+              <div className="font-mono text-[10px] font-bold tracking-[0.2em] text-wg-accent">
                 IMPORTAR BRIEFING GEEK 2H
               </div>
 
-              <p className="mt-2 text-[12px] leading-5 text-[#8fa39d]">
+              <p className="mt-2 text-[12px] leading-5 text-wg-muted">
                 Cole o JSON canônico do Briefing Geek 2h. O Wire/Geek validará o contrato e persistirá somente as notícias novas.
                 Nenhuma imagem será buscada durante a importação. Depois, use Gerar banner
                 somente nas notícias que realmente serão utilizadas.
@@ -3216,15 +3227,15 @@ async function importBriefing() {
                 rows={14}
                 spellCheck={false}
                 placeholder={'{\n  "news": [\n    {\n      "titulo": "...",\n      "titulo_curto": "...",\n      "categoria": "...",\n      "materia": "...\\n\\n...\\n\\n...",\n      "highlights": ["...", "..."],\n      "hashtags": ["#...", "#...", "#...", "#...", "#..."],\n      "fontes": [{"titulo": "...", "url": "..."}],\n      "fonte_oficial_primaria": {"encontrada": true, "titulo": "...", "url": "..."},\n      "image_query": "..."\n    }\n  ]\n}'}
-                className="w-full resize-y border border-[#3a4a4d] bg-[#07110f] px-3 py-3 font-mono text-[11px] leading-5 text-[#d8dfd9] outline-none transition focus:border-[#e0452f] disabled:opacity-60"
+                className="wg-field resize-y font-mono leading-5"
               />
 
-              <div className="border border-[#263b36] bg-[#07110f] px-3 py-3">
-                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#5fbf7a]">
+              <div className="border border-wg-border bg-wg-inset px-3 py-3">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-wg-success">
                   GERAÇÃO SOB DEMANDA
                 </div>
 
-                <p className="mt-1 text-[11px] leading-5 text-[#8fa39d]">
+                <p className="mt-1 text-[11px] leading-5 text-wg-muted">
                   As notícias serão importadas sem consumir buscas de imagem.
                   Use o botão Gerar banner somente nas matérias que serão utilizadas.
                   Cada clique gera 2 banners editoriais + 1 CTA para uma única notícia.
@@ -3232,7 +3243,7 @@ async function importBriefing() {
               </div>
 
               {briefingError && (
-                <div className="flex items-start gap-2 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[12px] text-[#f0a89a]">
+                <div className="flex items-start gap-2 border border-wg-danger/50 bg-wg-danger-soft px-3 py-2.5 text-[12px] text-wg-danger">
                   <AlertCircle
                     size={15}
                     className="mt-0.5 shrink-0"
@@ -3249,7 +3260,7 @@ async function importBriefing() {
                     briefingImporting ||
                     !briefingText.trim()
                   }
-                  className="inline-flex items-center gap-2 bg-[#e0452f] px-4 py-2.5 font-mono text-[11px] font-bold uppercase tracking-wider text-[#0a1315] transition-colors hover:bg-[#f05a42] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="wg-button wg-button-primary font-mono uppercase tracking-wider"
                 >
                   <Newspaper size={14}/>
 
@@ -3266,7 +3277,7 @@ async function importBriefing() {
                     setBriefingText("");
                   }}
                   disabled={briefingImporting}
-                  className="border border-[#3a4a4d] px-4 py-2.5 font-mono text-[11px] uppercase tracking-wider text-[#7a8f8a] transition-colors hover:border-[#e0452f] hover:text-[#e0452f] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="wg-button wg-button-secondary font-mono uppercase tracking-wider"
                 >
                   Cancelar
                 </button>
@@ -3275,39 +3286,39 @@ async function importBriefing() {
           </section>
         )}
         {archiveOpen && (
-          <section className="mb-6 border border-[#243436] bg-[#0c1618]">
-            <div className="flex items-center justify-between border-b border-[#243436] px-4 py-3">
+          <section className="mb-6 border border-wg-border bg-wg-inset">
+            <div className="flex items-center justify-between border-b border-wg-border px-4 py-3">
               <div>
-                <div className="font-mono text-[10px] font-bold tracking-[0.2em] text-[#e0452f]">
+                <div className="font-mono text-[10px] font-bold tracking-[0.2em] text-wg-accent">
                   ARQUIVO DE EDIÇÕES
                 </div>
-                <div className="mt-1 font-mono text-[10px] text-[#5c6f6b]">
+                <div className="mt-1 font-mono text-[10px] text-wg-muted">
                   {archive.length} {archive.length === 1 ? "edição armazenada" : "edições armazenadas"}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setArchiveOpen(false)}
-                className="border border-[#3a4a4d] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-[#7a8f8a] transition-colors hover:border-[#e0452f] hover:text-[#e0452f]"
+                className="wg-button wg-button-secondary wg-button-compact font-mono uppercase tracking-wider"
               >
                 Fechar
               </button>
             </div>
 
             {archiveError && (
-              <div className="m-4 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[12px] text-[#f0a89a]">
+              <div className="m-4 border border-wg-danger/50 bg-wg-danger-soft px-3 py-2.5 text-[12px] text-wg-danger">
                 {archiveError}
               </div>
             )}
 
             {!archiveError && archive.length === 0 && (
-              <div className="px-4 py-8 text-center font-mono text-[11px] text-[#5c6f6b]">
+              <div className="px-4 py-8 text-center font-mono text-[11px] text-wg-muted">
                 NENHUMA EDIÇÃO ARQUIVADA
               </div>
             )}
 
             {archive.length > 0 && (
-              <div className="divide-y divide-[#243436]">
+              <div className="divide-y divide-wg-border">
                 {archive.map((item) => (
                   <div
                     key={item.id}
@@ -3320,18 +3331,18 @@ async function importBriefing() {
                     }}
                     role="button"
                     tabIndex={0}
-                    className="cursor-pointer px-4 py-3 transition-colors hover:bg-[#101c1e]"
+                    className="cursor-pointer px-4 py-3 transition-colors hover:bg-wg-raised"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-mono text-[12px] font-bold text-[#d8dfd9]">
+                      <div className="font-mono text-[12px] font-bold text-wg-secondary">
                         {item.titulo || "Edição Wire/Geek"}
                       </div>
-                      <div className="font-mono text-[9px] uppercase tracking-wider text-[#5c6f6b]">
+                      <div className="font-mono text-[9px] uppercase tracking-wider text-wg-muted">
                         {item.status || "sem status"}
                       </div>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-[#7a8f8a]">
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-wg-muted">
                       <span>
                         {item.criado_em
                           ? new Date(item.criado_em).toLocaleString("pt-BR")
@@ -3350,13 +3361,13 @@ async function importBriefing() {
 
         {/* Status grid */}
         {edition && (
-          <div className="mb-5 grid grid-cols-4 border border-[#243436] bg-[#0c1618]">
+          <div className="mb-5 grid grid-cols-4 border border-wg-border bg-wg-inset">
             {CATEGORY_ORDER.map(cat=>{
-              const count=summary.byCategory[cat]||0,color=CATEGORY_COLOR[cat];
+              const count=summary.byCategory[cat]||0;
               return (
-                <div key={cat} className="border-r border-[#243436] px-3 py-2 last:border-r-0">
-                  <div className="font-mono text-[9px] tracking-[0.2em]" style={{color}}>{cat}</div>
-                  <div className={`mt-0.5 font-mono text-[10px] ${count > 0 ? "text-[#5fbf7a]" : "text-[#e0452f]"}`}>
+                <div key={cat} className="border-r border-wg-border px-3 py-2 last:border-r-0">
+                  <div className="font-mono text-[9px] tracking-[0.2em] text-wg-muted">{cat}</div>
+                  <div className={`mt-0.5 font-mono text-[10px] ${count > 0 ? "text-wg-secondary" : "text-wg-muted"}`}>
                     {`${count} notícia${count===1?"":"s"}`}
                   </div>
                 </div>
@@ -3366,36 +3377,36 @@ async function importBriefing() {
         )}
 
         {status==="error" && (
-          <div className="mb-6 flex items-start gap-2 border border-[#e0452f]/50 bg-[#1a1214] px-3 py-2.5 text-[13px] text-[#f0a89a]">
+          <div className="mb-6 flex items-start gap-2 border border-wg-danger/50 bg-wg-danger-soft px-3 py-2.5 text-[13px] text-wg-danger">
             <AlertCircle size={16} className="mt-0.5 shrink-0"/><span>{errorMsg}</span>
           </div>
         )}
         {status==="idle"&&!edition && (
-          <div className="border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#5c6f6b]">
-            <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-[#7a8f8a]">REDAÇÃO EM ESPERA</div>
+          <div className="border border-dashed border-wg-border-strong px-4 py-12 text-center text-[13px] text-wg-muted">
+            <div className="mb-2 font-mono text-[11px] tracking-[0.2em] text-wg-muted">REDAÇÃO EM ESPERA</div>
             {latestSnapshot.state === "ready"
               ? "Nenhuma edição disponível no servidor. As próximas rodadas aparecerão aqui automaticamente."
               : "Aguardando a consulta das edições no servidor."}
           </div>
         )}
         {status==="loading"&&!edition && (
-          <div className="animate-pulse border border-dashed border-[#3a4a4d] px-4 py-12 text-center text-[13px] text-[#8fa39d]">{ticker}...</div>
+          <div className="animate-pulse border border-dashed border-wg-border-strong px-4 py-12 text-center text-[13px] text-wg-muted">{ticker}...</div>
         )}
 
         {/* Filtros + cards */}
         {edition && (
           <>
-            <div className="mb-4 flex flex-wrap gap-1 border-b border-[#243436] pb-4">
+            <div className="mb-4 flex flex-wrap gap-1 border-b border-wg-border pb-4">
               <button type="button" onClick={()=>setActiveFilter("all")}
-                className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${activeFilter==="all"?"bg-[#e0452f] text-[#0a1315]":"border border-[#3a4a4d] text-[#7a8f8a] hover:border-[#e0452f] hover:text-[#e0452f]"}`}>
+                className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${activeFilter==="all"?"border-wg-secondary bg-wg-secondary text-wg-bg":"border-wg-border text-wg-muted hover:border-wg-muted hover:text-wg-secondary"}`}>
                 Todos ({edition.news.length})
               </button>
               {CATEGORY_ORDER.map(cat=>{
-                const count=summary.byCategory[cat]||0,active=activeFilter===cat,color=CATEGORY_COLOR[cat];
+                const count=summary.byCategory[cat]||0,active=activeFilter===cat;
                 return (
                   <button key={cat} type="button" onClick={()=>setActiveFilter(cat)}
-                    className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors border"
-                    style={{borderColor:active?color:color+"40",color:active?"#0a1315":color,backgroundColor:active?color:"transparent"}}>
+                    className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${active?"border-wg-secondary bg-wg-secondary text-wg-bg":"border-wg-border text-wg-muted hover:border-wg-muted hover:text-wg-secondary"}`}
+                    >
                     {CATEGORY_LABEL[cat]} ({count})
                   </button>
                 );
@@ -3430,8 +3441,8 @@ async function importBriefing() {
         )}
       </main>
 
-      <footer className="mx-auto max-w-3xl border-t border-[#243436] px-4 pb-8 pt-4 sm:px-6">
-        <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-[#4a5c58]">
+      <footer className="mx-auto max-w-3xl border-t border-wg-border px-4 pb-8 pt-4 sm:px-6">
+        <div className="flex flex-wrap justify-between gap-2 font-mono text-[9px] text-wg-border-strong">
           <span>WIRE/GEEK 3.0 · BAGAÇA STUDIOS</span>
           <span>EDIÇÕES SALVAS · BANNERS COM IMAGENS REAIS</span>
         </div>

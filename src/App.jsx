@@ -387,12 +387,12 @@ async function autoPrepareInstagramReel(
   if (
     group?.success !==
       true ||
-    rows.length !== 2 ||
+    (rows.length < 1 || rows.length > 2) ||
     currentPublicationIds.length !==
-      2 ||
+      rows.length ||
     new Set(
       currentPublicationIds
-    ).size !== 2 ||
+    ).size !== rows.length ||
     !currentPublicationIds.includes(
       normalizedPublicationId
     ) ||
@@ -808,10 +808,10 @@ async function autoPublishPreparedInstagramReel(
     !publicationGroupId ||
     !parentContainerId ||
     !expectedAccountId ||
-    publicationIds.length !== 2 ||
+    (publicationIds.length < 1 || publicationIds.length > 2) ||
     new Set(
       publicationIds
-    ).size !== 2 ||
+    ).size !== publicationIds.length ||
     !publicationIds.includes(
       publicationId
     ) ||
@@ -1514,7 +1514,8 @@ function DispatchCard({
     Array.isArray(
       item.briefing_generated_banners
     ) &&
-    item.briefing_generated_banners.length === 3;
+    (item.briefing_generated_banners.length >= 2 &&
+      item.briefing_generated_banners.length <= 3);
 
   const tabs = [
     { id: "materia", label: "Matéria", icon: Newspaper },
@@ -2188,7 +2189,7 @@ const [edition,  setEdition]  = useState(null);
         ctaSlides.length !== 1
       ) {
         throw new Error(
-          "Composição inválida. Esperado: 2 editoriais + 1 CTA."
+          "Composição inválida. Esperado: 1 ou 2 editoriais + 1 CTA."
         );
       }
 
@@ -2257,7 +2258,7 @@ const [edition,  setEdition]  = useState(null);
        *
        * - WIREGEEK_AUTO_PUBLISH ativa;
        * - auto-aprovacao concluida;
-       * - exatamente dois IDs de publicacao.
+       * - um ou dois IDs dos editoriais materializados.
        *
        * media_publish so acontece quando o backend tambem
        * retornar auto_media_publish=true.
@@ -2295,13 +2296,13 @@ const [edition,  setEdition]  = useState(null);
 
         if (
           autoPublicationIds.length !==
-            2 ||
+            editorialSlides.length ||
           new Set(
             autoPublicationIds
-          ).size !== 2
+          ).size !== editorialSlides.length
         ) {
           throw new Error(
-            "AUTO-PUBLISH: auto-aprovacao nao retornou exatamente dois IDs de publicacao."
+            "AUTO-PUBLISH: auto-aprovacao nao retornou os IDs dos editoriais materializados."
           );
         }
 

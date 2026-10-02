@@ -7,6 +7,21 @@ import {
   uploadImmutableInstagramReelVideo,
 } from "../lib/instagram-reel.mjs";
 
+function validEditorialGroup(group) {
+  return Array.isArray(group) && group.length >= 1 && group.length <= 2 &&
+    group.every((item, index) => item?.carousel_position === index + 1);
+}
+
+function groupBannerUrls(group) {
+  return [...group.map(item => String(item?.banner_url || "").trim()),
+    String(group[0]?.cta_url || "").trim()];
+}
+
+function matchingGroupCta(group) {
+  return group.every(item => String(item?.cta_url || "").trim() ===
+    String(group[0]?.cta_url || "").trim());
+}
+
 function getSupabase() {
   const url = String(process.env.SUPABASE_URL || "").trim();
   const key = String(
@@ -427,10 +442,10 @@ async function createInstagramCarouselContainers(
 ) {
   if (
     !Array.isArray(instagramImages) ||
-    instagramImages.length !== 3
+    (instagramImages.length < 2 || instagramImages.length > 3)
   ) {
     throw new Error(
-      "O Instagram exige exatamente os tres JPEGs preparados para este teste."
+      "O Instagram exige 1 ou 2 editoriais preparados e o CTA."
     );
   }
 
@@ -810,13 +825,10 @@ async function loadInstagramReelPayload(
   publicationGroupId
 ) {
   if (
-    !Array.isArray(group) ||
-    group.length !== 2 ||
-    group[0]?.carousel_position !== 1 ||
-    group[1]?.carousel_position !== 2
+    !validEditorialGroup(group)
   ) {
     throw new Error(
-      "O Reel exige exatamente dois editoriais nas posicoes 1 e 2."
+      "O Reel exige 1 ou 2 editoriais nas posicoes consecutivas a partir de 1."
     );
   }
 
@@ -854,7 +866,7 @@ async function loadInstagramReelPayload(
     noticiaIds.length !== 1
   ) {
     throw new Error(
-      "Os dois editoriais precisam pertencer a mesma noticia."
+      "Os editoriais precisam pertencer a mesma noticia."
     );
   }
 
@@ -908,15 +920,10 @@ async function loadInstagramReelPayload(
   }
 
   if (
-    JSON.stringify(
-      hashtagSets[0]
-    ) !==
-    JSON.stringify(
-      hashtagSets[1]
-    )
+    hashtagSets.some(tags => JSON.stringify(tags) !== JSON.stringify(hashtagSets[0]))
   ) {
     throw new Error(
-      "Os dois editoriais precisam possuir as mesmas 5 hashtags."
+      "Os editoriais precisam possuir as mesmas 5 hashtags."
     );
   }
 
@@ -930,43 +937,21 @@ async function loadInstagramReelPayload(
         hashtagSets[0],
     });
 
-  const bannerUrls = [
-    String(
-      group[0]?.banner_url ||
-      ""
-    ).trim(),
-
-    String(
-      group[1]?.banner_url ||
-      ""
-    ).trim(),
-
-    String(
-      group[0]?.cta_url ||
-      ""
-    ).trim(),
-  ];
+  const bannerUrls = groupBannerUrls(group);
 
   if (
     !bannerUrls.every(Boolean)
   ) {
     throw new Error(
-      "O Reel exige os dois banners editoriais e o CTA."
+      "O Reel exige os banners editoriais e o CTA."
     );
   }
 
   if (
-    String(
-      group[0]?.cta_url ||
-      ""
-    ).trim() !==
-    String(
-      group[1]?.cta_url ||
-      ""
-    ).trim()
+    !matchingGroupCta(group)
   ) {
     throw new Error(
-      "Os dois editoriais precisam usar o mesmo CTA."
+      "Os editoriais precisam usar o mesmo CTA."
     );
   }
 
@@ -1294,15 +1279,12 @@ export default async function handler(req, res) {
        */
 
       if (
-        !Array.isArray(group) ||
-        group.length !== 2 ||
+        !validEditorialGroup(group) ||
         !group.some(
           (item) =>
             String(item.id) ===
             String(id)
-        ) ||
-        group[0].carousel_position !== 1 ||
-        group[1].carousel_position !== 2
+        )
       ) {
         return res.status(409).json({
           success:
@@ -1343,7 +1325,7 @@ export default async function handler(req, res) {
             false,
 
           error:
-            "Os dois editoriais precisam estar APROVADOS.",
+            "Os editoriais precisam estar APROVADOS.",
         });
       }
 
@@ -1471,7 +1453,7 @@ export default async function handler(req, res) {
             false,
 
           error:
-            "Os dois editoriais precisam pertencer a mesma noticia.",
+            "Os editoriais precisam pertencer a mesma noticia.",
         });
       }
 
@@ -1538,12 +1520,7 @@ export default async function handler(req, res) {
       }
 
       if (
-        JSON.stringify(
-          hashtagSets[0]
-        ) !==
-        JSON.stringify(
-          hashtagSets[1]
-        )
+        hashtagSets.some(tags => JSON.stringify(tags) !== JSON.stringify(hashtagSets[0]))
       ) {
         return res.status(409).json({
           success:
@@ -1559,7 +1536,7 @@ export default async function handler(req, res) {
             false,
 
           error:
-            "Os dois editoriais precisam possuir as mesmas 5 hashtags.",
+            "Os editoriais precisam possuir as mesmas 5 hashtags.",
         });
       }
 
@@ -1573,33 +1550,11 @@ export default async function handler(req, res) {
             hashtagSets[0],
         });
 
-      const bannerUrls = [
-        String(
-          group[0]?.banner_url ||
-          ""
-        ).trim(),
-
-        String(
-          group[1]?.banner_url ||
-          ""
-        ).trim(),
-
-        String(
-          group[0]?.cta_url ||
-          ""
-        ).trim(),
-      ];
+      const bannerUrls = groupBannerUrls(group);
 
       if (
         !bannerUrls.every(Boolean) ||
-        String(
-          group[0]?.cta_url ||
-          ""
-        ).trim() !==
-        String(
-          group[1]?.cta_url ||
-          ""
-        ).trim()
+        !matchingGroupCta(group)
       ) {
         return res.status(409).json({
           success:
@@ -1615,7 +1570,7 @@ export default async function handler(req, res) {
             false,
 
           error:
-            "O Reel exige os dois banners editoriais e o mesmo CTA.",
+            "O Reel exige os banners editoriais e o mesmo CTA.",
         });
       }
 
@@ -1814,12 +1769,12 @@ export default async function handler(req, res) {
           duration_seconds:
             reelVideo
               ?.duration_seconds ||
-            30,
+            (group.length * 12 + 6),
 
           frame_seconds:
             reelVideo
               ?.frame_seconds ||
-            [12, 12, 6],
+            [...group.map(() => 12), 6],
 
           frames:
             bannerUrls,
@@ -1886,15 +1841,12 @@ export default async function handler(req, res) {
       }
 
       if (
-        !Array.isArray(group) ||
-        group.length !== 2 ||
+        !validEditorialGroup(group) ||
         !group.some(
           (item) =>
             String(item.id) ===
             String(id)
-        ) ||
-        group[0].carousel_position !== 1 ||
-        group[1].carousel_position !== 2
+        )
       ) {
         return res.status(409).json({
           success:
@@ -1941,7 +1893,7 @@ export default async function handler(req, res) {
             false,
 
           error:
-            "Os dois editoriais precisam permanecer APROVADOS.",
+            "Os editoriais precisam permanecer APROVADOS.",
         });
       }
 
@@ -2330,15 +2282,12 @@ export default async function handler(req, res) {
         ).trim();
 
       if (
-        !Array.isArray(group) ||
-        group.length !== 2 ||
+        !validEditorialGroup(group) ||
         !group.some(
           (item) =>
             String(item.id) ===
             String(id)
-        ) ||
-        group[0].carousel_position !== 1 ||
-        group[1].carousel_position !== 2
+        )
       ) {
         return res.status(409).json({
           error:
@@ -2389,7 +2338,7 @@ export default async function handler(req, res) {
       ) {
         return res.status(409).json({
           error:
-            "Os dois editoriais precisam estar APROVADOS.",
+            "Os editoriais precisam estar APROVADOS.",
           publish_called:
             false,
         });
@@ -2586,7 +2535,7 @@ export default async function handler(req, res) {
       if (
         reserveError ||
         !Array.isArray(reservedGroup) ||
-        reservedGroup.length !== 2
+        reservedGroup.length !== group.length
       ) {
         return res.status(409).json({
           error:
@@ -2617,7 +2566,7 @@ export default async function handler(req, res) {
       /*
        * A idempotency_key possui indice UNIQUE por registro.
        *
-       * Como este carrossel possui dois registros em publicacoes,
+       * Como este carrossel possui um ou dois registros em publicacoes,
        * a chave do GRUPO fica somente no registro ancora:
        * carousel_position = 1.
        *
@@ -2792,7 +2741,7 @@ export default async function handler(req, res) {
       if (
         markError ||
         !Array.isArray(markedRows) ||
-        markedRows.length !== 2
+        markedRows.length !== group.length
       ) {
         /*
          * Meta ainda NAO foi chamada.
@@ -3103,7 +3052,7 @@ return res.status(502).json({
       if (
         persistPublishError ||
         !Array.isArray(publishedRows) ||
-        publishedRows.length !== 2
+        publishedRows.length !== group.length
       ) {
         /*
          * A Meta JA PUBLICOU.
@@ -3303,14 +3252,12 @@ return res.status(502).json({
       });
     }
     if (
-      group?.length !== 2 ||
+      !validEditorialGroup(group) ||
       !group.some((item) => String(item.id) === String(id)) ||
-      group[0].carousel_position !== 1 ||
-      group[1].carousel_position !== 2 ||
       group.some((item) => item.status !== "APROVADO" || item.published_at !== null)
     ) {
       return res.status(409).json({
-        error: "O carrossel exige dois editoriais nas posicoes 1 e 2, ambos APROVADOS e ainda nao publicados.",
+        error: "O carrossel exige 1 ou 2 editoriais nas posicoes consecutivas a partir de 1, todos APROVADOS e ainda nao publicados.",
       });
     }
 
@@ -3326,14 +3273,14 @@ return res.status(502).json({
 
     if (
       group.some((item) => !isImageUrl(item.banner_url) || !isImageUrl(item.cta_url)) ||
-      group[0].cta_url !== group[1].cta_url
+      !matchingGroupCta(group)
     ) {
       return res.status(409).json({
-        error: "O carrossel exige URLs validas dos editoriais e a mesma URL do CTA nos dois registros.",
+        error: "O carrossel exige URLs validas dos editoriais e a mesma URL do CTA em todos os registros.",
       });
     }
 
-    const carouselImages = [group[0].banner_url, group[1].banner_url, group[0].cta_url];
+    const carouselImages = groupBannerUrls(group);
 
     const instagramImages = [];
 
@@ -3375,7 +3322,7 @@ return res.status(502).json({
 
     if (
       !Array.isArray(reservedGroup) ||
-      reservedGroup.length !== 2 ||
+      reservedGroup.length !== group.length ||
       !reservedGroup.some((item) => String(item.id) === String(id))
     ) {
       return res.status(409).json({
@@ -3406,7 +3353,7 @@ return res.status(502).json({
     if (
       restoreError ||
       !Array.isArray(restoredGroup) ||
-      restoredGroup.length !== 2
+      restoredGroup.length !== group.length
     ) {
       throw new Error(
         `Dry-run concluido, mas nao foi possivel devolver o carrossel inteiro para APROVADO: ${
@@ -3670,7 +3617,7 @@ return res.status(502).json({
         childVariants.length !== 1
       ) {
         throw new Error(
-          "Metadados de container Instagram inconsistentes entre os dois editoriais."
+          "Metadados de container Instagram inconsistentes entre os editoriais."
         );
       }
 
@@ -3697,10 +3644,10 @@ return res.status(502).json({
             1920,
 
           duration_seconds:
-            30,
+            group.length * 12 + 6,
 
           frame_seconds:
-            [12, 12, 6],
+            [...group.map(() => 12), 6],
         };
 
         const uploaded = {
@@ -3785,7 +3732,7 @@ return res.status(502).json({
           !Array.isArray(
             persistedRows
           ) ||
-          persistedRows.length !== 2
+          persistedRows.length !== group.length
         ) {
           throw new Error(
             `O container Reel ${reelContainerId} foi criado na Meta, mas nao foi possivel persisti-lo no Supabase: ${

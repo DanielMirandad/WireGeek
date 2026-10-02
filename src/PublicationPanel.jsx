@@ -484,8 +484,10 @@ function ReelPublicationPanel({ item }) {
       ""
     ).trim();
 
+  const validEditorialCount = rows.length >= 1 && rows.length <= 2;
+
   const allApproved =
-    rows.length === 2 &&
+    validEditorialCount &&
     rows.every(
       (row) =>
         row?.status ===
@@ -564,7 +566,7 @@ function ReelPublicationPanel({ item }) {
     childIds.length > 0;
 
   const groupInconsistent =
-    rows.length === 2 &&
+    validEditorialCount &&
     parentIds.length > 1;
 
   const assetReady =
@@ -625,7 +627,7 @@ function ReelPublicationPanel({ item }) {
     );
 
   const canGenerateAsset =
-    rows.length === 2 &&
+    validEditorialCount &&
     allApproved &&
     !published &&
     !manualReview &&
@@ -642,7 +644,7 @@ function ReelPublicationPanel({ item }) {
   const profilesReviewed = Boolean(currentParentId) || Array.isArray(profileUsernames);
 
   const canPrepareReel =
-    rows.length === 2 && allApproved && assetReady && profilesReviewed &&
+    validEditorialCount && allApproved && assetReady && profilesReviewed &&
     !published && !manualReview && !publishingEvidence &&
     !hasLegacyChildren && !groupInconsistent && !publishLocked &&
     !publisherBusy && !loading && !error && actionId === null;
@@ -881,7 +883,7 @@ function ReelPublicationPanel({ item }) {
     const entries = loaded?.publicacoes;
     const groupId = String(loaded?.publication_group_id || "");
     if (!groupId || groupId !== currentGroupId ||
-        !Array.isArray(entries) || entries.length !== 2 ||
+        !Array.isArray(entries) || (entries.length < 1 || entries.length > 2) ||
         !entries.some((row) => Number(row.id) === activePublicationId) ||
         entries.some((row) => row.status !== "APROVADO" ||
           row.published_at || row.instagram_post_id ||
@@ -892,7 +894,7 @@ function ReelPublicationPanel({ item }) {
       throw new Error("Grupo alterado ou bloqueado. Preparação interrompida.");
     }
     const parents = entries.map((row) => String(row.instagram_parent_container_id || "").trim());
-    if (parents[0] !== parents[1] || (expectedParent && parents[0] !== expectedParent)) {
+    if (parents.some(parent => parent !== parents[0]) || (expectedParent && parents[0] !== expectedParent)) {
       throw new Error("Parent container inconsistente. Auditoria manual obrigatória.");
     }
     const asset = loaded.instagram_reel_asset;
@@ -955,7 +957,7 @@ function ReelPublicationPanel({ item }) {
           data.mode !== "instagram_publish_preflight" || data.publication_type !== "REEL" ||
           data.ready_to_publish !== true || data.publish_called !== false ||
           data.publication_group_id !== context.groupId || parentId !== context.parentId ||
-          !Array.isArray(ids) || ids.length !== 2 || new Set(ids.map(Number)).size !== 2 ||
+          !Array.isArray(ids) || ids.length !== context.entries.length || new Set(ids.map(Number)).size !== context.entries.length ||
           !context.entries.every((row) => ids.some((id) => Number(id) === Number(row.id))) ||
           !String(data.instagram?.account_id || "").trim() ||
           data.instagram?.media_type !== "REELS" || data.instagram?.share_to_feed !== true ||
@@ -1483,7 +1485,7 @@ function ReelPublicationPanel({ item }) {
           </div>
 
           <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.14em] text-wg-muted">
-            2 editoriais + CTA · Instagram Reel
+            {rows.length} {rows.length === 1 ? "editorial" : "editoriais"} + CTA · Instagram Reel
           </p>
         </div>
 
@@ -1574,7 +1576,7 @@ function ReelPublicationPanel({ item }) {
         group &&
         rows.length === 1 && (
           <div className="border border-wg-warning/50 bg-wg-warning-soft px-3 py-3 font-mono text-[10px] text-wg-warning">
-            Resultado parcial: 1 editorial disponível. A publicação automática requer 2 editoriais.
+            Resultado parcial: 1 editorial disponível. Reel com 1 editorial + CTA.
           </div>
         )}
 
@@ -1587,7 +1589,7 @@ function ReelPublicationPanel({ item }) {
           </div>
         )}
 
-      {(rows.length === 1 || rows.length === 2) && (
+      {validEditorialCount && (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             {rows.map(

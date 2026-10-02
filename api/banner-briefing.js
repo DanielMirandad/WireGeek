@@ -5,6 +5,7 @@ import { hasValidWireGeekAuth } from "./auth.js";
 import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib/banner-renderer-briefing.mjs";
 import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canonical.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
+import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 
@@ -841,6 +842,48 @@ async function handleBriefingGeneratedBanners(
    * na notÃ­cia, preservando o comportamento atual.
    */
 
+  /*
+   * O titulo visual e derivado uma unica vez por noticia.
+   *
+   * Nao altera o contrato canonico e nao e persistido.
+   * Se a derivacao falhar, os campos permanecem vazios
+   * e o renderer usa o titulo_curto legado.
+   */
+  let visualTitle = {
+    title_main: "",
+    title_theme: "",
+  };
+
+  try {
+    visualTitle =
+      await deriveBannerVisualTitle({
+        categoria:
+          briefing.categoria,
+
+        titulo:
+          briefing.titulo,
+
+        titulo_curto:
+          briefing.titulo_curto,
+
+        materia:
+          briefing.materia,
+      });
+  } catch (error) {
+    console.warn(
+      "WIRE/GEEK BRIEFING: titulo visual tematico indisponivel; usando fallback legado.",
+      {
+        noticia_id:
+          body.noticia_id ||
+          null,
+
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      }
+    );
+  }
   const currentCategory =
     briefing.canonical_source ? briefing.categoria : await resolveBannerCategory(
       body.noticia_id,
@@ -883,6 +926,12 @@ async function handleBriefingGeneratedBanners(
 
         banner_title:
           rendererCopy.banner_title,
+
+        title_main:
+          visualTitle.title_main,
+
+        title_theme:
+          visualTitle.title_theme,
 
         highlight:
           rendererCopy.highlight,

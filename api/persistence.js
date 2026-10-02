@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 
 import { validateCanonicalShape } from "../lib/wiregeek-contract.mjs";
+import { normalizeWireGeekCategory } from "../lib/wiregeek-categories.mjs";
 import { loadEditorialHistory, selectUnseenNews, compareEditorialStories, editorialEventSignature, primarySourceKey } from "../lib/editorial-dedup.mjs";
 
 function digest(value) {
@@ -61,7 +62,7 @@ function prepareNewsItem(item, index) {
     titulo: normalizeText(item?.titulo),
     titulo_curto: normalizeText(item?.titulo_curto),
 
-    categoria: normalizeText(item?.categoria),
+    categoria: normalizeWireGeekCategory(item?.categoria),
     materia: normalizeText(item?.materia),
     highlights: normalizeArray(item?.highlights),
     hashtags: normalizeArray(item?.hashtags).map((tag) => {

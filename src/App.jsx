@@ -1036,7 +1036,7 @@ function normalizeNewsItem(item={}) {
       ""
     ),
     manchete_curta: removeDashes(item.manchete_curta || ""),
-    publicado_em:   item.publicado_em||"Últimas 48h",
+    publicado_em:   item.publicado_em||"",
     materia:        removeDashes(item.materia||""),
     resumo:         removeDashes(item.resumo||""),
     por_que_importa: removeDashes(item.por_que_importa||""),

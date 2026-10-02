@@ -1,3 +1,5 @@
+import { hasValidWireGeekAuth } from "./auth.js";
+
 import {
   cronSlot,
   runEditorialRequest,
@@ -26,7 +28,7 @@ function hasValidCronAuth(req) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "POST") {
     return res
       .status(405)
       .json({
@@ -34,7 +36,9 @@ export default async function handler(req, res) {
       });
   }
 
-  if (!hasValidCronAuth(req)) {
+  const manual = req.method === "POST";
+
+  if (!(manual ? hasValidWireGeekAuth(req) : hasValidCronAuth(req))) {
     return res
       .status(401)
       .json({
@@ -45,10 +49,9 @@ export default async function handler(req, res) {
   try {
     const result =
       await runEditorialRequest(
-        {
-          source: "cron",
-          slot: cronSlot(),
-        },
+        manual
+          ? { source: "manual" }
+          : { source: "cron", slot: cronSlot() },
         async (output, run) => {
           const executed =
             await executeBriefing(run);

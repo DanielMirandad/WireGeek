@@ -1886,6 +1886,7 @@ const [edition,  setEdition]  = useState(null);
   const [followingLatest, setFollowingLatest] = useState(true);
   const [latestSnapshot, setLatestSnapshot] = useState({ state: "loading", edition: undefined });
   const syncRef = useRef(null);
+  const manualGenerationRef = useRef(false);
   const appliedSnapshotRef = useRef(undefined);
   const syncPaused = status === "loading" || briefingImporting || Boolean(bannerGeneratingKey) || archiveOpen || archiveLoading || briefingImportOpen;
   const syncPausedRef = useRef(syncPaused);
@@ -2870,6 +2871,43 @@ const [edition,  setEdition]  = useState(null);
       );
     }
   }
+  async function generateNews() {
+    if (manualGenerationRef.current || syncPaused) return;
+    manualGenerationRef.current = true;
+    syncRef.current?.setPaused(true);
+    setStatus("loading");
+    setErrorMsg("");
+    setTicker("APURANDO NOTÍCIAS · AGUARDE A CONCLUSÃO");
+    try {
+      const response = await fetch("/api/briefing-executor", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        setAuthenticated(false);
+        setAuthError("Sua sessão expirou. Entre novamente para gerar notícias.");
+      }
+      if (!response.ok || data.success !== true) {
+        throw new Error(data.details || data.error || `Apuração respondeu com HTTP ${response.status}.`);
+      }
+      appliedSnapshotRef.current = undefined;
+      setFollowingLatest(true);
+      setActiveFilter("all");
+      setBannerErrors({});
+      setStatus("done");
+      setTicker("APURAÇÃO CONCLUÍDA · ATUALIZANDO EDIÇÃO");
+      syncRef.current?.setPaused(false);
+      await syncRef.current?.refresh();
+    } catch (error) {
+      setStatus("error");
+      setErrorMsg(error?.message || "Não foi possível apurar as notícias.");
+      setTicker("FALHA NA APURAÇÃO DE NOTÍCIAS");
+    } finally {
+      manualGenerationRef.current = false;
+    }
+  }
+
 async function importBriefing() {
     if (briefingImporting) return;
 
@@ -3148,6 +3186,16 @@ async function importBriefing() {
       <main className="mx-auto max-w-6xl px-6 py-6 lg:px-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
+
+            <button
+              type="button"
+              onClick={generateNews}
+              disabled={syncPaused}
+              className="wg-button wg-button-secondary font-mono uppercase tracking-wider"
+            >
+              <Newspaper size={14}/>
+              {status === "loading" ? "Apurando notícias..." : "Gerar / Apurar Notícias"}
+            </button>
 
             <button
               type="button"

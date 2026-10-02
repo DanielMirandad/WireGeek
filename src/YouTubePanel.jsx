@@ -30,7 +30,13 @@ export default function YouTubePanel({ item, group, asset }) {
   const slots = Object.keys(channels);
   const connected = state?.channels?.some(ch => ch.slot === 'bagaca');
   const existingJob = state?.jobs?.find(job => job.slot === 'bagaca');
-  const approved = group?.publicacoes?.length === 2 && group.publicacoes.every(row => ['APROVADO', 'PUBLICADO'].includes(row.status));
+  const editorialCount = group?.publicacoes?.length || 0;
+  const approved =
+    editorialCount >= 1 &&
+    editorialCount <= 2 &&
+    group.publicacoes.every(row =>
+      ['APROVADO', 'PUBLICADO'].includes(row.status)
+    );
   async function refresh() {
     const result = await api('status', { group_id: groupId, noticia_id: String(noticiaId) }, 'GET');
     setState(result);
@@ -78,7 +84,7 @@ export default function YouTubePanel({ item, group, asset }) {
       {!state?.uploads_enabled && <p className="text-xs">Envios ainda desativados na configuração do servidor.</p>}
       {asset?.video_url && <a className="block underline" href={asset.video_url} target="_blank" rel="noreferrer">Revisar o MP4</a>}
       <button className={button} disabled={!state?.uploads_enabled || !connected || !!existingJob || !approved || !asset?.sha256 || !title.trim()} onClick={() => run(upload)}>{busy ? 'Processando…' : 'Enviar para Bagaça Studios'}</button>
-      {!approved && <p className="text-xs">Aprove os dois editoriais para habilitar o envio.</p>}
+      {!approved && <p className="text-xs">Aprove o grupo editorial válido para habilitar o envio.</p>}
     </fieldset>
     {existingJob && <p className="text-xs">Status do envio: {existingJob.status}{existingJob.url && <> · <a href={existingJob.url} target="_blank" rel="noreferrer" className="underline">Abrir vídeo</a></>}{!existingJob.video_id && <button className={`${button} ml-2`} disabled={busy} onClick={() => run(async () => { await api('reconcile', { slot: 'bagaca', group_id: groupId }); await refresh(); })}>Verificar envio</button>}</p>}
   </section>;

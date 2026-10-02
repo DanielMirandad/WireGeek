@@ -2701,7 +2701,7 @@ export default async function handler(req, res) {
       }
 
       /*
-       * Agora marcamos os DOIS registros como PUBLICANDO.
+       * Agora marcamos todos os registros do grupo como PUBLICANDO.
        * Nao repetimos a idempotency_key aqui.
        */
 

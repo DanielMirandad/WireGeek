@@ -1849,7 +1849,7 @@ function ReelPublicationPanel({ item }) {
 
                   <div className="mt-1 font-mono text-[9px] text-wg-muted">
                     {allApproved
-                      ? "2 / 2 APROVADOS"
+                      ? `${rows.length} / ${rows.length} ${rows.length === 1 ? "APROVADO" : "APROVADOS"}`
                       : "Aguardando aprovação"}
                   </div>
                 </div>

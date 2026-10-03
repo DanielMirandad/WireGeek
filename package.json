@@ -7,7 +7,7 @@
                     "dev":  "vite",
                     "build":  "vite build",
                     "preview":  "vite preview",
-                    "test":  "node --test tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs tests/site-editorial.test.mjs tests/publication-editorial-count.test.mjs tests/instagram-profiles.test.mjs tests/youtube-core.test.mjs"
+                    "test":  "node --test tests/generation-cache.test.mjs tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs tests/site-editorial.test.mjs tests/publication-editorial-count.test.mjs tests/instagram-profiles.test.mjs tests/youtube-core.test.mjs"
                 },
     "dependencies":  {
                          "@supabase/supabase-js":  "^2.112.4",

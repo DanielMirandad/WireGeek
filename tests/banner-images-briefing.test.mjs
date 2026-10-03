@@ -363,3 +363,38 @@ test(
     );
   }
 );
+
+test('rejects duplicate pixels before vision and selects a different image', async () => {
+  const request = makeRequest();
+  const duplicate = image('https://img.example.com/same-pixels.jpg', 'same');
+  request.banners[0].image_url = first.url;
+  request.banners[1].image_candidates = [duplicate.url,second.url];
+  const validated = [];
+  const result = await resolveBriefingBannerImages(request, {
+    collectSourceImages: async () => [],
+    downloadImage: async url => new Map([[first.url,first],[duplicate.url,duplicate],[second.url,second]]).get(url),
+    validateVisualCandidates: async ({images}) => { validated.push(images[0].url); },
+    sameImage: (_left,right) => right === duplicate.fingerprint,
+  });
+  assert.deepEqual(result.map(item=>item.url),[first.url,second.url]);
+  assert.deepEqual(validated,[first.url,second.url]);
+});
+
+test('same source image is downloaded once even when distinct editorial contexts review it', async () => {
+  const request = makeRequest();
+  request.banners[0].image_candidates = [second.url,first.url];
+  request.banners[1].image_url = second.url;
+  let downloads = 0, reviews = 0;
+  const result = await resolveBriefingBannerImages(request, {
+    collectSourceImages: async () => [],
+    downloadImage: async url => { downloads++; return url === first.url ? first : second; },
+    validateVisualCandidates: async ({images,highlights}) => {
+      reviews++;
+      if (images[0].url === second.url && highlights[0].startsWith('Primeiro')) throw new Error('wrong editorial context');
+    },
+    sameImage: () => false,
+  });
+  assert.equal(downloads,2);
+  assert.equal(reviews,3);
+  assert.deepEqual(result.map(item=>item.url),[first.url,second.url]);
+});

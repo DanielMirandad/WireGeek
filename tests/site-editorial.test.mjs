@@ -28,7 +28,7 @@ async function generate(sequence, run) {
     assert.ok(next, 'Unexpected extra request');
     return {ok:true, json:async () => ({output_text: typeof next === 'string' ? next : JSON.stringify(next), output:[{content:[{annotations:[{type:'url_citation',url:'https://example.com/research',title:'Pesquisa'}]}]}]})};
   };
-  try { await run(await generateSiteEditorialPreview({supabase, noticiaId:1}), requests); }
+  try { await run(await generateSiteEditorialPreview({supabase, noticiaId:1, forceRegenerate:true}), requests); }
   finally { globalThis.fetch = oldFetch; if (oldKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = oldKey; }
 }
 

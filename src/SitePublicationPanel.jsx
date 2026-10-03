@@ -355,6 +355,8 @@ export default function SitePublicationPanel({
                 action:
                   "generate-editorial",
 
+                force_regenerate: Boolean(siteBody),
+
                 noticia_id:
                   noticiaId,
               }),

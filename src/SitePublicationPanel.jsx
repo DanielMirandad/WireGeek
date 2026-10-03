@@ -372,7 +372,9 @@ export default function SitePublicationPanel({
             data?.details
           )
             ? data.details.join(" ")
-            : "";
+            : typeof data?.details === "string"
+              ? data.details
+              : "";
 
         throw new Error(
           [

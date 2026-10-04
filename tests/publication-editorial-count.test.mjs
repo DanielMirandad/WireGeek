@@ -1,3 +1,4 @@
+import { correctionSnapshot, correctedEditorials, reelAssetPrefix } from "../lib/manual-reel-correction.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -41,7 +42,7 @@ function harness(rows, { incompleteRestore = false } = {}) {
     rpc: async () => { calls.push('reserve'); return { data: rows, error: null }; },
   };
   const context = vm.createContext({
-    ...reel, URL, Buffer, process: { env: {} }, console: { log() {}, error() {} },
+    correctionSnapshot, correctedEditorials, reelAssetPrefix, ...reel, URL, Buffer, process: { env: {} }, console: { log() {}, error() {} },
     mockSupabase: supabase, calls,
   });
   vm.runInContext(source + `

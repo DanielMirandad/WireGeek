@@ -1,3 +1,4 @@
+import { correctionSnapshot, correctedEditorials, reelAssetPrefix } from "../lib/manual-reel-correction.mjs";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import {
@@ -590,7 +591,8 @@ async function createInstagramCarouselContainers(
 
 async function resolveApprovedInstagramReelAsset(
   supabase,
-  publicationGroupId
+  publicationGroupId,
+  assetRevision = null
 ) {
   const {
     createHash,
@@ -615,6 +617,8 @@ async function resolveApprovedInstagramReelAsset(
     );
   }
 
+  const assetPrefix = reelAssetPrefix(groupId, assetRevision);
+
   const folder =
     "instagram-reels";
 
@@ -634,7 +638,7 @@ async function resolveApprovedInstagramReelAsset(
             100,
 
           search:
-            groupId + "-",
+            assetPrefix + "-",
 
           sortBy: {
             column:
@@ -656,7 +660,7 @@ async function resolveApprovedInstagramReelAsset(
   const filenamePattern =
     new RegExp(
       "^" +
-      groupId +
+      assetPrefix +
       "-([0-9a-f]{16})\\.mp4$",
       "i"
     );
@@ -985,7 +989,8 @@ async function loadInstagramReelPayload(
   const approvedReel =
     await resolveApprovedInstagramReelAsset(
       supabase,
-      publicationGroupId
+      publicationGroupId,
+      group[0]?.reel_asset_revision
     );
 
   const storagePath =
@@ -1089,6 +1094,58 @@ async function createInstagramReelContainer({
 }
 
 
+async function applyManualReelCorrection(req, res, supabase, selected, group) {
+  let mutationStarted = false;
+  try {
+    const noticiaId = Number(req.body.noticia_id);
+    const editorials = correctedEditorials(req.body.corrected_banners);
+    if (!validEditorialGroup(group) || !Number.isInteger(noticiaId) || noticiaId <= 0 ||
+        group.some(row => Number(row.noticia_id) !== noticiaId) ||
+        !matchingGroupCta(group) || !req.body.expected_group) {
+      return res.status(409).json({ error: 'Grupo existente ou revisao invalida.', publish_called: false });
+    }
+    const cta = new URL(group[0].cta_url);
+    if (cta.protocol !== 'https:' || cta.username || cta.password) throw new Error('CTA invalido.');
+    const { createHash } = await import('node:crypto');
+    const hash = createHash('sha256').update(JSON.stringify([selected.publication_group_id, noticiaId, editorials, cta.href])).digest('hex');
+    const revision = [hash.slice(0,8),hash.slice(8,12),hash.slice(12,16),hash.slice(16,20),hash.slice(20,32)].join('-');
+    mutationStarted = true;
+    const { data: rows, error } = await supabase.rpc('apply_corrected_publication_banners', {
+      p_group_id: selected.publication_group_id, p_noticia_id: noticiaId,
+      p_expected: req.body.expected_group, p_editorials: editorials, p_revision: revision,
+    });
+    if (error || !validEditorialGroup(rows) || rows.some(row => row.reel_asset_revision !== revision)) {
+      throw new Error(error?.message || 'Substituicao nao confirmada.');
+    }
+    const bannerUrls = groupBannerUrls(rows);
+    let asset;
+    try {
+      const existing = await resolveApprovedInstagramReelAsset(supabase, selected.publication_group_id, revision);
+      asset = { storage_path: existing.storagePath, video_url: existing.videoUrl,
+        sha256: existing.sha256, immutable: true, reused: true };
+    } catch (error) {
+      if (!String(error.message).includes('encontrados: 0')) throw error;
+    }
+    if (!asset) {
+      const video = await buildInstagramReelVideo({ bannerUrls });
+      const uploaded = await uploadImmutableInstagramReelVideo({ supabase,
+        publicationGroupId: selected.publication_group_id, assetRevision: revision, buffer: video.buffer });
+      const verified = await resolveApprovedInstagramReelAsset(supabase, selected.publication_group_id, revision);
+      if (verified.sha256 !== uploaded.sha256 || verified.storagePath !== uploaded.storage_path ||
+          verified.videoUrl !== uploaded.video_url) throw new Error('MP4 salvo sem verificacao correspondente.');
+      asset = uploaded;
+    }
+    return res.status(200).json({ success: true, mode: 'manual_reel_correction',
+      publication_group_id: selected.publication_group_id, reel_asset_revision: revision,
+      publicacoes: rows, frames: bannerUrls, asset, publish_called: false, instagram_api_called: false,
+      next_action: 'review_mp4_and_approve_editorials' });
+  } catch (error) {
+    return res.status(mutationStarted ? 409 : 400).json({ success: false,
+      error: error.message, do_not_retry: mutationStarted, publish_called: false,
+      instagram_api_called: false });
+  }
+}
+
 export default async function handler(req, res) {
   const sessionModule = await import("./auth.js");
 
@@ -1105,6 +1162,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    const wantsCorrection = req.body?.apply_corrected_banners === true;
     const wantsInstagramReelAsset =
       req.body?.instagram_reel_asset === true ||
       String(
@@ -1208,6 +1266,10 @@ export default async function handler(req, res) {
       });
     }
 
+    if (wantsCorrection && instagramModeCount !== 0) {
+      return res.status(400).json({ error: "Correcao nao pode ser combinada com modos Instagram.", publish_called: false });
+    }
+
     const id = Number(req.body?.id);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -1259,12 +1321,15 @@ export default async function handler(req, res) {
 
     const { data: group, error: groupError } = await supabase
       .from("publicacoes")
-      .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_caption_sha256,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key")
+      .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_caption_sha256,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key,atualizado_em,reel_asset_revision,selected_channels,scheduled_at,banner_model_version")
       .eq("publication_group_id", selected.publication_group_id)
       .order("carousel_position", { ascending: true });
 
     if (groupError) {
       throw new Error(`Nao foi possivel carregar o carrossel: ${groupError.message}`);
+    }
+    if (wantsCorrection) {
+      return applyManualReelCorrection(req, res, supabase, selected, group);
     }
     if (wantsInstagramReelAsset) {
       /*
@@ -1644,7 +1709,8 @@ export default async function handler(req, res) {
         const existing =
           await resolveApprovedInstagramReelAsset(
             supabase,
-            selected.publication_group_id
+            selected.publication_group_id,
+            group[0]?.reel_asset_revision
           );
 
         immutableAsset = {
@@ -1702,6 +1768,8 @@ export default async function handler(req, res) {
             publicationGroupId:
               selected.publication_group_id,
 
+            assetRevision: group[0]?.reel_asset_revision,
+
             buffer:
               reelVideo.buffer,
           });
@@ -1709,7 +1777,8 @@ export default async function handler(req, res) {
         const verified =
           await resolveApprovedInstagramReelAsset(
             supabase,
-            selected.publication_group_id
+            selected.publication_group_id,
+            group[0]?.reel_asset_revision
           );
 
         if (
@@ -1753,6 +1822,8 @@ export default async function handler(req, res) {
             (item) =>
               item.id
           ),
+
+        reel_asset_revision: group[0]?.reel_asset_revision ?? null,
 
         asset:
           immutableAsset,
@@ -2559,6 +2630,19 @@ export default async function handler(req, res) {
               )
           )
         ) + 1;
+
+      // Revalidate the locked rows, not the snapshot loaded before preflight.
+      // A correction may have committed while the remote preflight was running.
+      if (reservedGroup.some(row => {
+        const previous = group.find(old => String(old.id) === String(row.id));
+        return !previous || row.banner_url !== previous.banner_url || row.cta_url !== previous.cta_url ||
+          (row.reel_asset_revision ?? null) !== (previous.reel_asset_revision ?? null) ||
+          row.instagram_parent_container_id !== previous.instagram_parent_container_id ||
+          row.instagram_caption_sha256 !== previous.instagram_caption_sha256;
+      })) {
+        return res.status(409).json({ error: 'O grupo mudou durante o preflight. Reserva bloqueada para auditoria manual.',
+          publish_called: false, do_not_retry: true });
+      }
 
       const idempotencyKey =
         `instagram:${selected.publication_group_id}:${parentId}`;
@@ -3725,6 +3809,8 @@ return res.status(502).json({
               "published_at",
               null
             )
+            .eq("status", "APROVADO")
+            .filter("reel_asset_revision", group[0]?.reel_asset_revision ? "eq" : "is", group[0]?.reel_asset_revision ?? null)
             .select("id");
 
         if (

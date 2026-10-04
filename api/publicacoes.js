@@ -1,3 +1,4 @@
+import { correctionSnapshot, correctedEditorials, reelAssetPrefix } from "../lib/manual-reel-correction.mjs";
 import { previewInstagramProfiles } from "../lib/instagram-profiles.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
@@ -26,7 +27,8 @@ function getSupabase() {
 
 async function resolveExistingInstagramReelAsset(
   supabase,
-  publicationGroupId
+  publicationGroupId,
+  assetRevision = null
 ) {
   const groupId =
     String(
@@ -47,6 +49,8 @@ async function resolveExistingInstagramReelAsset(
     };
   }
 
+  const assetPrefix = reelAssetPrefix(groupId, assetRevision);
+
   const folder =
     "instagram-reels";
 
@@ -63,7 +67,7 @@ async function resolveExistingInstagramReelAsset(
           limit: 100,
 
           search:
-            groupId + "-",
+            assetPrefix + "-",
 
           sortBy: {
             column: "name",
@@ -87,7 +91,7 @@ async function resolveExistingInstagramReelAsset(
   const filenamePattern =
     new RegExp(
       "^" +
-      groupId +
+      assetPrefix +
       "-([0-9a-f]{16})\\.mp4$",
       "i"
     );
@@ -377,9 +381,12 @@ export default async function handler(req, res) {
               criado_em,
               atualizado_em,
               publication_group_id,
+              reel_asset_revision,
               carousel_position,
               cta_url,
               selected_channels,
+              scheduled_at,
+              banner_model_version,
               instagram_status,
               instagram_caption_sha256,
               instagram_post_id,
@@ -418,7 +425,8 @@ export default async function handler(req, res) {
           await resolveExistingInstagramReelAsset(
             supabase,
             latestPublication
-              .publication_group_id
+              .publication_group_id,
+            latestGroup?.[0]?.reel_asset_revision
           );
 
         return res.status(200).json({
@@ -519,9 +527,12 @@ export default async function handler(req, res) {
               criado_em,
               atualizado_em,
               publication_group_id,
+              reel_asset_revision,
               carousel_position,
               cta_url,
               selected_channels,
+              scheduled_at,
+              banner_model_version,
               instagram_status,
               instagram_caption_sha256,
               instagram_post_id,
@@ -557,7 +568,8 @@ export default async function handler(req, res) {
           await resolveExistingInstagramReelAsset(
             supabase,
             selected
-              .publication_group_id
+              .publication_group_id,
+            group?.[0]?.reel_asset_revision
           );
 
         return res.status(200).json({

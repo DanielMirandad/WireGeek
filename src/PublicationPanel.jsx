@@ -1,3 +1,4 @@
+import { correctionSnapshot } from "../lib/manual-reel-correction.mjs";
 import SitePublicationPanel from "./SitePublicationPanel.jsx";
 import YouTubePanel from "./YouTubePanel.jsx";
 import { useEffect, useRef, useState } from "react";
@@ -9,6 +10,10 @@ import {
 } from "lucide-react";
 
 export default function PublicationPanel({ item }) {
+  const [correctionRequest, setCorrectionRequest] = useState(0);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [correctionApplied, setCorrectionApplied] = useState("");
+  const pendingKey = JSON.stringify(item?.briefing_generated_banners);
   const panelKey = JSON.stringify([
     item?.id, item?.noticia_id, item?.briefing_generated_banners,
   ]);
@@ -27,7 +32,7 @@ export default function PublicationPanel({ item }) {
 
   return (
     <div className="space-y-4">
-      {correctedBanners.length > 0 && (
+      {correctedBanners.length > 0 && correctionApplied !== pendingKey && (
         <section className="space-y-3 border border-wg-warning/40 bg-wg-warning-soft p-3">
           <h2 className="font-mono text-[10px] font-bold uppercase tracking-wider text-wg-warning">
             BANNER CORRIGIDO — NÃO APLICADO À PUBLICAÇÃO
@@ -55,14 +60,19 @@ export default function PublicationPanel({ item }) {
               </div>
             ))}
           </div>
+          <button type="button" disabled={correctionBusy} onClick={() => setCorrectionRequest(value => value + 1)}
+            className="wg-button wg-button-secondary w-full font-mono uppercase tracking-wider">
+            {correctionBusy ? "Aplicando e regenerando MP4..." : "USAR ESTES BANNERS NA PUBLICAÇÃO"}
+          </button>
         </section>
       )}
-      <ReelPublicationPanel key={panelKey} item={item} />
+      <ReelPublicationPanel key={panelKey} item={item} correctionRequest={correctionRequest}
+        onCorrectionBusy={setCorrectionBusy} onCorrectionApplied={() => setCorrectionApplied(pendingKey)} />
     </div>
   );
 }
 
-function ReelPublicationPanel({ item }) {
+function ReelPublicationPanel({ item, correctionRequest, onCorrectionBusy, onCorrectionApplied }) {
   const operationRef = useRef(false);
   const mountedRef = useRef(true);
 
@@ -187,7 +197,7 @@ function ReelPublicationPanel({ item }) {
     updatePublishLocked,
   ] =
     useState(() => {
-      try { return sessionStorage.getItem(lockKey) === "true"; }
+      try { return sessionStorage.getItem(lockKey) === "true" || Boolean(sessionStorage.getItem("wiregeek:manual-correction:" + noticiaId)); }
       catch { return true; }
     });
 
@@ -377,6 +387,8 @@ function ReelPublicationPanel({ item }) {
             data
               ?.publication_group_id,
 
+          reel_asset_revision: loadedRows[0]?.reel_asset_revision ?? null,
+
           asset: {
             immutable: true,
             reused: true,
@@ -428,6 +440,64 @@ function ReelPublicationPanel({ item }) {
     }
   }
 
+
+  const correctionHandledRef = useRef(correctionRequest);
+  const correctionLockKey = 'wiregeek:manual-correction:' + noticiaId;
+  useEffect(() => {
+    if (!correctionRequest || correctionHandledRef.current === correctionRequest) return;
+    correctionHandledRef.current = correctionRequest;
+    async function applyCorrection() {
+      if (operationRef.current || publisherBusy || loading || actionId != null) {
+        setPublisherError('Outra operacao em andamento. Aguarde antes de aplicar.');
+        return;
+      }
+      try {
+        if (sessionStorage.getItem(correctionLockKey)) throw new Error('Correcao anterior com resultado incerto. Auditoria manual obrigatoria antes de repetir.');
+        operationRef.current = true;
+        onCorrectionBusy(true);
+        setPublisherBusy('correction');
+        setPreflight(null);
+        setReelAsset(null);
+        setPublisherError('');
+        const loaded = await loadGroup();
+        if (!loaded?.publicacoes?.length) throw new Error('Grupo existente nao encontrado.');
+        // loadGroup may have rehydrated the old MP4; hide it before replacing assets.
+        setReelAsset(null);
+        // Persist before sending: a lost response must never trigger automatic retry.
+        sessionStorage.setItem(correctionLockKey, 'uncertain');
+        setPublishLocked(true);
+        const { response, data } = await postPublisher({
+          id: loaded.publicacoes[0].id, noticia_id: noticiaId, apply_corrected_banners: true,
+          expected_group: correctionSnapshot(loaded.publicacoes),
+          corrected_banners: item.briefing_generated_banners,
+        });
+        if (!response.ok || data.success !== true || data.mode !== 'manual_reel_correction' ||
+            data.publish_called !== false || data.instagram_api_called !== false ||
+            data.publication_group_id !== loaded.publication_group_id ||
+            !data.asset?.video_url || !data.reel_asset_revision) {
+          throw new Error(data.error || 'Aplicacao nao confirmada.');
+        }
+        const refreshed = await loadGroup();
+        if (!refreshed || refreshed.publicacoes.some(row => row.reel_asset_revision !== data.reel_asset_revision) ||
+            refreshed.instagram_reel_asset?.sha256 !== data.asset.sha256) {
+          throw new Error('Nao foi possivel confirmar o conjunto e o novo MP4.');
+        }
+        sessionStorage.removeItem(correctionLockKey);
+        setPublishLocked(false);
+        onCorrectionApplied();
+        setPublisherInfo('Banners aplicados ao mesmo grupo. Revise o novo MP4 e aprove os editoriais antes de preparar a publicacao.');
+      } catch (error) {
+        setPreflight(null);
+        setReelAsset(null);
+        setPublisherError(error.message + ' Nenhuma publicacao foi executada; nao ha retry automatico.');
+      } finally {
+        operationRef.current = false;
+        onCorrectionBusy(false);
+        setPublisherBusy('');
+      }
+    }
+    void applyCorrection();
+  }, [correctionRequest]);
 
   async function updatePublication(
     id,
@@ -618,6 +688,7 @@ function ReelPublicationPanel({ item }) {
 
   const assetReady =
     Boolean(
+      (reelAsset?.reel_asset_revision ?? null) === (rows[0]?.reel_asset_revision ?? null) &&
       reelAsset?.success ===
         true &&
       reelAsset?.mode ===
@@ -855,6 +926,7 @@ function ReelPublicationPanel({ item }) {
         ).trim();
 
       const valid =
+        (data?.reel_asset_revision ?? null) === (rows[0]?.reel_asset_revision ?? null) &&
         data?.success === true &&
         data?.mode ===
           "instagram_reel_asset" &&

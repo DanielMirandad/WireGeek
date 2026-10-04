@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { hasValidSession } from './auth.js';
 import { CHANNELS, SCOPES, hash, channelKey, seal, unseal, metadata, checkGroup, uploadLocation, googleJSON, failure } from '../lib/youtube-core.mjs';
+import { reelAssetPrefix } from '../lib/manual-reel-correction.mjs';
 
 
 const TABLE = 'wiregeek_youtube_';
@@ -35,11 +36,14 @@ async function connection(db, slot) {
   return row;
 }
 async function verifiedAsset(db, groupId) {
-  const rows=await checked(db.from('publicacoes').select('id,noticia_id,status,publication_group_id,carousel_position,cta_url').eq('publication_group_id',groupId));
+  const rows=await checked(db.from('publicacoes').select('id,noticia_id,status,publication_group_id,carousel_position,cta_url,reel_asset_revision').eq('publication_group_id',groupId));
   checkGroup(rows,groupId);
+  const revision=rows[0]?.reel_asset_revision ?? null;
+  if(rows.some(row=>(row.reel_asset_revision ?? null)!==revision))throw failure('Revisao do MP4 inconsistente no grupo.');
+  const assetPrefix=reelAssetPrefix(groupId,revision);
   const storage=db.storage.from('wiregeek-banners');
-  const files=await checked(storage.list('instagram-reels',{search:groupId+'-',limit:100}));
-  const pattern=new RegExp('^'+groupId+'-([a-f0-9]{16})\\.mp4$','i');
+  const files=await checked(storage.list('instagram-reels',{search:assetPrefix+'-',limit:100}));
+  const pattern=new RegExp('^'+assetPrefix+'-([a-f0-9]{16})\\.mp4$','i');
   const candidates=files.filter(f=>pattern.test(f.name));
   if(candidates.length!==1)throw failure('Gere o MP4 imutável deste grupo antes de enviar.');
   if(Number(candidates[0].metadata?.size)>100*1024*1024)throw failure('O MP4 excede 100 MB.');

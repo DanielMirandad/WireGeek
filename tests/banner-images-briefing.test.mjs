@@ -677,6 +677,16 @@ test(
     );
 
     assert.equal(
+      result.banners[0].manual_image_override,
+      true
+    );
+
+    assert.equal(
+      result.banners[1].manual_image_override,
+      false
+    );
+
+    assert.equal(
       result.banners[1].image_url,
       "https://auto.example.com/2.jpg"
     );
@@ -696,6 +706,195 @@ test(
           ]
         ),
       /URL http ou https/
+    );
+  }
+);
+
+
+test(
+  "imagem manual ignora Vision mas mantem validacoes tecnicas",
+  async () => {
+    const request =
+      makeRequest();
+
+    request.banners[0].image_url =
+      "https://img.example.com/manual.jpg";
+
+    request.banners[0].manual_image_override =
+      true;
+
+    request.banners[1].image_url =
+      "https://img.example.com/automatic.jpg";
+
+    const visualCalls = [];
+
+    const result =
+      await resolveBriefingBannerImages(
+        request,
+        {
+          collectSourceImages:
+            async () => [],
+
+          downloadImage:
+            async (url) =>
+              image(
+                url,
+                url.includes("manual")
+                  ? "manual"
+                  : "automatic"
+              ),
+
+          validateVisualCandidates:
+            async ({ images }) => {
+              visualCalls.push(
+                images[0].url
+              );
+            },
+
+          sameImage:
+            () => false,
+        }
+      );
+
+    assert.equal(
+      result[0].url,
+      "https://img.example.com/manual.jpg"
+    );
+
+    assert.equal(
+      result[1].url,
+      "https://img.example.com/automatic.jpg"
+    );
+
+    assert.deepEqual(
+      visualCalls,
+      [
+        "https://img.example.com/automatic.jpg",
+      ]
+    );
+  }
+);
+
+test(
+  "imagem manual invalida nao cai para busca automatica",
+  async () => {
+    const request =
+      makeRequest();
+
+    request.banners[0].image_url =
+      "https://img.example.com/manual-fail.jpg";
+
+    request.banners[0].manual_image_override =
+      true;
+
+    await assert.rejects(
+      () =>
+        resolveBriefingBannerImages(
+          request,
+          {
+            collectSourceImages:
+              async () => [
+                {
+                  url:
+                    "https://img.example.com/fallback.jpg",
+                },
+              ],
+
+            downloadImage:
+              async (url) => {
+                if (
+                  url.includes(
+                    "manual-fail"
+                  )
+                ) {
+                  throw new Error(
+                    "download falhou"
+                  );
+                }
+
+                return image(
+                  url,
+                  "fallback"
+                );
+              },
+
+            validateVisualCandidates:
+              async () => {},
+
+            sameImage:
+              () => false,
+          }
+        ),
+      /Imagem manual rejeitada/
+    );
+  }
+);
+
+
+test(
+  "imagem manual nao cai para image_candidates automaticos",
+  async () => {
+    const request =
+      makeRequest();
+
+    request.banners[0].image_url =
+      "https://img.example.com/manual-fail.jpg";
+
+    request.banners[0].manual_image_override =
+      true;
+
+    request.banners[0].image_candidates = [
+      {
+        url:
+          "https://img.example.com/automatic-explicit.jpg",
+      },
+    ];
+
+    const downloaded = [];
+
+    await assert.rejects(
+      () =>
+        resolveBriefingBannerImages(
+          request,
+          {
+            collectSourceImages:
+              async () => [],
+
+            downloadImage:
+              async (url) => {
+                downloaded.push(url);
+
+                if (
+                  url.includes(
+                    "manual-fail"
+                  )
+                ) {
+                  throw new Error(
+                    "download manual falhou"
+                  );
+                }
+
+                return image(
+                  url,
+                  "automatic-explicit"
+                );
+              },
+
+            validateVisualCandidates:
+              async () => {},
+
+            sameImage:
+              () => false,
+          }
+        ),
+      /Imagem manual rejeitada/
+    );
+
+    assert.deepEqual(
+      downloaded,
+      [
+        "https://img.example.com/manual-fail.jpg",
+      ]
     );
   }
 );

@@ -59,6 +59,9 @@ export function applyManualBannerImages(
 
         ...(existing[index] || {}),
 
+        manual_image_override:
+          Boolean(manual[index]),
+
         image_url:
           manual[index] ||
           String(

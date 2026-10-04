@@ -5,6 +5,10 @@ import {
   resolveBriefingBannerImages,
 } from "../lib/banner-images-briefing.mjs";
 
+import {
+  searchImageCandidates,
+} from "../lib/shared/banner-images.mjs";
+
 function makeRequest() {
   return {
     mode: "briefing",
@@ -461,5 +465,174 @@ test(
       canonical.titulo_curto,
       "Wednesday T3"
     );
+  }
+);
+
+
+test(
+  "busca aceita season como equivalente de temporada",
+  async () => {
+    const fetchImpl = async () =>
+      new Response(
+        JSON.stringify({
+          images_results: [
+            {
+              original:
+                "https://img.example.com/wednesday-season-3.jpg",
+              link:
+                "https://example.com/wednesday",
+              title:
+                "Wednesday Season 3 first look",
+              original_width: 1600,
+              original_height: 900,
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type":
+              "application/json",
+          },
+        }
+      );
+
+    const result =
+      await searchImageCandidates(
+        "Wednesday temporada 3",
+        {
+          apiKey: "test-key",
+          fetchImpl,
+          semanticQuery:
+            "Wednesday temporada 3",
+        }
+      );
+
+    assert.equal(
+      result.length,
+      1
+    );
+  }
+);
+
+test(
+  "busca rejeita numero de temporada diferente",
+  async () => {
+    const fetchImpl = async () =>
+      new Response(
+        JSON.stringify({
+          images_results: [
+            {
+              original:
+                "https://img.example.com/wednesday-season-2.jpg",
+              link:
+                "https://example.com/wednesday",
+              title:
+                "Wednesday Season 2 first look",
+              original_width: 1600,
+              original_height: 900,
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type":
+              "application/json",
+          },
+        }
+      );
+
+    const result =
+      await searchImageCandidates(
+        "Wednesday temporada 3",
+        {
+          apiKey: "test-key",
+          fetchImpl,
+          semanticQuery:
+            "Wednesday temporada 3",
+        }
+      );
+
+    assert.equal(
+      result.length,
+      0
+    );
+  }
+);
+
+test(
+  "busca protege temporadas 1 e 10",
+  async () => {
+    async function run(
+      query,
+      title,
+      url
+    ) {
+      const fetchImpl = async () =>
+        new Response(
+          JSON.stringify({
+            images_results: [
+              {
+                original: url,
+                link:
+                  "https://example.com/serie",
+                title,
+                original_width: 1600,
+                original_height: 900,
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type":
+                "application/json",
+            },
+          }
+        );
+
+      return searchImageCandidates(
+        query,
+        {
+          apiKey: "test-key",
+          fetchImpl,
+          semanticQuery: query,
+        }
+      );
+    }
+
+    const t1 =
+      await run(
+        "Serie temporada 1",
+        "Serie Season 1 official still",
+        "https://img.example.com/serie-season-1.jpg"
+      );
+
+    const t1Wrong =
+      await run(
+        "Serie temporada 1",
+        "Serie Season 2 official still",
+        "https://img.example.com/serie-season-2.jpg"
+      );
+
+    const t10 =
+      await run(
+        "Serie temporada 10",
+        "Serie Season 10 official still",
+        "https://img.example.com/serie-season-10.jpg"
+      );
+
+    const t10Wrong =
+      await run(
+        "Serie temporada 10",
+        "Serie Season 1 official still",
+        "https://img.example.com/serie-season-1-wrong.jpg"
+      );
+
+    assert.equal(t1.length, 1);
+    assert.equal(t1Wrong.length, 0);
+    assert.equal(t10.length, 1);
+    assert.equal(t10Wrong.length, 0);
   }
 );

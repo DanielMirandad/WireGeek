@@ -128,7 +128,13 @@ function sameEditorialVisualIdentity(
 
 // Ordinary local visuals require the same edition and editorial identity.
 // Pending manual banners survive by news ID; editorial fields always come from the server.
-export function mergeLatestEdition(current, next) {
+export function mergeLatestEdition(current, next, prepared = null) {
+  // Every snapshot can restore pending news absent from the previous snapshot.
+  // Reapply only pending prepared visuals; keep current in-memory visuals preferred.
+  if (current && Array.isArray(prepared?.news)) {
+    next = mergeLatestEdition({ news: prepared.news.filter(hasPendingManualBanner) }, next);
+  }
+  current = current || prepared;
   if (!next || !Array.isArray(current?.news)) return next;
   const sameSavedEdition = sameEdition(current, next);
   const local = new Map(current.news.filter(item => newsId(item)).map(item => [newsId(item), item]));

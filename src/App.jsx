@@ -2002,7 +2002,7 @@ const [edition,  setEdition]  = useState(null);
       } catch { /* Optional visual cache. */ }
     }
     setEdition(current => {
-      const merged = mergeLatestEdition(current || preparedCache, next);
+      const merged = mergeLatestEdition(current, next, preparedCache);
       return JSON.stringify(current) === JSON.stringify(merged) ? current : merged;
     });
     if (status !== "error") setStatus(next ? "done" : "idle");

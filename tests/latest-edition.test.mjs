@@ -75,3 +75,36 @@ test('mixed local slides preserve only pending editorials and matching CTA', () 
   const result = mergeLatestEdition(previous, { id: 'new', news: [news()] });
   assert.deepEqual(result.news[0].briefing_generated_banners, local().news[0].briefing_generated_banners);
 });
+
+test('application reload restores pending banners on the second server snapshot', async () => {
+  const storage = memoryStorage();
+  savePreparedEdition(storage, local(), 'yesterday');
+  const preparedBytes = storage.getItem(PREPARED_CACHE_KEY);
+  const payloads = [
+    { pending: false, edicoes: [{ id: 'first', criado_em: '2026-10-04T12:00:00Z', news: [news(13)] }] },
+    { pending: false, edicoes: [{ id: 'second', criado_em: '2026-10-04T12:01:00Z', news: [news(13), news('12')] }] },
+    { pending: false, edicoes: [{ id: 'third', criado_em: '2026-10-04T12:02:00Z', news: [{ ...news('12'), titulo: 'Atualizado', materia: 'Nova matéria' }] }] },
+  ];
+  let current = null, calls = 0;
+  const sync = createEditionSync({ storage,
+    fetcher: async () => ({ ok: true, status: 200, json: async () => payloads[calls++] }),
+    onChange: update => {
+      current = mergeLatestEdition(current, update.edition, readPreparedEdition(storage, 'today'));
+    },
+    onUnauthorized: () => assert.fail('Unexpected unauthorized'),
+    setTimer: () => 1, clearTimer: () => {},
+  });
+  try {
+    await sync.refresh();
+    assert.equal(current.news[0].briefing_generated_banners, undefined);
+    await sync.refresh();
+    assert.deepEqual(current.news[1].briefing_generated_banners, local().news[0].briefing_generated_banners);
+    assert.equal(current.news[0].briefing_generated_banners, undefined);
+    await sync.refresh();
+    assert.deepEqual(current.news[0].briefing_generated_banners, local().news[0].briefing_generated_banners);
+    for (const field of ['titulo', 'materia', 'highlights', 'hashtags', 'fontes', 'image_url'])
+      assert.deepEqual(current.news[0][field], payloads[2].edicoes[0].news[0][field]);
+    assert.equal(storage.getItem(PREPARED_CACHE_KEY), preparedBytes);
+    assert.deepEqual(JSON.parse(storage.getItem(LATEST_CACHE_KEY)), payloads[2]);
+  } finally { sync.stop(); }
+});

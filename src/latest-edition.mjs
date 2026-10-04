@@ -1,4 +1,40 @@
 export const LATEST_CACHE_KEY = "wire-geek:latest:v1";
+// Local visual preparation is independent of the day and server response cache.
+export const PREPARED_CACHE_KEY = "wire-geek:prepared:v1";
+
+export function readPreparedEdition(storage, legacyKey) {
+  for (const key of [PREPARED_CACHE_KEY, legacyKey]) {
+    try {
+      const saved = JSON.parse(storage?.getItem(key) || "null");
+      if (Array.isArray(saved?.news)) return saved;
+    } catch { /* Optional visual cache. */ }
+  }
+  return null;
+}
+
+export function savePreparedEdition(storage, edition, legacyKey) {
+  for (const key of [PREPARED_CACHE_KEY, legacyKey]) {
+    try { storage?.setItem(key, JSON.stringify(edition)); }
+    catch { /* A disabled/full cache must not prevent local preparation. */ }
+  }
+}
+
+function newsId(item) {
+  return String(item?.noticia_id ?? item?.id ?? "").trim();
+}
+
+function hasPendingManualBanner(item) {
+  const id = newsId(item);
+  return Boolean(id) && Array.isArray(item?.briefing_generated_banners) &&
+    item.briefing_generated_banners.some(slide => {
+      if (slide?.type !== "editorial" || slide.publication_id != null ||
+          (slide.noticia_id != null && String(slide.noticia_id) !== id) ||
+          typeof slide.banner_url !== "string") return false;
+      try { return ["https:", "http:"].includes(new URL(slide.banner_url).protocol); }
+      catch { return false; }
+    });
+}
+
 export const EDITION_POLL_MS = 60_000;
 
 export function decodeLatestEdition(payload) {
@@ -90,12 +126,12 @@ function sameEditorialVisualIdentity(
   );
 }
 
-// Only local visual preparation survives a refresh of the same saved news item
-// when the editorial identity is still the same.
-// All editorial fields come from the server.
+// Ordinary local visuals require the same edition and editorial identity.
+// Pending manual banners survive by news ID; editorial fields always come from the server.
 export function mergeLatestEdition(current, next) {
-  if (!next || !sameEdition(current, next)) return next;
-  const local = new Map(current.news.map(item => [String(item.id), item]));
+  if (!next || !Array.isArray(current?.news)) return next;
+  const sameSavedEdition = sameEdition(current, next);
+  const local = new Map(current.news.filter(item => newsId(item)).map(item => [newsId(item), item]));
   return { ...next, news: next.news.map(item => {
     const merged = {
       ...item,
@@ -103,11 +139,11 @@ export function mergeLatestEdition(current, next) {
 
     const previous =
       local.get(
-        String(item.id)
+        newsId(item)
       );
 
     const canReuseVisualPreparation =
-      sameEditorialVisualIdentity(
+      sameSavedEdition && sameEditorialVisualIdentity(
         previous,
         item
       );
@@ -140,6 +176,17 @@ export function mergeLatestEdition(current, next) {
             previous[field];
         }
       }
+    }
+
+    // Pending manual previews belong to the news ID, not the edition/text version.
+    // Never copy editorial fields or published local banners over server content.
+    if (hasPendingManualBanner(previous)) {
+      merged.briefing_generated_banners = previous.briefing_generated_banners.filter(
+        slide => slide &&
+          (slide.type === "cta" || (slide.type === "editorial" && slide.publication_id == null)) &&
+          (slide.noticia_id == null || String(slide.noticia_id) === newsId(item))
+      );
+      merged.briefing_source = true;
     }
 
     return merged;

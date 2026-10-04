@@ -9,7 +9,7 @@ import {
   HASHTAG_COUNT,
 } from "../lib/wiregeek-contract.mjs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createEditionSync, mergeLatestEdition, sameEdition } from "./latest-edition.mjs";
+import { createEditionSync, mergeLatestEdition, sameEdition, readPreparedEdition, savePreparedEdition } from "./latest-edition.mjs";
 import {
   AlertCircle, Check, CheckCircle2, Clock, Copy,
   Hash, Newspaper, Radio, RefreshCw, Zap, ImageIcon,
@@ -1998,8 +1998,7 @@ const [edition,  setEdition]  = useState(null);
     let preparedCache = null;
     if (next) {
       try {
-        const saved = JSON.parse(localStorage.getItem(todayKey()) || "null");
-        if (Array.isArray(saved?.news)) preparedCache = saved;
+        preparedCache = readPreparedEdition(localStorage, todayKey());
       } catch { /* Optional visual cache. */ }
     }
     setEdition(current => {
@@ -2292,12 +2291,7 @@ const [edition,  setEdition]  = useState(null);
       setStatus("done");
 
       try {
-        localStorage.setItem(
-          todayKey(),
-          JSON.stringify(
-            updatedEdition
-          )
-        );
+        savePreparedEdition(localStorage, updatedEdition, todayKey());
       } catch {}
 
       setBannerErrors(

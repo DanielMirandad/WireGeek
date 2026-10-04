@@ -696,6 +696,9 @@ async function handleBriefingGeneratedBanners(
 
   const noticiaId = canonicalNewsId(body.noticia_id);
 
+  const manualImageOverride =
+    body.manual_image_override === true;
+
   /*
    * ========================================================
    * DUPLICATE GUARD ANTES DE QUALQUER TRABALHO CARO
@@ -710,6 +713,7 @@ async function handleBriefingGeneratedBanners(
    * outro MP4/container.
    */
   if (
+    !manualImageOverride &&
     isAutoPublishEnabled() &&
     body.noticia_id
   ) {
@@ -1095,6 +1099,7 @@ async function handleBriefingGeneratedBanners(
     let publication = null;
 
     if (
+      !manualImageOverride &&
       item.type === "editorial"
     ) {
       const normalized =
@@ -1256,9 +1261,11 @@ async function handleBriefingGeneratedBanners(
   }
 
   const autoPublishEnabled =
+    !manualImageOverride &&
     isAutoPublishEnabled();
 
   const autoMediaPublishEnabled =
+    !manualImageOverride &&
     isAutoMediaPublishEnabled();
 
   let autoApproval = {

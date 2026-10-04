@@ -2208,6 +2208,8 @@ const [edition,  setEdition]  = useState(null);
                 ...briefingPayload,
                 noticia_id: noticiaId,
                 mode: "briefing",
+                manual_image_override:
+                  hasManualImageOverride,
               }),
           }
         );

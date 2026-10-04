@@ -9,6 +9,10 @@ import {
   searchImageCandidates,
 } from "../lib/shared/banner-images.mjs";
 
+import {
+  applyManualBannerImages,
+} from "../src/briefing/briefing-banner-contract.js";
+
 function makeRequest() {
   return {
     mode: "briefing",
@@ -634,5 +638,64 @@ test(
     assert.equal(t1Wrong.length, 0);
     assert.equal(t10.length, 1);
     assert.equal(t10Wrong.length, 0);
+  }
+);
+
+
+test(
+  "imagem manual tem prioridade sem alterar o modo automatico",
+  () => {
+    const original = {
+      mode: "briefing",
+      noticia_id: 123,
+      banners: [
+        {
+          type: "editorial",
+          image_url:
+            "https://auto.example.com/1.jpg",
+        },
+        {
+          type: "editorial",
+          image_url:
+            "https://auto.example.com/2.jpg",
+        },
+      ],
+    };
+
+    const result =
+      applyManualBannerImages(
+        original,
+        [
+          "https://manual.example.com/1.jpg",
+          "",
+        ]
+      );
+
+    assert.equal(
+      result.banners[0].image_url,
+      "https://manual.example.com/1.jpg"
+    );
+
+    assert.equal(
+      result.banners[1].image_url,
+      "https://auto.example.com/2.jpg"
+    );
+
+    assert.equal(
+      original.banners[0].image_url,
+      "https://auto.example.com/1.jpg"
+    );
+
+    assert.throws(
+      () =>
+        applyManualBannerImages(
+          original,
+          [
+            "arquivo-local.jpg",
+            "",
+          ]
+        ),
+      /URL http ou https/
+    );
   }
 );

@@ -6,6 +6,7 @@ import {
 import {
   hasBriefingBannerSpecs,
   buildBriefingClientPayload,
+  applyManualBannerImages,
 } from "./briefing-banner-contract.js";
 export default function BriefingBannerSection({ item }) {
   const briefingReady = hasBriefingBannerSpecs(item);
@@ -19,6 +20,11 @@ export default function BriefingBannerSection({ item }) {
       : []
   );
   const [error, setError] = useState("");
+
+  const [
+    manualImageUrls,
+    setManualImageUrls,
+  ] = useState(["", ""]);
   const [updatingPublication, setUpdatingPublication] = useState(null);
 
   const autoGenerationRef = useRef("");
@@ -30,6 +36,7 @@ export default function BriefingBannerSection({ item }) {
         : []
     );
     setError("");
+    setManualImageUrls(["", ""]);
     setUpdatingPublication(null);
   }, [
     item.id,
@@ -69,6 +76,12 @@ export default function BriefingBannerSection({ item }) {
         payload =
           buildBriefingClientPayload(
             briefingItem
+          );
+
+        payload =
+          applyManualBannerImages(
+            payload,
+            manualImageUrls
           );
 
         endpoint =
@@ -414,6 +427,65 @@ setBanners([]);
 
 
         </div>
+
+        <div className="mb-4 grid gap-3 md:grid-cols-2">
+          {[0, 1].map((index) => (
+            <label
+              key={index}
+              className="block rounded-lg border border-[#263b36] bg-[#0b1513] p-3"
+            >
+              <span className="mb-2 block font-mono text-[9px] uppercase tracking-[0.16em] text-[#8ca39d]">
+                Imagem manual - Banner {index + 1}
+              </span>
+
+              <input
+                type="url"
+                value={manualImageUrls[index]}
+                disabled={generating}
+                onChange={(event) => {
+                  const value =
+                    event.target.value;
+
+                  setManualImageUrls(
+                    (current) =>
+                      current.map(
+                        (currentValue, currentIndex) =>
+                          currentIndex === index
+                            ? value
+                            : currentValue
+                      )
+                  );
+                }}
+                placeholder="https://.../imagem.jpg"
+                className="w-full rounded-lg border border-[#263b36] bg-[#07110f] px-3 py-2 text-sm text-white outline-none transition placeholder:text-[#4f625d] focus:border-[#00d084]"
+              />
+
+              <span className="mt-2 block text-[11px] leading-5 text-[#6f8580]">
+                Opcional. Vazio mantem a busca automatica.
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={generateBanner}
+          disabled={
+            generating ||
+            !briefingReady
+          }
+          className="mb-4 w-full rounded-lg bg-[#00d084] px-4 py-3 text-sm font-bold text-black transition hover:bg-[#22e59b] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {generating
+            ? "GERANDO..."
+            : manualImageUrls.some(
+                (url) =>
+                  String(url).trim()
+              )
+              ? "GERAR COM IMAGEM MANUAL"
+              : "GERAR / REGERAR BANNERS"}
+        </button>
+
 
         {!briefingReady && (
           <div className="mb-4 rounded-lg border border-[#263b36] bg-[#07110f] p-3 text-xs leading-5 text-[#7f9690]">

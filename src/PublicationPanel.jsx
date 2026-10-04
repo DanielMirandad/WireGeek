@@ -12,7 +12,54 @@ export default function PublicationPanel({ item }) {
   const panelKey = JSON.stringify([
     item?.id, item?.noticia_id, item?.briefing_generated_banners,
   ]);
-  return <ReelPublicationPanel key={panelKey} item={item} />;
+  const correctedBanners = (Array.isArray(item?.briefing_generated_banners)
+    ? item.briefing_generated_banners
+    : []).flatMap((slide) => {
+      if (slide?.type !== "editorial" || slide.publication_id != null ||
+          typeof slide.banner_url !== "string") return [];
+      try {
+        const url = new URL(slide.banner_url.trim());
+        return ["https:", "http:"].includes(url.protocol) ? [url.href] : [];
+      } catch {
+        return [];
+      }
+    });
+
+  return (
+    <div className="space-y-4">
+      {correctedBanners.length > 0 && (
+        <section className="space-y-3 border border-wg-warning/40 bg-wg-warning-soft p-3">
+          <h2 className="font-mono text-[10px] font-bold uppercase tracking-wider text-wg-warning">
+            BANNER CORRIGIDO — NÃO APLICADO À PUBLICAÇÃO
+          </h2>
+          <p className="font-mono text-[10px] leading-5 text-wg-muted">
+            Preview da correção manual. A publicação existente continua usando o banner anterior.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {correctedBanners.map((bannerUrl, index) => (
+              <div key={bannerUrl + ":" + index} className="space-y-2">
+                <img
+                  src={bannerUrl}
+                  alt={"Preview do banner corrigido " + (index + 1)}
+                  loading="lazy"
+                  className="block h-auto w-full border border-wg-border bg-wg-surface object-contain"
+                />
+                <a
+                  href={bannerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block font-mono text-[9px] uppercase tracking-wider text-wg-secondary underline hover:text-wg-text"
+                >
+                  ABRIR BANNER CORRIGIDO
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      <ReelPublicationPanel key={panelKey} item={item} />
+    </div>
+  );
 }
 
 function ReelPublicationPanel({ item }) {

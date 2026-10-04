@@ -411,27 +411,32 @@ test(
     );
 
     assert.equal(
+      normalizeImageSearchQuery("Serie T1"),
+      "Serie temporada 1"
+    );
+
+    assert.equal(
       normalizeImageSearchQuery("Wednesday T3"),
-      "Wednesday season 3"
+      "Wednesday temporada 3"
     );
 
     assert.equal(
       normalizeImageSearchQuery(
         "Black Clover t2"
       ),
-      "Black Clover season 2"
+      "Black Clover temporada 2"
     );
 
     assert.equal(
       normalizeImageSearchQuery("Anime T10"),
-      "Anime season 10"
+      "Anime temporada 10"
     );
 
     assert.equal(
       normalizeImageSearchQuery(
         "Wednesday T3 official press"
       ),
-      "Wednesday season 3 official press"
+      "Wednesday temporada 3 official press"
     );
 
     assert.equal(

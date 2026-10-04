@@ -18,6 +18,7 @@ import {
 
 import {
   buildBriefingClientPayload,
+  applyManualBannerImages,
 } from "./briefing/briefing-banner-contract.js";
 
 // --- CONSTANTES ---
@@ -1507,6 +1508,11 @@ function DispatchCard({
   bannerError,
 }) {
   const [tab, setTab] = useState("materia");
+
+  const [
+    manualBannerImages,
+    setManualBannerImages,
+  ] = useState(["", ""]);
   const { words, minutes } = estimateReading(item.materia);
   const catColor = CATEGORY_COLOR[item.categoria] || "#e0452f";
 
@@ -1571,7 +1577,10 @@ function DispatchCard({
           <button
             type="button"
             onClick={() =>
-              onGenerateBanner(index)
+              onGenerateBanner(
+                index,
+                manualBannerImages
+              )
             }
             disabled={generatingBanner}
             className="wg-button wg-button-primary min-w-[142px] font-mono uppercase tracking-[0.08em]"
@@ -1619,6 +1628,57 @@ function DispatchCard({
             )}
           </dl>
         )}
+      </div>
+
+      <div className="mx-4 mb-4 grid gap-3 md:grid-cols-2">
+        {[0, 1].map((manualIndex) => (
+          <label
+            key={manualIndex}
+            className="block rounded-lg border border-wg-border bg-wg-raised p-3"
+          >
+            <span className="mb-2 block font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-wg-muted">
+              {manualIndex === 0
+                ? "IMAGEM MANUAL - BANNER 1"
+                : "IMAGEM MANUAL - BANNER 2"}
+            </span>
+
+            <input
+              type="url"
+              value={
+                manualBannerImages[
+                  manualIndex
+                ]
+              }
+              disabled={
+                generatingBanner
+              }
+              onChange={(event) => {
+                const value =
+                  event.target.value;
+
+                setManualBannerImages(
+                  (current) =>
+                    current.map(
+                      (
+                        currentValue,
+                        currentIndex
+                      ) =>
+                        currentIndex ===
+                        manualIndex
+                          ? value
+                          : currentValue
+                    )
+                );
+              }}
+              placeholder="https://.../imagem.jpg"
+              className="w-full rounded-lg border border-wg-border bg-wg-surface px-3 py-2 text-sm text-wg-text outline-none transition placeholder:text-wg-muted focus:border-wg-accent"
+            />
+
+            <span className="mt-2 block text-[10px] leading-5 text-wg-muted">
+              Opcional. Vazio mantem a busca automatica.
+            </span>
+          </label>
+        ))}
       </div>
 
       {bannerError && (
@@ -2041,7 +2101,8 @@ const [edition,  setEdition]  = useState(null);
   },[edition,activeFilter]);
 
   async function generateBannerForNews(
-    newsIndex
+    newsIndex,
+    manualImageUrls = []
   ) {
     const currentNews =
       Array.isArray(edition?.news)
@@ -2056,6 +2117,12 @@ const [edition,  setEdition]  = useState(null);
     }
 
     let item = currentItem;
+
+    const hasManualImageOverride =
+      manualImageUrls.some(
+        (url) =>
+          String(url || "").trim()
+      );
 
     const noticiaId =
       String(
@@ -2106,8 +2173,11 @@ const [edition,  setEdition]  = useState(null);
     try {
       // O servidor carrega os textos canônicos pelo ID da notícia.
       const briefingPayload =
-        buildBriefingClientPayload(
-          item
+        applyManualBannerImages(
+          buildBriefingClientPayload(
+            item
+          ),
+          manualImageUrls
         );
 
       console.log(
@@ -2236,7 +2306,9 @@ const [edition,  setEdition]  = useState(null);
       );
 
       setTicker(
-        `BANNERS GERADOS · NOTÍCIA ${newsIndex + 1} · 3 SLIDES`
+        hasManualImageOverride
+          ? `BANNERS CORRIGIDOS COM IMAGEM MANUAL - NOTICIA ${newsIndex + 1}`
+          : `BANNERS GERADOS - NOTICIA ${newsIndex + 1}`
       );
 
       console.log(
@@ -2267,6 +2339,7 @@ const [edition,  setEdition]  = useState(null);
        */
 
       if (
+        !hasManualImageOverride &&
         bannerData
           ?.auto_publish ===
           true &&

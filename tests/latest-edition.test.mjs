@@ -108,3 +108,41 @@ test('application reload restores pending banners on the second server snapshot'
     assert.deepEqual(JSON.parse(storage.getItem(LATEST_CACHE_KEY)), payloads[2]);
   } finally { sync.stop(); }
 });
+
+test('two complete reloads restore pending previews when reopening an archived edition', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  const normalizeSource = source.slice(source.indexOf('function removeDashes('), source.indexOf('function validateEdition('));
+  const { cleanBriefingText } = await import('../lib/briefing-text.mjs');
+  const normalize = Function('cleanBriefingText', normalizeSource + '; return normalizeNewsItem;')(cleanBriefingText);
+  const archiveSource = source.slice(source.indexOf('  function openArchivedEdition('), source.indexOf('  async function loadArchive('));
+  const storage = memoryStorage();
+  savePreparedEdition(storage, local(), 'wire-geek:v3:2026-10-03');
+  const preparedBytes = storage.getItem(PREPARED_CACHE_KEY);
+  const archived = { id: 'old-edition', criado_em: '2026-10-03T12:00:00Z', news: [{ ...news(), briefing_generated_banners: [{ ...banner, publication_id: 99, banner_url: 'https://example.com/published.png' }] }] };
+  const latest = { pending: false, edicoes: [{ id: 'latest', criado_em: '2026-10-04T12:00:00Z', news: [news(13)] }] };
+  for (const dailyKey of ['wire-geek:v3:2026-10-03', 'wire-geek:v3:2026-10-04']) {
+    let current = null, snapshot, followingLatest = true;
+    const sync = createEditionSync({ storage,
+      fetcher: async () => ({ ok: true, status: 200, json: async () => latest }),
+      onChange: update => { snapshot = update.edition; },
+      onUnauthorized: () => assert.fail('Unexpected unauthorized'), setTimer: () => 1, clearTimer: () => {},
+    });
+    try {
+      await sync.refresh();
+      assert.deepEqual(JSON.parse(storage.getItem(LATEST_CACHE_KEY)), latest);
+      const next = { ...snapshot, news: snapshot.news.map(normalize) };
+      current = mergeLatestEdition(current, next, readPreparedEdition(storage, dailyKey));
+      assert.equal(current.news[0].briefing_generated_banners.length, 0);
+      const openArchive = Function('normalizeNewsItem', 'setFollowingLatest', 'setEdition', 'setActiveFilter', 'setStatus', 'setArchiveOpen', 'localStorage', 'todayKey', 'readPreparedEdition', 'mergeLatestEdition', archiveSource + '; return openArchivedEdition;')(
+        normalize, value => { followingLatest = value; }, value => { current = typeof value === 'function' ? value(current) : value; }, () => {}, () => {}, () => {}, storage, () => dailyKey, readPreparedEdition, mergeLatestEdition);
+      openArchive(archived);
+      assert.equal(followingLatest, false);
+      assert.deepEqual(current.news[0].briefing_generated_banners, local().news[0].briefing_generated_banners);
+      assert.equal(current.news[0].materia, archived.news[0].materia);
+      assert.equal(current.id, archived.id);
+      assert.equal(storage.getItem(PREPARED_CACHE_KEY), preparedBytes);
+      assert.deepEqual(JSON.parse(storage.getItem(LATEST_CACHE_KEY)), latest);
+    } finally { sync.stop(); }
+  }
+});

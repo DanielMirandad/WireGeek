@@ -1882,12 +1882,17 @@ export default function GeekNewsWire() {
       : [];
 
     setFollowingLatest(false);
-    setEdition({
+    const next = {
       id: item.id,
       title: item?.titulo || "Edição Wire/Geek",
       generatedAt: item?.criado_em || item?.data_edicao || new Date().toISOString(),
       news,
-    });
+    };
+    let preparedCache = null;
+    try {
+      preparedCache = readPreparedEdition(localStorage, todayKey());
+    } catch { /* Optional visual cache. */ }
+    setEdition(current => mergeLatestEdition(current, next, preparedCache));
 
     setActiveFilter("all");
     setStatus(news.length > 0 ? "done" : "idle");

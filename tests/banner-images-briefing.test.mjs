@@ -398,3 +398,63 @@ test('same source image is downloaded once even when distinct editorial contexts
   assert.equal(reviews,3);
   assert.deepEqual(result.map(item=>item.url),[first.url,second.url]);
 });
+
+
+
+test(
+  "normaliza Tn somente para consultas de imagem",
+  async () => {
+    const {
+      normalizeImageSearchQuery,
+    } = await import(
+      "../lib/banner-images-briefing.mjs"
+    );
+
+    assert.equal(
+      normalizeImageSearchQuery("Wednesday T3"),
+      "Wednesday season 3"
+    );
+
+    assert.equal(
+      normalizeImageSearchQuery(
+        "Black Clover t2"
+      ),
+      "Black Clover season 2"
+    );
+
+    assert.equal(
+      normalizeImageSearchQuery("Anime T10"),
+      "Anime season 10"
+    );
+
+    assert.equal(
+      normalizeImageSearchQuery(
+        "Wednesday T3 official press"
+      ),
+      "Wednesday season 3 official press"
+    );
+
+    assert.equal(
+      normalizeImageSearchQuery("AT3"),
+      "AT3"
+    );
+
+    assert.equal(
+      normalizeImageSearchQuery("T3X"),
+      "T3X"
+    );
+
+    const canonical = {
+      titulo_curto: "Wednesday T3",
+    };
+
+    normalizeImageSearchQuery(
+      canonical.titulo_curto
+    );
+
+    assert.equal(
+      canonical.titulo_curto,
+      "Wednesday T3"
+    );
+  }
+);

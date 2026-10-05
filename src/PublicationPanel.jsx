@@ -447,51 +447,210 @@ function ReelPublicationPanel({ item, correctionRequest, onCorrectionBusy, onCor
     if (!correctionRequest || correctionHandledRef.current === correctionRequest) return;
     correctionHandledRef.current = correctionRequest;
     async function applyCorrection() {
-      if (operationRef.current || publisherBusy || loading || actionId != null) {
-        setPublisherError('Outra operacao em andamento. Aguarde antes de aplicar.');
+      if (
+        operationRef.current ||
+        publisherBusy ||
+        loading ||
+        actionId != null
+      ) {
+        setPublisherError(
+          'Outra operacao em andamento. Aguarde antes de aplicar.'
+        );
         return;
       }
+
       try {
-        if (sessionStorage.getItem(correctionLockKey)) throw new Error('Correcao anterior com resultado incerto. Auditoria manual obrigatoria antes de repetir.');
-        operationRef.current = true;
+        if (
+          sessionStorage.getItem(
+            correctionLockKey
+          )
+        ) {
+          throw new Error(
+            'Correcao anterior com resultado incerto. Auditoria manual obrigatoria antes de repetir.'
+          );
+        }
+
+        operationRef.current =
+          true;
+
         onCorrectionBusy(true);
-        setPublisherBusy('correction');
+        setPublisherBusy(
+          'correction'
+        );
         setPreflight(null);
         setReelAsset(null);
         setPublisherError('');
-        const loaded = await loadGroup();
-        if (!loaded?.publicacoes?.length) throw new Error('Grupo existente nao encontrado.');
-        // loadGroup may have rehydrated the old MP4; hide it before replacing assets.
+
+        let loaded = null;
+        let missingGroup = false;
+
+        try {
+          loaded =
+            await loadGroup();
+        } catch (error) {
+          const message =
+            String(
+              error?.message ||
+              ''
+            );
+
+          if (
+            message.includes(
+              'ainda nao possui publicacoes materializadas'
+            )
+          ) {
+            missingGroup = true;
+          } else {
+            throw error;
+          }
+        }
+
+        if (
+          !missingGroup &&
+          !loaded?.publicacoes?.length
+        ) {
+          throw new Error(
+            'Grupo existente nao encontrado.'
+          );
+        }
+
         setReelAsset(null);
-        // Persist before sending: a lost response must never trigger automatic retry.
-        sessionStorage.setItem(correctionLockKey, 'uncertain');
+
+        /*
+         * Persistimos a trava antes de qualquer
+         * mutacao. Se a resposta se perder, nao
+         * fazemos retry automatico.
+         */
+        sessionStorage.setItem(
+          correctionLockKey,
+          'uncertain'
+        );
+
         setPublishLocked(true);
-        const { response, data } = await postPublisher({
-          id: loaded.publicacoes[0].id, noticia_id: noticiaId, apply_corrected_banners: true,
-          expected_group: correctionSnapshot(loaded.publicacoes),
-          corrected_banners: item.briefing_generated_banners,
-        });
-        if (!response.ok || data.success !== true || data.mode !== 'manual_reel_correction' ||
-            data.publish_called !== false || data.instagram_api_called !== false ||
-            data.publication_group_id !== loaded.publication_group_id ||
-            !data.asset?.video_url || !data.reel_asset_revision) {
-          throw new Error(data.error || 'Aplicacao nao confirmada.');
+
+        const payload =
+          missingGroup
+            ? {
+                noticia_id:
+                  noticiaId,
+
+                apply_corrected_banners: true,
+
+                materialize_if_missing:
+                  true,
+
+                corrected_banners:
+                  item.briefing_generated_banners,
+              }
+            : {
+                id:
+                  loaded.publicacoes[0].id,
+
+                noticia_id:
+                  noticiaId,
+
+                apply_corrected_banners: true,
+
+                expected_group:
+                  correctionSnapshot(
+                    loaded.publicacoes
+                  ),
+
+                corrected_banners:
+                  item.briefing_generated_banners,
+              };
+
+        const {
+          response,
+          data,
+        } =
+          await postPublisher(
+            payload
+          );
+
+        if (
+          !response.ok ||
+          data.success !== true ||
+          data.mode !==
+            'manual_reel_correction' ||
+          data.publish_called !==
+            false ||
+          data.instagram_api_called !==
+            false ||
+          !data.publication_group_id ||
+          !data.asset?.video_url ||
+          !data.reel_asset_revision
+        ) {
+          throw new Error(
+            data.error ||
+            'Aplicacao nao confirmada.'
+          );
         }
-        const refreshed = await loadGroup();
-        if (!refreshed || refreshed.publicacoes.some(row => row.reel_asset_revision !== data.reel_asset_revision) ||
-            refreshed.instagram_reel_asset?.sha256 !== data.asset.sha256) {
-          throw new Error('Nao foi possivel confirmar o conjunto e o novo MP4.');
+
+        /*
+         * Para grupo existente, a identidade
+         * precisa continuar exatamente a mesma.
+         *
+         * Para recuperacao, o grupo acabou de
+         * ser criado pelo backend e portanto
+         * nao havia ID anterior para comparar.
+         */
+        if (
+          !missingGroup &&
+          data.publication_group_id !==
+            loaded.publication_group_id
+        ) {
+          throw new Error(
+            'O grupo da publicacao mudou durante a correcao.'
+          );
         }
-        sessionStorage.removeItem(correctionLockKey);
+
+        const refreshed =
+          await loadGroup();
+
+        if (
+          !refreshed ||
+          refreshed.publication_group_id !==
+            data.publication_group_id ||
+          refreshed.publicacoes.some(
+            (row) =>
+              row.reel_asset_revision !==
+              data.reel_asset_revision
+          ) ||
+          refreshed.instagram_reel_asset
+            ?.sha256 !==
+            data.asset.sha256
+        ) {
+          throw new Error(
+            'Nao foi possivel confirmar o conjunto e o novo MP4.'
+          );
+        }
+
+        sessionStorage.removeItem(
+          correctionLockKey
+        );
+
         setPublishLocked(false);
+
         onCorrectionApplied();
-        setPublisherInfo('Banners aplicados ao mesmo grupo. Revise o novo MP4 e aprove os editoriais antes de preparar a publicacao.');
+
+        setPublisherInfo(
+          missingGroup
+            ? 'Publicacao materializada e banners aplicados. Revise o novo MP4 e aprove os editoriais antes de preparar a publicacao.'
+            : 'Banners aplicados ao mesmo grupo. Revise o novo MP4 e aprove os editoriais antes de preparar a publicacao.'
+        );
       } catch (error) {
         setPreflight(null);
         setReelAsset(null);
-        setPublisherError(error.message + ' Nenhuma publicacao foi executada; nao ha retry automatico.');
+
+        setPublisherError(
+          error.message +
+          ' Nenhuma publicacao foi executada; nao ha retry automatico.'
+        );
       } finally {
-        operationRef.current = false;
+        operationRef.current =
+          false;
+
         onCorrectionBusy(false);
         setPublisherBusy('');
       }

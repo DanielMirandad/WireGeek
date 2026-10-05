@@ -1099,7 +1099,6 @@ async function handleBriefingGeneratedBanners(
     let publication = null;
 
     if (
-      !manualImageOverride &&
       item.type === "editorial"
     ) {
       const normalized =

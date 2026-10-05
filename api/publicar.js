@@ -1,4 +1,5 @@
 import { correctionSnapshot, correctedEditorials, reelAssetPrefix } from "../lib/manual-reel-correction.mjs";
+import { materializeCorrectedPublicationGroup } from "../lib/manual-publication-materialization.mjs";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import {
@@ -1163,6 +1164,8 @@ export default async function handler(req, res) {
 
   try {
     const wantsCorrection = req.body?.apply_corrected_banners === true;
+    const wantsMaterializeMissing =
+      req.body?.materialize_if_missing === true;
     const wantsInstagramReelAsset =
       req.body?.instagram_reel_asset === true ||
       String(
@@ -1270,32 +1273,127 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Correcao nao pode ser combinada com modos Instagram.", publish_called: false });
     }
 
-    const id = Number(req.body?.id);
-
-    if (!Number.isInteger(id) || id <= 0) {
+    if (
+      wantsMaterializeMissing &&
+      !wantsCorrection
+    ) {
       return res.status(400).json({
-        error: "Informe um id de publicacao valido.",
+        error:
+          "materialize_if_missing exige apply_corrected_banners.",
+        publish_called:
+          false,
+        instagram_api_called:
+          false,
       });
     }
 
-    const supabase = getSupabase();
+    const id =
+      Number(
+        req.body?.id
+      );
 
-    const { data: selected, error: selectedError } = await supabase
-      .from("publicacoes")
-      .select("id,publication_group_id")
-      .eq("id", id)
-      .maybeSingle();
+    const hasValidId =
+      Number.isInteger(id) &&
+      id > 0;
 
-    if (selectedError) {
-      throw new Error(`Nao foi possivel carregar a publicacao: ${selectedError.message}`);
+    const supabase =
+      getSupabase();
+
+    let selected = null;
+    let group = null;
+
+    if (
+      wantsCorrection &&
+      wantsMaterializeMissing &&
+      !hasValidId
+    ) {
+      const materialized =
+        await materializeCorrectedPublicationGroup({
+          supabase,
+          noticiaId:
+            req.body?.noticia_id,
+          slides:
+            req.body?.corrected_banners,
+        });
+
+      group =
+        Array.isArray(
+          materialized?.rows
+        )
+          ? materialized.rows
+          : [];
+
+      if (
+        !group.length ||
+        !materialized?.publication_group_id
+      ) {
+        return res.status(409).json({
+          error:
+            "A recuperacao nao confirmou um grupo materializado.",
+          publish_called:
+            false,
+          instagram_api_called:
+            false,
+        });
+      }
+
+      selected = {
+        id:
+          Number(
+            group[0]?.id
+          ),
+
+        publication_group_id:
+          materialized.publication_group_id,
+      };
+
+      req.body.expected_group =
+        correctionSnapshot(
+          group
+        );
+    } else {
+      if (!hasValidId) {
+        return res.status(400).json({
+          error:
+            "Informe um id de publicacao valido.",
+        });
+      }
+
+      const {
+        data:
+          selectedRow,
+        error:
+          selectedError,
+      } =
+        await supabase
+          .from("publicacoes")
+          .select(
+            "id,publication_group_id"
+          )
+          .eq(
+            "id",
+            id
+          )
+          .maybeSingle();
+
+      if (selectedError) {
+        throw new Error(
+          `Nao foi possivel carregar a publicacao: ${selectedError.message}`
+        );
+      }
+
+      selected =
+        selectedRow;
+
+      if (
+        !selected?.publication_group_id
+      ) {
+        return res.status(409).json({
+          error:
+            "A publicacao precisa pertencer a um grupo de carrossel.",
+        });
+      }
     }
-
-    if (!selected?.publication_group_id) {
-      return res.status(409).json({
-        error: "A publicacao precisa pertencer a um grupo de carrossel.",
-      });
-    }
-
     console.log(
       "WIRE/GEEK PUBLICAR: request recebido",
       {
@@ -1319,14 +1417,35 @@ export default async function handler(req, res) {
       }
     );
 
-    const { data: group, error: groupError } = await supabase
-      .from("publicacoes")
-      .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_caption_sha256,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key,atualizado_em,reel_asset_revision,selected_channels,scheduled_at,banner_model_version")
-      .eq("publication_group_id", selected.publication_group_id)
-      .order("carousel_position", { ascending: true });
+    if (!group) {
+      const {
+        data:
+          loadedGroup,
+        error:
+          groupError,
+      } =
+        await supabase
+          .from("publicacoes")
+          .select("id,noticia_id,status,published_at,carousel_position,banner_url,cta_url,caption,hashtags,instagram_caption_sha256,instagram_parent_container_id,instagram_child_container_ids,instagram_containers_created_at,instagram_status,instagram_post_id,instagram_url,publish_attempts,last_error,idempotency_key,atualizado_em,reel_asset_revision,selected_channels,scheduled_at,banner_model_version")
+          .eq(
+            "publication_group_id",
+            selected.publication_group_id
+          )
+          .order(
+            "carousel_position",
+            {
+              ascending: true,
+            }
+          );
 
-    if (groupError) {
-      throw new Error(`Nao foi possivel carregar o carrossel: ${groupError.message}`);
+      if (groupError) {
+        throw new Error(
+          `Nao foi possivel carregar o carrossel: ${groupError.message}`
+        );
+      }
+
+      group =
+        loadedGroup;
     }
     if (wantsCorrection) {
       return applyManualReelCorrection(req, res, supabase, selected, group);

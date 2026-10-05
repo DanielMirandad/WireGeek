@@ -101,17 +101,63 @@ test('vision service errors are retried by next request; disabled vision never c
   });
 });
 
-test('title caches only valid titles; changed story generates again', async () => {
-  const title = {title_main:'TEST',title_theme:'New Trailer'};
-  await mocked([{title_main:'',title_theme:''}, title, title], async requests => {
-    const item = {titulo:'cache-title-test', materia:'verified fact'};
-    await assert.rejects(deriveBannerVisualTitle(item));
-    await deriveBannerVisualTitle(item);
-    await deriveBannerVisualTitle(item);
-    assert.equal(requests.length,2);
-    await deriveBannerVisualTitle({...item,materia:'new verified fact'});
-    assert.equal(requests.length,3);
-  });
+test('title falls back deterministically and caches only valid generated titles', async () => {
+  const title = {
+    title_main: 'TEST',
+    title_theme: 'New Trailer',
+  };
+
+  await mocked(
+    [
+      {
+        title_main: '',
+        title_theme: '',
+      },
+      title,
+      title,
+    ],
+    async requests => {
+      const item = {
+        titulo: 'Darkwing Duck ganha novo trailer',
+        titulo_curto: 'Darkwing Duck Returns',
+        materia: 'Disney divulga novas imagens.',
+        categoria: 'cultura pop',
+      };
+
+      const fallback =
+        await deriveBannerVisualTitle(item);
+
+      assert.deepEqual(
+        fallback,
+        {
+          title_main: 'Darkwing Duck',
+          title_theme: 'ganha novo trailer',
+        }
+      );
+
+      assert.equal(requests.length, 1);
+
+      assert.deepEqual(
+        await deriveBannerVisualTitle(item),
+        title
+      );
+
+      assert.deepEqual(
+        await deriveBannerVisualTitle(item),
+        title
+      );
+
+      assert.equal(requests.length, 2);
+
+      await deriveBannerVisualTitle({
+        ...item,
+        materia:
+          'Disney divulga uma nova informacao confirmada.',
+      });
+
+      assert.equal(requests.length, 3);
+    }
+  );
 });
 
 test('usage telemetry records numeric usage without exposing input, keys or response body', async () => {

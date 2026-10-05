@@ -327,7 +327,6 @@ export default function SitePublicationPanel({
   async function researchEditorial() {
     if (
       researching ||
-      researching ||
       generating ||
       publishing ||
       loading ||

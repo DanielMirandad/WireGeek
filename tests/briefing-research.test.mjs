@@ -46,6 +46,8 @@ test('API collects, generates from the same evidence and validates/persists only
       events.push('persist'); assert.deepEqual(data.news, canonical.news);
       assert.equal(data.execution, run); assert.equal(data.status, 'publicada');
       assert.equal(data.researchData.pesquisados, 1);
+      assert.equal(data.researchData.verified, true);
+      assert.deepEqual(data.researchData.candidatos, verified.candidatos);
       assert.equal(Object.hasOwn(data, 'researchPackage'), false);
       return { noticiaIds: [22], retainedIndexes: [0], deduplication: {} };
     } },

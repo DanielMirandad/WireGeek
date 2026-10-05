@@ -1,4 +1,6 @@
-﻿import { createClient } from "@supabase/supabase-js";
+import { isDeepStrictEqual } from 'node:util';
+import { mapResearchToNews } from '../lib/verified-research.mjs';
+import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 
 import { validateCanonicalShape } from "../lib/wiregeek-contract.mjs";
@@ -124,7 +126,7 @@ async function persistEdition({
   news,
   researchData,
   execution,
-}) {
+}, { supabase: injectedSupabase } = {}) {
   if (!Array.isArray(news) || news.length === 0) {
     throw new Error(
       "Nao e possivel persistir uma edicao sem noticias."
@@ -134,7 +136,9 @@ async function persistEdition({
   // Validate the entire edition before its first database write.
   const validatedNews = news.map(prepareNewsItem);
   await execution?.progress({ approved: validatedNews.length });
-  const supabase = getSupabase();
+  const researchNewsIndexes = mapResearchToNews(validatedNews, researchData);
+  const researchCandidateIds = new Map();
+  const supabase = injectedSupabase || getSupabase();
   const { history, since } = await loadEditorialHistory(supabase);
   const deduplication = { ...selectUnseenNews(validatedNews, history), since };
   const candidateIndexes = deduplication.retainedIndexes;
@@ -206,6 +210,7 @@ async function persistEdition({
 
     const researchRunId = researchRun.id;
 
+    let savedResearchCandidates = [];
     if (researchCandidates.length > 0) {
       const researchRows = researchCandidates.map(
         (candidate) => ({
@@ -221,10 +226,11 @@ async function persistEdition({
         })
       );
 
-      const { error: candidatesError } = await supabase
+      const { data: savedCandidates, error: candidatesError } = await supabase
         .from("research_candidates")
-        .insert(researchRows);
+        .insert(researchRows).select("id,dados_json");
 
+      savedResearchCandidates = savedCandidates;
       if (candidatesError) {
         throw new Error(
           `Erro ao inserir candidatos de pesquisa: ${candidatesError.message}`
@@ -232,6 +238,13 @@ async function persistEdition({
       }
     }
 
+    if (researchNewsIndexes) {
+      for (const [index, candidate] of researchCandidates.entries()) {
+        const matches = (savedResearchCandidates || []).filter(row => isDeepStrictEqual(typeof row.dados_json === "string" ? JSON.parse(row.dados_json) : row.dados_json, candidate));
+        if (matches.length !== 1) throw new Error("RESEARCH_CANDIDATE_ID_AMBIGUOUS_OR_MISSING");
+        researchCandidateIds.set(index, matches[0].id);
+      }
+    }
     return editionId;
   }
 
@@ -277,6 +290,12 @@ async function persistEdition({
     const noticiaId = noticia.id;
     await execution?.progress({ persisted: noticiaIds.length + 1 });
     if (editionId === null) editionId = await createEditionAndResearch();
+    if (researchNewsIndexes) {
+      const candidateId = researchCandidateIds.get(researchNewsIndexes[candidateIndexes[index]]);
+      const { data: linked, error: linkError } = await supabase.from("research_candidates")
+        .update({ noticia_id: noticiaId }).eq("id", candidateId).is("noticia_id", null).select("id");
+      if (linkError || linked?.length !== 1) throw new Error(`Erro ao vincular apuracao: ${linkError?.message || "candidato ausente"}`);
+    }
     noticiaIds.push(noticiaId);
     retainedIndexes.push(candidateIndexes[index]);
 

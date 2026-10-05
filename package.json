@@ -7,7 +7,7 @@
                     "dev":  "vite",
                     "build":  "vite build",
                     "preview":  "vite preview",
-                    "test":  "node --test tests/generation-cache.test.mjs tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs tests/publication-editorial-count.test.mjs tests/manual-reel-correction.test.mjs tests/instagram-profiles.test.mjs tests/youtube-core.test.mjs tests/latest-edition.test.mjs tests/briefing-import.test.mjs tests/codex-research-export.test.mjs tests/briefing-research.test.mjs tests/source-snapshot.test.mjs"
+                    "test":  "node --test tests/generation-cache.test.mjs tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs tests/publication-editorial-count.test.mjs tests/manual-reel-correction.test.mjs tests/instagram-profiles.test.mjs tests/youtube-core.test.mjs tests/latest-edition.test.mjs tests/briefing-import.test.mjs tests/codex-research-export.test.mjs tests/briefing-research.test.mjs tests/source-snapshot.test.mjs tests/w28-research.test.mjs"
                 },
     "dependencies":  {
                          "@supabase/supabase-js":  "^2.112.4",

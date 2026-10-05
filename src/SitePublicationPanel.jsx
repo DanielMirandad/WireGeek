@@ -168,6 +168,12 @@ export default function SitePublicationPanel({
     useState(false);
 
   const [
+    researching,
+    setResearching,
+  ] =
+    useState(false);
+
+  const [
     siteExcerpt,
     setSiteExcerpt,
   ] =
@@ -318,8 +324,78 @@ export default function SitePublicationPanel({
         siteExcerpt,
     });
 
+  async function researchEditorial() {
+    if (
+      researching ||
+      generating ||
+      publishing ||
+      loading ||
+      !Number.isInteger(noticiaId) ||
+      noticiaId <= 0
+    ) {
+      return;
+    }
+
+    setResearching(true);
+    setEditorialApproved(false);
+    setError("");
+
+    try {
+      const response = await fetch(
+        "/api/publicacoes?mode=site-publish",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            action: "reapurar-editorial",
+            noticia_id: noticiaId,
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.success !== true) {
+        const details =
+          Array.isArray(data?.details)
+            ? data.details.join(" ")
+            : typeof data?.details === "string"
+              ? data.details
+              : "";
+
+        throw new Error(
+          [data?.error, details]
+            .filter(Boolean)
+            .join(" ") ||
+          "Nao foi possivel concluir a reapuracao editorial."
+        );
+      }
+
+      if (mountedRef.current) {
+        setError(
+          "Apuracao verificada concluida. Agora gere a materia editorial."
+        );
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(
+          err?.message ||
+          "Nao foi possivel concluir a reapuracao editorial."
+        );
+      }
+    } finally {
+      if (mountedRef.current) {
+        setResearching(false);
+      }
+    }
+  }
+
   async function generateEditorial() {
     if (
+      researching ||
       generating ||
       publishing ||
       loading ||
@@ -659,24 +735,43 @@ export default function SitePublicationPanel({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={
-              generateEditorial
-            }
-            disabled={
-              loading ||
-              generating ||
-              publishing
-            }
-            className="border border-wg-border-strong px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {generating
-              ? "Gerando materia..."
-              : siteBody
-                ? "Gerar novamente"
-                : "Gerar materia"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={researchEditorial}
+              disabled={
+                loading ||
+                researching ||
+                generating ||
+                publishing
+              }
+              className="border border-wg-border-strong px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {researching
+                ? "Reapurando..."
+                : "Reapurar"}
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                generateEditorial
+              }
+              disabled={
+                loading ||
+                researching ||
+                generating ||
+                publishing
+              }
+              className="border border-wg-border-strong px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {generating
+                ? "Gerando materia..."
+                : siteBody
+                  ? "Gerar novamente"
+                  : "Gerar materia"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-4">
@@ -702,6 +797,7 @@ export default function SitePublicationPanel({
               );
             }}
             disabled={
+              researching ||
               generating ||
               publishing
             }
@@ -744,6 +840,7 @@ export default function SitePublicationPanel({
               );
             }}
             disabled={
+              researching ||
               generating ||
               publishing
             }
@@ -874,6 +971,7 @@ export default function SitePublicationPanel({
             }
             disabled={
               loading ||
+              researching ||
               generating ||
               publishing
             }
@@ -887,6 +985,7 @@ export default function SitePublicationPanel({
             onClick={publish}
             disabled={
               loading ||
+              researching ||
               generating ||
               publishing ||
               !editorialApproved ||

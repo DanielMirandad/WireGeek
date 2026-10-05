@@ -359,8 +359,17 @@ export default function SitePublicationPanel({
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || data?.success !== true) {
+        const details =
+          Array.isArray(data?.details)
+            ? data.details.join(" ")
+            : typeof data?.details === "string"
+              ? data.details
+              : "";
+
         throw new Error(
-          data?.error ||
+          [data?.error, details]
+            .filter(Boolean)
+            .join(" ") ||
           "Nao foi possivel concluir a reapuracao editorial."
         );
       }

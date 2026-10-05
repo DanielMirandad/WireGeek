@@ -221,3 +221,66 @@ test("aceita materia limpa sem Markdown ou parametros artificiais", () => {
     []
   );
 });
+test("rejeita hashtag com espaco", () => {
+  const item = validItem();
+
+  item.hashtags = [
+    "#kena",
+    "#kenascars ofkosmora",
+    "#emberlab",
+    "#ps5",
+    "#games",
+  ];
+
+  const errors =
+    validateCanonicalShape(item);
+
+  assert.ok(
+    errors.some(error =>
+      error.includes("hashtag 2")
+    )
+  );
+});
+
+test("aceita hashtag unicode sem espaco", () => {
+  const item = validItem();
+
+  item.hashtags = [
+    "#cavaleirosdoszodíaco",
+    "#anime",
+    "#mangá",
+    "#games",
+    "#culturapop",
+  ];
+
+  const errors =
+    validateCanonicalShape(item);
+
+  assert.equal(
+    errors.some(error =>
+      error.includes("hashtag")
+    ),
+    false
+  );
+});
+
+test("rejeita hashtag sem #", () => {
+  const item = validItem();
+
+  item.hashtags = [
+    "kena",
+    "#emberlab",
+    "#ps5",
+    "#pc",
+    "#games",
+  ];
+
+  const errors =
+    validateCanonicalShape(item);
+
+  assert.ok(
+    errors.some(error =>
+      error.includes("hashtag 1")
+    )
+  );
+});

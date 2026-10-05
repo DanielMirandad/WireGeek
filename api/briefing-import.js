@@ -4,8 +4,16 @@ import { hasValidWireGeekAuth } from "./auth.js";
 
 export { parseCanonicalPayload } from "../lib/briefing-import-service.mjs";
 
+export function assertCodexImportRun(run) {
+  if (run?.origin !== "codex") {
+    throw new Error("CODEX_IMPORT_ORIGIN_REQUIRED");
+  }
+}
+
 async function importBriefing(req, res, run) {
   try {
+    assertCodexImportRun(run);
+
     const result = await persistCanonicalBriefing(
       req.body,
       run
@@ -16,7 +24,7 @@ async function importBriefing(req, res, run) {
       .json(result.body);
   } catch (error) {
     console.error(
-      "WIRE/GEEK: erro ao importar Briefing Geek 2h:",
+      "WIRE/GEEK: erro ao importar briefing Codex:",
       error
     );
 
@@ -24,7 +32,7 @@ async function importBriefing(req, res, run) {
       .status(error?.statusCode || 400)
       .json({
         error:
-          "Nao foi possivel importar o Briefing Geek 2h.",
+          "Nao foi possivel importar o briefing Codex.",
 
         details:
           error?.message ||

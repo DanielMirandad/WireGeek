@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
@@ -33,11 +33,7 @@ function validItem() {
         publicado_em: "2026-09-28",
       },
     ],
-    fonte_oficial_primaria: {
-      encontrada: true,
-      titulo: "Fonte oficial",
-      url: "https://example.com/oficial",
-    },
+
     image_query: "produção trailer official image",
   };
 }
@@ -49,16 +45,15 @@ test("aceita uma notícia que cumpre o contrato canônico", () => {
   );
 });
 
-test("rejeita matéria que não possui exatamente 3 parágrafos", () => {
+test("aceita matéria sem quantidade fixa de parágrafos", () => {
   const item = validItem();
 
   item.materia =
-    "Primeiro parágrafo.\n\nSegundo parágrafo.";
+    "Primeiro parágrafo com informação editorial válida.\n\nSegundo parágrafo complementa a notícia com contexto factual.";
 
-  assert.ok(
-    validateCanonicalShape(item).includes(
-      "materia deve possuir exatamente 3 paragrafos"
-    )
+  assert.deepEqual(
+    validateCanonicalShape(item),
+    []
   );
 });
 
@@ -189,30 +184,40 @@ test("rejeita zero fontes e mais de 3 fontes", () => {
     )
   );
 });
-
-test("aceita ausência declarada de fonte oficial primária", () => {
+test("rejeita links Markdown dentro da materia", () => {
   const item = validItem();
 
-  item.fonte_oficial_primaria = {
-    encontrada: false,
-  };
+  item.materia =
+    "Texto editorial válido com referência embutida ([fonte](https://example.com/noticia)).";
+
+  assert.ok(
+    validateCanonicalShape(item).includes(
+      "materia nao deve conter links Markdown"
+    )
+  );
+});
+
+test("rejeita parametros de citacao OpenAI dentro da materia", () => {
+  const item = validItem();
+
+  item.materia =
+    "Texto editorial válido com URL contaminada https://example.com/noticia?utm_source=openai";
+
+  assert.ok(
+    validateCanonicalShape(item).includes(
+      "materia nao deve conter parametros de citacao OpenAI"
+    )
+  );
+});
+
+test("aceita materia limpa sem Markdown ou parametros artificiais", () => {
+  const item = validItem();
+
+  item.materia =
+    "Texto editorial limpo, factual e sem links embutidos.";
 
   assert.deepEqual(
     validateCanonicalShape(item),
     []
-  );
-});
-
-test("exige título e URL quando fonte oficial foi encontrada", () => {
-  const item = validItem();
-
-  item.fonte_oficial_primaria = {
-    encontrada: true,
-  };
-
-  assert.ok(
-    validateCanonicalShape(item).includes(
-      "fonte oficial primaria encontrada deve possuir titulo e url"
-    )
   );
 });

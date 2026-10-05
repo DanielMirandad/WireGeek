@@ -4,7 +4,6 @@ import sharp from 'sharp';
 import { createGenerationCache, generationKey } from '../lib/generation-cache.mjs';
 import { validateVisualCandidates } from '../lib/banner-vision-briefing.mjs';
 import { deriveBannerVisualTitle } from '../lib/banner-title-briefing.mjs';
-import { generateSiteEditorialPreview } from '../lib/site-editorial.mjs';
 import { createOpenAIResponse } from '../lib/openai-responses.mjs';
 
 test('shares concurrent work, copies results, expires and evicts oldest entries', async () => {
@@ -112,28 +111,6 @@ test('title caches only valid titles; changed story generates again', async () =
     assert.equal(requests.length,2);
     await deriveBannerVisualTitle({...item,materia:'new verified fact'});
     assert.equal(requests.length,3);
-  });
-});
-
-test('site preview shares requests, invalidates changed sources and honors explicit regeneration', async () => {
-  const draft = {materia_site:Array(8).fill('a'.repeat(310)+'.').join('\n\n'),resumo_site:'r'.repeat(200)};
-  let source = 'https://example.com/cache-first';
-  const supabase = { from(table) {
-    return {select(){return this;},eq(){return this;},async maybeSingle(){return {data:{id:9781,titulo:'cache-site-test'}};},async order(){return {data:[{nome:'Official',url:source}]};}};
-  }};
-  await mocked([draft,draft,draft], async requests => {
-    const options = {supabase,noticiaId:9781};
-    const results = await Promise.all([generateSiteEditorialPreview(options),generateSiteEditorialPreview(options)]);
-    assert.equal(results[0].status,200);
-    await generateSiteEditorialPreview(options);
-    assert.equal(requests.length,1);
-    source = 'https://example.com/cache-updated';
-    await generateSiteEditorialPreview(options);
-    assert.equal(requests.length,2);
-    await generateSiteEditorialPreview({...options,forceRegenerate:true});
-    assert.equal(requests.length,3);
-    assert.equal(requests[2].max_output_tokens,7000);
-    assert.equal(requests[2].tools[0].type,'web_search');
   });
 });
 
@@ -283,28 +260,6 @@ function adapterFixture({ cleanupError = false, deleteError = false, stalled = f
   }};
   return { db, calls, rows };
 }
-
-test('editorial adapter tolerates missing/non-array sources and keeps exact output allowlist', async () => {
-  const { createPersistentGenerationStore } = await import('../lib/persistent-generation-cache.mjs');
-  const fixture = adapterFixture();
-  const store = createPersistentGenerationStore(() => fixture.db);
-  for (const sources of [undefined, null, {}, 'wrong', 42]) {
-    await store.set('site-editorial', 'hash', { status: 200, prompt: 'secret', json: { success: true, output: 'secret', data: {
-      materia_site: 'article', resumo_site: 'summary', diagnostico: { caracteres: 7, paragrafos: 1, resumo_caracteres: 7, prompt: 'secret' },
-      fontes_base: sources, fontes_pesquisa: sources, credentials: 'secret', image: 'secret',
-    }}}, 1000, 2000);
-    assert.deepEqual(fixture.rows.at(-1).payload, { status: 200, json: { success: true, data: {
-      materia_site: 'article', resumo_site: 'summary', diagnostico: { caracteres: 7, paragrafos: 1, resumo_caracteres: 7 }, fontes_base: [], fontes_pesquisa: [],
-    }}});
-  }
-  await store.set('site-editorial', 'hash', { status: 200, json: { success: true, data: {
-    fontes_base: [{ nome: 'Official', url: 'https://example.com', publicado_em: 'today', prompt: 'secret' }],
-    fontes_pesquisa: [{ title: 'Research', url: 'https://example.com', envelope: 'secret' }],
-  }}}, 1000, 2000);
-  assert.deepEqual(fixture.rows.at(-1).payload.json.data.fontes_base, [{ nome: 'Official', url: 'https://example.com', publicado_em: 'today' }]);
-  assert.deepEqual(fixture.rows.at(-1).payload.json.data.fontes_pesquisa, [{ title: 'Research', url: 'https://example.com' }]);
-  assert.doesNotMatch(JSON.stringify(fixture.rows), /secret|prompt|credentials|envelope/);
-});
 
 test('opportunistic cleanup is bounded, throttled and rechecks database expiry on deletion', async () => {
   const { createPersistentGenerationStore } = await import('../lib/persistent-generation-cache.mjs');

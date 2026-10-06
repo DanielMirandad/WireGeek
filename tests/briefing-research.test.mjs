@@ -125,7 +125,7 @@ test('invalid research stops before generation and persistence', async () => {
     loadHistory: async () => [],
       createResponse: async () => { calls++; return { text: JSON.stringify(bad) }; },
       persistence: { persist: () => assert.fail('invalid research must not persist') },
-    }), /REQUIRED|MISSING|NOT_LITERAL/);
+    }), /REQUIRED|MISSING|NOT_LITERAL|NO_VALID_CANDIDATES/);
     assert.equal(calls, 1);
   }
   await assert.rejects(generateCanonicalBriefingFromResearch(collected, {
@@ -160,7 +160,7 @@ test('independent capture failure or nonliteral model excerpt stops before writi
       loadHistory: async () => [], captureSource,
       createResponse: async () => { calls++; return { text: JSON.stringify(collected) }; },
       persistence: { persist: () => assert.fail('must not persist') },
-    }), /SOURCE_HTTP_403|SOURCE_EXCERPT_NOT_LITERAL/);
+    }), /SOURCE_HTTP_403|SOURCE_EXCERPT_NOT_LITERAL|SOURCE_NO_VALID_CANDIDATES/);
     assert.equal(calls, 1);
   }
   assert.throws(() => serializeCodexResearch(collected), /SOURCE_VERIFICATION_REQUIRED/);

@@ -2966,14 +2966,21 @@ const [edition,  setEdition]  = useState(null);
       if (!response.ok || data.success !== true) {
         throw new Error(data.details || data.error || `Apuração respondeu com HTTP ${response.status}.`);
       }
-      appliedSnapshotRef.current = undefined;
-      setFollowingLatest(true);
-      setActiveFilter("all");
-      setBannerErrors({});
+      if (data.researchPackage?.format !== "wiregeek-codex-research-v1") {
+        throw new Error("A apuração não retornou um pacote Codex válido.");
+      }
+      const downloadUrl = URL.createObjectURL(new Blob([
+        JSON.stringify(data.researchPackage, null, 2),
+      ], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = "wiregeek-codex-research.json";
+      link.click();
+      URL.revokeObjectURL(downloadUrl);
+      setBriefingImportOpen(true);
       setStatus("done");
-      setTicker("APURAÇÃO CONCLUÍDA · ATUALIZANDO EDIÇÃO");
+      setTicker("PESQUISA EXPORTADA · REDIJA NO CODEX E IMPORTE O JSON CANÔNICO");
       syncRef.current?.setPaused(false);
-      await syncRef.current?.refresh();
     } catch (error) {
       setStatus("error");
       setErrorMsg(error?.message || "Não foi possível apurar as notícias.");
@@ -3269,7 +3276,7 @@ async function importBriefing() {
               className="wg-button wg-button-secondary font-mono uppercase tracking-wider"
             >
               <Newspaper size={14}/>
-              {status === "loading" ? "Apurando notícias..." : "Gerar / Apurar Notícias"}
+              {status === "loading" ? "Apurando notícias..." : "Apurar / Exportar para Codex"}
             </button>
 
             <button

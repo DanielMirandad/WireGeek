@@ -56,6 +56,29 @@ test('economic endpoint exports Codex package with zero OpenAI calls and zero pe
   assert.equal(pkg.next_step.endpoint, '/api/briefing-import');
 });
 
+test('nullable history dates and source names are normalized for Codex export', async () => {
+  const handler = createResearchExportHandler({
+    authenticate: () => true,
+    loadHistory: async () => [{
+      id: 9,
+      titulo: 'Sem data editorial',
+      titulo_curto: null,
+      publicado_em: null,
+      criado_em: '2026-10-06T10:00:00Z',
+      fontes: [{ nome: 'Fonte histórica', url: 'https://example.com/historico' }],
+    }],
+  });
+
+  const res = response();
+  await handler({ method: 'POST' }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.api_usage.calls, 0);
+  assert.equal(res.body.researchPackage.editorial_history[0].publicado_em, '');
+  assert.equal(res.body.researchPackage.editorial_history[0].titulo_curto, '');
+  assert.equal(res.body.researchPackage.editorial_history[0].fontes[0].titulo, 'Fonte histórica');
+});
+
 test('scheduled and unauthorized requests stop before history lookup or paid work', async () => {
   let historyCalls = 0;
   const handler = createResearchExportHandler({

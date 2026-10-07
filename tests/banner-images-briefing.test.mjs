@@ -14,7 +14,12 @@ import {
   applyManualBannerImages,
 } from "../src/briefing/briefing-banner-contract.js";
 
-import { APPROVED_BANNER_MODEL } from "../lib/banner-renderer-briefing.mjs";
+import {
+  APPROVED_BANNER_MODEL,
+  measureApprovedVisualTitle,
+  validateApprovedVisualTitleWidth,
+} from "../lib/banner-renderer-briefing.mjs";
+import { deriveFittingBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
 
 test("gerador de titulo visual compila como modulo JavaScript", () => {
   const check = spawnSync(process.execPath, ["--check", "lib/banner-title-briefing.mjs"], {
@@ -34,6 +39,60 @@ test("modelo aprovado mantem dimensoes, cores e tracking legivel", () => {
   assert.equal(m.thematicTitle.themeFontSize, 72);
   assert.equal(m.editorial.fontSize, 44);
   assert.equal(m.brand.nameFontSize, 31);
+});
+
+test("valida largura real das duas linhas sem alterar o template", async () => {
+  const model = APPROVED_BANNER_MODEL;
+  const compact = await validateApprovedVisualTitleWidth("WARHAMMER", "SURVIVORS");
+  assert.ok(compact.title_main <= model.thematicTitle.maxWidth);
+  assert.ok(compact.title_theme <= model.thematicTitle.maxWidth);
+  const long = await measureApprovedVisualTitle("WARHAMMER SURVIVORS", "SURVIVORS");
+  assert.ok(long.title_main > compact.title_main);
+  assert.equal(model.thematicTitle.mainFontSize, 108);
+  assert.equal(model.thematicTitle.mainLetterSpacing, 2);
+});
+
+test("reprocessa somente titulo visual apos erro real de largura", async () => {
+  const tried = [];
+  const result = await deriveFittingBannerVisualTitle({ titulo: "Teste" }, {
+    generate: async (_item, opts) => {
+      tried.push(opts);
+      return tried.length === 1
+        ? { title_main: "LONGO", title_theme: "TEMA" }
+        : { title_main: "CURTO", title_theme: "TEMA" };
+    },
+    validate: async main => {
+      if (main === "LONGO") {
+        throw Object.assign(new Error("TITLE_MAIN_TOO_LONG: 1200px"), {
+          code: "TITLE_MAIN_TOO_LONG",
+        });
+      }
+    },
+  });
+  assert.equal(result.title_main, "CURTO");
+  assert.equal(tried.length, 2);
+  assert.match(tried[1].layoutFeedback, /TITLE_MAIN_TOO_LONG/);
+});
+
+test("interrompe apos duas tentativas sem modificar texto canonico", async () => {
+  const item = { titulo: "Titulo completo original" };
+  let calls = 0;
+  await assert.rejects(
+    deriveFittingBannerVisualTitle(item, {
+      generate: async () => {
+        calls++;
+        return { title_main: "MUITO LONGO", title_theme: "TEMA" };
+      },
+      validate: async () => {
+        throw Object.assign(new Error("TITLE_MAIN_TOO_LONG"), {
+          code: "TITLE_MAIN_TOO_LONG",
+        });
+      },
+    }),
+    /TITLE_MAIN_TOO_LONG/
+  );
+  assert.equal(calls, 2);
+  assert.equal(item.titulo, "Titulo completo original");
 });
 
 function makeRequest() {

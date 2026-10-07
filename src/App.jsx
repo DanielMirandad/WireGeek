@@ -2227,11 +2227,37 @@ const [edition,  setEdition]  = useState(null);
         !bannerResponse.ok ||
         !bannerData?.success
       ) {
-        throw new Error(
-          bannerData?.details ||
-          bannerData?.error ||
-          `Falha ao gerar banners. HTTP ${bannerResponse.status}.`
+        const details =
+          Array.isArray(bannerData?.details)
+            ? bannerData.details.join("; ")
+            : bannerData?.details;
+
+        const diagnosticDetails = [
+          `HTTP ${bannerResponse.status}`,
+          `code: ${
+            typeof bannerData?.code === "string" &&
+            bannerData.code.trim()
+              ? bannerData.code.trim()
+              : "null"
+          }`,
+          `error: ${
+            bannerData?.error ||
+            "Falha ao gerar banners."
+          }`,
+          `details: ${details || "null"}`,
+        ].join(" | ");
+
+        console.error(
+          "WIRE/GEEK: diagnóstico HTTP da geração individual de banners:",
+          {
+            status: bannerResponse.status,
+            code: bannerData?.code || null,
+            error: bannerData?.error || null,
+            details: bannerData?.details || null,
+          }
         );
+
+        throw new Error(diagnosticDetails);
       }
 
       if (

@@ -1023,6 +1023,14 @@ async function handleBriefingGeneratedBanners(
             },
             {
               forceRegenerate: true,
+              widthFeedback: {
+                field: error.code === "TITLE_MAIN_TOO_WIDE"
+                  ? "title_main"
+                  : "title_theme",
+                previousValue: error.code === "TITLE_MAIN_TOO_WIDE"
+                  ? visualTitle.title_main
+                  : visualTitle.title_theme,
+              },
             }
           );
 

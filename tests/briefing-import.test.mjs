@@ -24,8 +24,8 @@ function validPayload() {
         materia:
           "A atualização foi anunciada oficialmente e traz novos conteúdos para os jogadores.",
         highlights: [
-          "A nova atualização adiciona conteúdos inéditos e mudanças importantes confirmadas oficialmente pela equipe responsável pelo jogo.",
-          "Os jogadores receberão novos recursos, ajustes de balanceamento e melhorias gerais quando a atualização estiver disponível oficialmente.",
+          "A atualização oficial adiciona conteúdos inéditos confirmados pela equipe do jogo.",
+          "Jogadores receberão novos recursos e ajustes quando a atualização estiver disponível.",
         ],
         hashtags: [
           "#games",

@@ -13,6 +13,21 @@ import {
   applyManualBannerImages,
 } from "../src/briefing/briefing-banner-contract.js";
 
+import { APPROVED_BANNER_MODEL } from "../lib/banner-renderer-briefing.mjs";
+
+test("modelo aprovado mantem dimensoes, cores e tracking legivel", () => {
+  const m = APPROVED_BANNER_MODEL;
+  assert.equal(m.width, 1080);
+  assert.equal(m.height, 1350);
+  assert.equal(m.aspectRatio, "4:5");
+  assert.equal(m.colors.orange, "#FF9700");
+  assert.equal(m.thematicTitle.mainLetterSpacing, 2);
+  assert.equal(m.thematicTitle.mainFontSize, 108);
+  assert.equal(m.thematicTitle.themeFontSize, 72);
+  assert.equal(m.editorial.fontSize, 44);
+  assert.equal(m.brand.nameFontSize, 31);
+});
+
 function makeRequest() {
   return {
     mode: "briefing",

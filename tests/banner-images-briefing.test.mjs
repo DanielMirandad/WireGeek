@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 
 import {
   resolveBriefingBannerImages,
+  classifyBriefingImage,
 } from "../lib/banner-images-briefing.mjs";
 
 import {
@@ -150,6 +151,119 @@ const second =
     "https://img.example.com/2.jpg",
     "second"
   );
+
+function officialImage(url, kind = 'news', source = 'https://publisher.example/news') {
+  return { url, provider: 'source', source_url: source,
+    provenance: { official: true, verified: true, source_url: source,
+      provider: 'source', asset_url: url, kind } };
+}
+
+test('URL, provider e titulo isolados nao comprovam oficialidade', () => {
+  assert.equal(classifyBriefingImage({ url: first.url, provider: 'source',
+    source_url: 'https://publisher.example/news', title: 'Official press kit' }).official, false);
+});
+
+test('thumbnail YouTube exige cadeia oficial completa e vinculada ao asset', () => {
+  const url = 'https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg';
+  const candidate = officialImage(url);
+  candidate.provenance.origin_url = 'https://www.youtube.com/watch?v=abcdefghijk';
+  assert.deepEqual(classifyBriefingImage(candidate), { official: true, priority: 0, eligible: true });
+  for (const field of ['official', 'verified', 'source_url', 'provider', 'asset_url', 'kind', 'origin_url']) {
+    const broken = structuredClone(candidate);
+    delete broken.provenance[field];
+    assert.equal(classifyBriefingImage(broken).official, false, field);
+    assert.equal(classifyBriefingImage(broken).eligible, false, field);
+  }
+  for (const field of ['source_url', 'provider', 'asset_url', 'origin_url']) {
+    const broken = structuredClone(candidate);
+    broken.provenance[field] = 'https://unrelated.example/wrong';
+    assert.equal(classifyBriefingImage(broken).eligible, false, field);
+  }
+  assert.equal(classifyBriefingImage({ url, title: 'Official trailer', provider: 'youtube' }).eligible, false);
+  candidate.provenance.origin_url = 'https://www.youtube.com/watch?v=other-video';
+  assert.equal(classifyBriefingImage(candidate).eligible, false);
+});
+
+async function resolveCandidates(explicit, sources = [], external = [], validate = async () => {}) {
+  const request = makeRequest();
+  request.source_urls = ['https://publisher.example/news'];
+  request.banners[0].image_candidates = explicit;
+  request.banners[1].image_url = second.url;
+  request.banners[1].manual_image_override = true;
+  const before = structuredClone(request);
+  const downloaded = [];
+  const result = await resolveBriefingBannerImages(request, {
+    collectSourceImages: async () => sources,
+    externalCandidates: async () => external,
+    downloadImage: async url => { downloaded.push(url); return image(url, url); },
+    validateVisualCandidates: validate,
+    sameImage: () => false,
+  });
+  assert.deepEqual(request, before, 'resolver preserva payload e titulos');
+  return { result, downloaded };
+}
+
+test('oficial coletada vence thumbnail e URL explicita sem comprovacao', async () => {
+  const { result, downloaded } = await resolveCandidates([
+    { url: 'https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg' },
+    { url: 'https://generic.example/thumbnail.jpg' },
+  ], [officialImage(first.url)]);
+  assert.equal(result[0].url, first.url);
+  assert.deepEqual(downloaded, [first.url, second.url]);
+});
+
+test('thumbnail com cadeia oficial valida pode ser selecionado e preserva provenance', async () => {
+  const candidate = officialImage('https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg');
+  candidate.provenance.origin_url = 'https://www.youtube.com/watch?v=abcdefghijk';
+  const { result } = await resolveCandidates([candidate], [], [], async ({ provenance }) => {
+    assert.equal(provenance.origin_url, candidate.provenance.origin_url);
+    assert.equal(provenance.source_url, candidate.source_url);
+  });
+  assert.equal(result[0].url, candidate.url);
+  assert.deepEqual(result[0].provenance, candidate.provenance);
+});
+
+test('prioridade global: noticia > press kit > projeto > logomarca', async () => {
+  const candidates = ['logo', 'project', 'press_kit', 'news'].map(kind =>
+    officialImage(`https://assets.example/${kind}.jpg`, kind));
+  for (let rank = 0; rank < 4; rank++) {
+    const { result } = await resolveCandidates(candidates.slice(0, 2), [], candidates.slice(2), async ({ images }) => {
+      const kind = images[0].url.split('/').pop().replace('.jpg', '');
+      if (['news', 'press_kit', 'project', 'logo'].indexOf(kind) < rank) throw new Error('imagem inadequada');
+    });
+    assert.equal(result[0].provenance.kind, ['news', 'press_kit', 'project', 'logo'][rank]);
+  }
+});
+
+test('logomarca oficial continua como fallback e usa perfil visual de marca', async () => {
+  let profile;
+  const { result } = await resolveCandidates([{ url: 'https://generic.example/thumbnail.jpg' }],
+    [officialImage(first.url, 'logo')], [], async options => { profile = options.visualProfile; });
+  assert.equal(result[0].url, first.url);
+  assert.equal(profile, 'brand_logo');
+});
+
+test('sem thumbnail comprovado falha com seguranca sem baixar nem inventar imagem', async () => {
+  await assert.rejects(resolveCandidates([{ url: 'https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg' }]),
+    /Nao encontrei imagem adequada/);
+});
+
+test('imagem generativa nao entra na selecao mesmo com metadata oficial', async () => {
+  const generated = { ...officialImage('https://assets.example/generated.jpg'), generated: true };
+  assert.equal(classifyBriefingImage(generated).eligible, false);
+  const { result } = await resolveCandidates([generated], [officialImage(first.url)]);
+  assert.equal(result[0].url, first.url);
+});
+
+test('override manual nao permite imagem declarada como generativa', async () => {
+  const request = makeRequest();
+  request.banners[0].image_url = first.url;
+  request.banners[0].manual_image_override = true;
+  request.banners[0].image_provenance = { generated: true };
+  await assert.rejects(resolveBriefingBannerImages(request, {
+    downloadImage: async () => { assert.fail('nao deve baixar imagem generativa'); },
+  }), /Imagem manual rejeitada/);
+});
 
 test(
   "retorna duas imagens editoriais distintas",

@@ -298,3 +298,66 @@ test('cleanup select/delete failures and stalled cleanup do not block generation
     assert.equal(fixture.calls.filter(call => call.fields === 'namespace,key_hash').length, 1);
   }
 });
+
+for (const field of ['title_main', 'title_theme']) {
+  test('width retry prompt explicitly shortens ' + field + ' without mutating canonical input', async () => {
+    const item = Object.freeze({ titulo: 'width-feedback-' + field, titulo_curto: 'Canonical title', materia: 'Verified fact' });
+    const previous = {title_main:'Long Entity',title_theme:'Long Theme'};
+    const shortened = {title_main:'Entity',title_theme:'Theme'};
+    await mocked([previous, shortened], async requests => {
+      await deriveBannerVisualTitle(item);
+      const result = await deriveBannerVisualTitle(item, {forceRegenerate:true, widthFeedback:{field,previousValue:previous[field]}});
+      assert.deepEqual(result, shortened);
+      assert.equal(requests.length, 2);
+      assert.ok(!requests[0].input.includes('O renderer rejeitou'));
+      assert.ok(requests[1].input.includes('O renderer rejeitou ' + field));
+      assert.ok(requests[1].input.includes('950 px'));
+      assert.ok(requests[1].input.includes('Texto rejeitado: ' + previous[field]));
+      assert.ok(requests[1].input.includes('Produza ' + field + ' obrigatoriamente mais curto'));
+      assert.equal(item.titulo_curto, 'Canonical title');
+    });
+  });
+}
+
+test('actual API retry catch allows one regeneration and propagates second width failure', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const source = await readFile(new URL('../api/banner-briefing.js', import.meta.url), 'utf8');
+  const start = source.indexOf('      const thematicWidthError =');
+  const end = source.indexOf('      throw error;', start) + '      throw error;'.length;
+  assert.ok(start > 0 && end > start);
+  const catchBody = source.slice(start, end);
+  const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+  const run = new AsyncFunction('errors', 'deriveBannerVisualTitle', 'console', `
+    let thematicTitleRegenerated = false;
+    let visualTitle = {title_main:'Long Entity',title_theme:'Long Theme'};
+    const briefing = {categoria:'games',titulo:'Story',titulo_curto:'Canonical',materia:'Fact'};
+    const body = {};
+    for (let index=0; index<errors.length; index++) {
+      if (!errors[index]) return visualTitle;
+      const error=errors[index];
+      ${catchBody}
+    }
+  `);
+  for (const code of ['TITLE_MAIN_TOO_WIDE','TITLE_THEME_TOO_WIDE']) {
+    const error = Object.assign(new Error('width'), {code});
+    const calls=[];
+    await assert.rejects(run([error], async (item, options)=>{
+      calls.push({item,options}); return {title_main:'Entity',title_theme:'Theme'};
+    }, {warn(){}}), e=>e===error);
+    assert.equal(calls.length,1);
+    const field=code==='TITLE_MAIN_TOO_WIDE'?'title_main':'title_theme';
+    assert.equal(calls[0].options.forceRegenerate,true);
+    assert.deepEqual(calls[0].options.widthFeedback,{field,previousValue:field==='title_main'?'Long Entity':'Long Theme'});
+    assert.equal(calls[0].item.titulo_curto,'Canonical');
+  }
+  const recoverable=[Object.assign(new Error('width'),{code:'TITLE_MAIN_TOO_WIDE'})];
+  let recoveries=0;
+  const result=await run(recoverable,async()=>{
+    recoveries++; recoverable[0]=null;
+    return {title_main:'Entity',title_theme:'Theme'};
+  },{warn(){}});
+  assert.equal(recoveries,1);
+  assert.deepEqual(result,{title_main:'Entity',title_theme:'Theme'});
+  const unrelated=Object.assign(new Error('other'),{code:'EDITORIAL_TOO_WIDE'});
+  await assert.rejects(run([unrelated],async()=>assert.fail('unexpected regeneration'),{warn(){}}),e=>e===unrelated);
+});

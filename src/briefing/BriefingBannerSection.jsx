@@ -404,9 +404,6 @@ export default function BriefingBannerSection({ item }) {
     <div className="space-y-4">
       <div className="rounded-xl border border-[#263b36] bg-[#07110f] p-4">
         <div className="mb-3">
-          <div className="mb-2 rounded border border-[#263b36] bg-[#0b1714] px-2 py-1 font-mono text-[10px] text-[#8ca39d]">
-            DIAGNÓSTICO BUILD 4afbd324
-          </div>
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8ca39d]">
             GERAÇÃO DE BANNERS
           </div>

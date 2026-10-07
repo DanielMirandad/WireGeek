@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 
 import {
   resolveBriefingBannerImages,
@@ -14,6 +15,13 @@ import {
 } from "../src/briefing/briefing-banner-contract.js";
 
 import { APPROVED_BANNER_MODEL } from "../lib/banner-renderer-briefing.mjs";
+
+test("gerador de titulo visual compila como modulo JavaScript", () => {
+  const check = spawnSync(process.execPath, ["--check", "lib/banner-title-briefing.mjs"], {
+    encoding: "utf8",
+  });
+  assert.equal(check.status, 0, check.stderr);
+});
 
 test("modelo aprovado mantem dimensoes, cores e tracking legivel", () => {
   const m = APPROVED_BANNER_MODEL;

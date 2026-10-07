@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
+import { withoutGenerationCache } from '../lib/generation-cache.mjs';
 import sharp from "sharp";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib/banner-renderer-briefing.mjs";
@@ -694,7 +695,17 @@ async function handleBriefingGeneratedBanners(
     );
   }
 
+  // Reject ambiguous flags before any work; preview has an explicit mode.
+  if (['preview', 'dry_run', 'persist'].some(key => Object.hasOwn(body, key)) ||
+      (body.mode !== undefined && !['briefing', 'briefing-preview'].includes(body.mode))) {
+    throw inputError('Modo de banner invalido. Use briefing-preview explicitamente.');
+  }
+  const preview = body.mode === 'briefing-preview';
   const noticiaId = canonicalNewsId(body.noticia_id);
+  if (preview && (noticiaId !== 403 ||
+      Object.keys(body).some(key => !['mode', 'noticia_id'].includes(key)))) {
+    throw inputError('O preview aceita somente mode e noticia_id da noticia 403.');
+  }
 
   const manualImageOverride =
     body.manual_image_override === true;
@@ -713,6 +724,7 @@ async function handleBriefingGeneratedBanners(
    * outro MP4/container.
    */
   if (
+    !preview &&
     !manualImageOverride &&
     isAutoPublishEnabled() &&
     body.noticia_id
@@ -1068,6 +1080,29 @@ async function handleBriefingGeneratedBanners(
    * - Gemini
    * - imagem editorial
    */
+
+  // Return before CTA, UUIDs, uploads, publications and auto-approval.
+  if (preview) {
+    for (const item of rendered) {
+      if (!Buffer.isBuffer(item.png) || !item.png.length || item.png.length > 2 * 1024 * 1024) {
+        throw Object.assign(new Error('PNG de preview invalido ou acima de 2 MiB.'), { statusCode: 413 });
+      }
+    }
+    const payload = {
+      success: true, mode: 'briefing-preview', persisted: false,
+      noticia_id: noticiaId, partial: partialGeneration, editorial_count: rendered.length,
+      banners: rendered.map(item => ({
+        type: 'editorial', index: item.bannerIndex, mimeType: 'image/png',
+        width: WIDTH, height: HEIGHT,
+        data_url: 'data:image/png;base64,' + item.png.toString('base64'),
+      })),
+    };
+    if (Buffer.byteLength(JSON.stringify(payload)) > 4 * 1024 * 1024) {
+      throw Object.assign(new Error('Resposta de preview acima de 4 MiB.'), { statusCode: 413 });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json(payload);
+  }
 
   const ctaOutput =
     await renderCtaBanner({
@@ -1448,10 +1483,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    return await handleBriefingGeneratedBanners(
-      req,
-      res
-    );
+    const work = () => handleBriefingGeneratedBanners(req, res);
+    return await (req.body?.mode === 'briefing-preview'
+      ? withoutGenerationCache(work)
+      : work());
   } catch (error) {
     console.error(
       "WIRE/GEEK BRIEFING: erro ao gerar carrossel:",

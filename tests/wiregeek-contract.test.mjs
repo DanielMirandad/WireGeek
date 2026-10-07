@@ -112,6 +112,16 @@ test("validateHighlights aplica quantidade e faixa de palavras", () => {
   );
 });
 
+test("aceita o limite inferior e superior dos novos highlights", () => {
+  const item = validItem();
+  item.highlights = [
+    "Um dois tres quatro cinco seis sete oito",
+    "Um dois tres quatro cinco seis sete oito nove dez onze doze treze quatorze",
+  ];
+  assert.deepEqual(validateCanonicalShape(item), []);
+  assert.deepEqual(validateHighlights(item.highlights), []);
+});
+
 test("rejeita quantidade diferente de 5 hashtags", () => {
   const item = validItem();
 

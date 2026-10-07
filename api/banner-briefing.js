@@ -903,6 +903,7 @@ async function handleBriefingGeneratedBanners(
    */
 
   const rendered = [];
+  let thematicTitleRegenerated = false;
 
   for (
     let index = 0;
@@ -970,13 +971,67 @@ async function handleBriefingGeneratedBanners(
           image.url,
       });
 
-    const output =
-      await renderBanner({
-        ...normalized,
+    let output;
 
-        imageBuffer:
-          image.imageBuffer,
-      });
+    try {
+      output =
+        await renderBanner({
+          ...normalized,
+
+          imageBuffer:
+            image.imageBuffer,
+        });
+    } catch (error) {
+      const thematicWidthError =
+        error?.code === "TITLE_MAIN_TOO_WIDE" ||
+        error?.code === "TITLE_THEME_TOO_WIDE";
+
+      if (
+        thematicWidthError &&
+        !thematicTitleRegenerated &&
+        visualTitle.title_main &&
+        visualTitle.title_theme
+      ) {
+        thematicTitleRegenerated = true;
+
+        console.warn(
+          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; regenerando uma unica vez.",
+          {
+            noticia_id:
+              body.noticia_id ||
+              null,
+
+            error_code:
+              error.code,
+          }
+        );
+
+        visualTitle =
+          await deriveBannerVisualTitle(
+            {
+              categoria:
+                briefing.categoria,
+
+              titulo:
+                briefing.titulo,
+
+              titulo_curto:
+                briefing.titulo_curto,
+
+              materia:
+                briefing.materia,
+            },
+            {
+              forceRegenerate: true,
+            }
+          );
+
+        index--;
+        continue;
+      }
+
+      throw error;
+    }
 
     rendered.push({
       type:

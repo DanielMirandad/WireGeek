@@ -23,6 +23,7 @@ jobs:
           node-version: 22
           cache: npm
 
+      # Validation only: no secrets, deployment, database access, or editorial execution.
       - name: Install dependencies
         run: npm ci
 

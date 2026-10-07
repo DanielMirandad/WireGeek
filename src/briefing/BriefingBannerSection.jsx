@@ -161,11 +161,18 @@ export default function BriefingBannerSection({ item }) {
               )
             : data.details;
 
+        const backendCode =
+          typeof data.code === "string" &&
+          data.code.trim()
+            ? `[${data.code.trim()}]`
+            : "";
+
         throw new Error(
           [
             details ||
               data.error ||
               "Não foi possível gerar os banners do Briefing.",
+            backendCode,
             data.aviso,
           ]
             .filter(Boolean)

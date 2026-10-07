@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { captureSourceSnapshot, resolveSourceURL, publicAddress, extractSource, verifyCollectedSources } from '../lib/source-snapshot.mjs';
+import { buildCodexResearchPackage } from '../lib/codex-research-export.mjs';
 const resolve = async () => [{ address: '93.184.216.34', family: 4 }];
 const body = '<html><head><title>Anúncio oficial</title><meta property="article:published_time" content="2026-10-04T12:00:00Z"></head><body><article>A atualização foi anunciada. ' + 'Conteúdo público verificável. '.repeat(6) + '</article><script>segredo</script><p hidden>invisível</p></body></html>';
 function transport(pages) {
@@ -40,7 +41,7 @@ test('deterministic visible text, NFC, title, date, stable hash and final URL', 
   assert.equal(verified.candidatos[0].evidencias[0].publicado_em, '2026-10-04');
   assert.equal(raw.candidatos[0].evidencias[0].publicado_em, 'inventada');
   raw.candidatos[0].evidencias[0].trecho = 'Uma paráfrase da atualização';
-  await assert.rejects(verifyCollectedSources(raw, { captureSource: async () => snapshot }), /NOT_LITERAL/);
+  await assert.rejects(verifyCollectedSources(raw, { captureSource: async () => snapshot }), /SOURCE_NO_VALID_CANDIDATES/);
 });
 test('redirects revalidate destinations and enforce a finite limit', async () => {
   await assert.rejects(captureSourceSnapshot('https://example.org/a', { resolve, request: transport([{ status: 302, headers: { location: 'http://127.0.0.1/a' } }]) }), /SSRF/);
@@ -205,6 +206,42 @@ test('literalidade continua rejeitando parafrase semanticamente parecida', async
           async () => snapshot
       }
     ),
-    /SOURCE_EXCERPT_NOT_LITERAL/
+    /SOURCE_NO_VALID_CANDIDATES/
   );
+});
+
+test('remove evidencias nao literais, preserva candidatos parcialmente validos e exporta os restantes', async () => {
+  const snapshot = url => ({
+    final_url: url,
+    text: url.includes('valid') ? 'Fato literal confirmado pela fonte.' : 'Outro texto independente sem o trecho.',
+    publicado_em: '2026-10-04',
+    source_hash: 'sha256:' + 'f'.repeat(64),
+  });
+  const input = {
+    candidatos: [
+      { titulo: 'Parcial', categoria: 'games', publicado_em: '2026-10-04', resumo: 'Resumo', contexto: 'Contexto', evidencias: [
+        { fato: 'valido', trecho: 'Fato literal confirmado pela fonte.', fonte: 'Oficial', url: 'https://example.org/valid-1' },
+        { fato: 'invalido', trecho: 'Parafrase sem correspondencia.', fonte: 'Oficial', url: 'https://example.org/invalid-1' },
+      ] },
+      { titulo: 'Sem validade', categoria: 'games', publicado_em: '2026-10-04', resumo: 'Resumo', contexto: 'Contexto', evidencias: [
+        { fato: 'invalido', trecho: 'Outro trecho inventado.', fonte: 'Oficial', url: 'https://example.org/invalid-2' },
+      ] },
+      { titulo: 'Valido', categoria: 'games', publicado_em: '2026-10-04', resumo: 'Resumo', contexto: 'Contexto', evidencias: [
+        { fato: 'valido', trecho: 'Fato literal confirmado pela fonte.', fonte: 'Oficial', url: 'https://example.org/valid-2' },
+      ] },
+    ],
+  };
+  const result = await verifyCollectedSources(input, { captureSource: async url => snapshot(url) });
+  assert.deepEqual(result.candidatos.map(candidate => candidate.titulo), ['Parcial', 'Valido']);
+  assert.equal(result.candidatos[0].evidencias.length, 1);
+  assert.equal(result.candidatos[0].evidencias[0].source_verified, true);
+  assert.equal(input.candidatos[0].evidencias.length, 2);
+  assert.equal(buildCodexResearchPackage(result).candidatos.length, 2);
+});
+
+test('falha explicitamente quando todas as evidencias sao invalidas', async () => {
+  await assert.rejects(verifyCollectedSources({ candidatos: [
+    { evidencias: [{ fato: 'x', trecho: 'invalido', fonte: 'Oficial', url: 'https://example.org/a' }] },
+    { evidencias: [{ fato: 'y', trecho: 'tambem invalido', fonte: 'Oficial', url: 'https://example.org/b' }] },
+  ] }, { captureSource: async url => ({ final_url: url, text: 'Texto que nao contem nenhum trecho.', publicado_em: '', source_hash: 'sha256:' + '1'.repeat(64) }) }), /SOURCE_NO_VALID_CANDIDATES/);
 });

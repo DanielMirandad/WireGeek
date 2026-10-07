@@ -2952,7 +2952,7 @@ const [edition,  setEdition]  = useState(null);
     syncRef.current?.setPaused(true);
     setStatus("loading");
     setErrorMsg("");
-    setTicker("APURANDO NOTÍCIAS · AGUARDE A CONCLUSÃO");
+    setTicker("PREPARANDO PACOTE PARA CODEX · SEM CHAMADAS DE API");
     try {
       const response = await fetch("/api/briefing-executor", {
         method: "POST",
@@ -2964,20 +2964,27 @@ const [edition,  setEdition]  = useState(null);
         setAuthError("Sua sessão expirou. Entre novamente para gerar notícias.");
       }
       if (!response.ok || data.success !== true) {
-        throw new Error(data.details || data.error || `Apuração respondeu com HTTP ${response.status}.`);
+        throw new Error(data.details || data.error || `Exportação respondeu com HTTP ${response.status}.`);
       }
-      appliedSnapshotRef.current = undefined;
-      setFollowingLatest(true);
-      setActiveFilter("all");
-      setBannerErrors({});
+      if (data.researchPackage?.format !== "wiregeek-codex-editorial-v1") {
+        throw new Error("A exportação não retornou um pacote Codex válido.");
+      }
+      const downloadUrl = URL.createObjectURL(new Blob([
+        JSON.stringify(data.researchPackage, null, 2),
+      ], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = "wiregeek-codex-editorial.json";
+      link.click();
+      URL.revokeObjectURL(downloadUrl);
+      setBriefingImportOpen(true);
       setStatus("done");
-      setTicker("APURAÇÃO CONCLUÍDA · ATUALIZANDO EDIÇÃO");
+      setTicker("PACOTE EXPORTADO · PESQUISE E REDIJA NO CODEX · IMPORTE O JSON CANÔNICO");
       syncRef.current?.setPaused(false);
-      await syncRef.current?.refresh();
     } catch (error) {
       setStatus("error");
-      setErrorMsg(error?.message || "Não foi possível apurar as notícias.");
-      setTicker("FALHA NA APURAÇÃO DE NOTÍCIAS");
+      setErrorMsg(error?.message || "Não foi possível exportar o pacote para Codex.");
+      setTicker("FALHA NA EXPORTAÇÃO PARA CODEX");
     } finally {
       manualGenerationRef.current = false;
     }
@@ -3269,7 +3276,7 @@ async function importBriefing() {
               className="wg-button wg-button-secondary font-mono uppercase tracking-wider"
             >
               <Newspaper size={14}/>
-              {status === "loading" ? "Apurando notícias..." : "Gerar / Apurar Notícias"}
+              {status === "loading" ? "Exportando..." : "Exportar para Codex"}
             </button>
 
             <button

@@ -16,8 +16,8 @@ function validItem() {
       "Segundo parágrafo desenvolve o contexto factual da notícia sem especulação.\n\n" +
       "Terceiro parágrafo encerra a matéria com informações confirmadas pelas fontes.",
     highlights: [
-      "O novo trailer oficial apresentou cenas inéditas e confirmou detalhes importantes da produção antes de sua estreia ao público.",
-      "A produção recebeu novas informações oficiais sobre lançamento, equipe responsável e disponibilidade nas plataformas anunciadas pelo estúdio responsável.",
+      "O trailer oficial apresentou cenas inéditas e confirmou detalhes da estreia.",
+      "O estúdio confirmou informações sobre lançamento, equipe e plataformas disponíveis.",
     ],
     hashtags: [
       "#cinema",
@@ -69,7 +69,7 @@ test("rejeita quantidade diferente de 2 highlights", () => {
   );
 });
 
-test("rejeita highlight com menos de 15 palavras", () => {
+test("rejeita highlight com menos de 8 palavras", () => {
   const item = validItem();
 
   item.highlights[0] = "Informação curta demais.";
@@ -78,16 +78,16 @@ test("rejeita highlight com menos de 15 palavras", () => {
     validateCanonicalShape(item).some(
       (error) =>
         error.includes(
-          "highlight 1 deve possuir entre 15 e 25 palavras"
+          "highlight 1 deve possuir entre 8 e 14 palavras"
         )
     )
   );
 });
 
-test("rejeita highlight com mais de 25 palavras", () => {
+test("rejeita highlight com mais de 14 palavras", () => {
   const item = validItem();
 
-  item.highlights[0] = Array(26)
+  item.highlights[0] = Array(15)
     .fill("palavra")
     .join(" ");
 
@@ -95,7 +95,7 @@ test("rejeita highlight com mais de 25 palavras", () => {
     validateCanonicalShape(item).some(
       (error) =>
         error.includes(
-          "highlight 1 deve possuir entre 15 e 25 palavras"
+          "highlight 1 deve possuir entre 8 e 14 palavras"
         )
     )
   );
@@ -110,6 +110,16 @@ test("validateHighlights aplica quantidade e faixa de palavras", () => {
   assert.ok(
     validateHighlights(["curto"]).length > 0
   );
+});
+
+test("aceita o limite inferior e superior dos novos highlights", () => {
+  const item = validItem();
+  item.highlights = [
+    "Um dois tres quatro cinco seis sete oito",
+    "Um dois tres quatro cinco seis sete oito nove dez onze doze treze quatorze",
+  ];
+  assert.deepEqual(validateCanonicalShape(item), []);
+  assert.deepEqual(validateHighlights(item.highlights), []);
 });
 
 test("rejeita quantidade diferente de 5 hashtags", () => {

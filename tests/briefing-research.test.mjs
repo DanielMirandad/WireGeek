@@ -23,8 +23,8 @@ const canonical = { news: [{
   titulo: 'Nova atualização oficial do jogo foi anunciada', titulo_curto: 'Atualização do jogo',
   categoria: 'games', materia: 'A atualização foi anunciada oficialmente e traz novos conteúdos para os jogadores.',
   highlights: [
-    'A nova atualização adiciona conteúdos inéditos e mudanças importantes confirmadas oficialmente pela equipe responsável pelo jogo.',
-    'Os jogadores receberão novos recursos, ajustes de balanceamento e melhorias gerais quando a atualização estiver disponível oficialmente.',
+    'A atualização oficial adiciona conteúdos inéditos confirmados pela equipe do jogo.',
+    'Jogadores receberão novos recursos e ajustes quando a atualização estiver disponível.',
   ],
   hashtags: ['#games', '#wiregeek', '#culturageek', '#noticias', '#gaming'],
   fontes: [{ titulo: 'Fonte oficial', url: 'https://example.com/noticia', publicado_em: '2026-10-04' }],
@@ -125,7 +125,7 @@ test('invalid research stops before generation and persistence', async () => {
     loadHistory: async () => [],
       createResponse: async () => { calls++; return { text: JSON.stringify(bad) }; },
       persistence: { persist: () => assert.fail('invalid research must not persist') },
-    }), /REQUIRED|MISSING|NOT_LITERAL/);
+    }), /REQUIRED|MISSING|NOT_LITERAL|NO_VALID_CANDIDATES/);
     assert.equal(calls, 1);
   }
   await assert.rejects(generateCanonicalBriefingFromResearch(collected, {
@@ -160,7 +160,7 @@ test('independent capture failure or nonliteral model excerpt stops before writi
       loadHistory: async () => [], captureSource,
       createResponse: async () => { calls++; return { text: JSON.stringify(collected) }; },
       persistence: { persist: () => assert.fail('must not persist') },
-    }), /SOURCE_HTTP_403|SOURCE_EXCERPT_NOT_LITERAL/);
+    }), /SOURCE_HTTP_403|SOURCE_EXCERPT_NOT_LITERAL|SOURCE_NO_VALID_CANDIDATES/);
     assert.equal(calls, 1);
   }
   assert.throws(() => serializeCodexResearch(collected), /SOURCE_VERIFICATION_REQUIRED/);

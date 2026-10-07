@@ -1,84 +1,43 @@
-import { hasValidWireGeekAuth } from "./auth.js";
+import { hasValidWireGeekAuth } from './auth.js';
+import { loadRecentPublishedNews } from './persistence.js';
+import { buildCodexEditorialExportPackage } from '../lib/codex-research-export.mjs';
 
-import {
-  cronSlot,
-  runEditorialRequest,
-} from "../lib/editorial-execution.mjs";
+// Zero paid API calls: export editorial context for external Codex/ChatGPT research + writing.
+export function createResearchExportHandler({
+  loadHistory = loadRecentPublishedNews,
+  authenticate = hasValidWireGeekAuth,
+} = {}) {
+  return async function handler(req, res) {
+    if (req.method !== 'POST') {
+      return res.status(405).json({
+        error: 'A exportacao para Codex exige execucao manual.',
+        code: 'MANUAL_CODEX_EXPORT_REQUIRED',
+      });
+    }
 
-import {
-  executeBriefing,
-} from "../lib/briefing-executor.mjs";
+    if (!authenticate(req)) {
+      return res.status(401).json({ error: 'Acesso nao autorizado.' });
+    }
 
-function hasValidCronAuth(req) {
-  const secret =
-    String(
-      process.env.CRON_SECRET || ""
-    ).trim();
+    try {
+      const history = await loadHistory();
+      const researchPackage = buildCodexEditorialExportPackage(history);
 
-  if (!secret) {
-    return false;
-  }
-
-  const authorization =
-    String(
-      req.headers?.authorization || ""
-    ).trim();
-
-  return authorization === `Bearer ${secret}`;
+      return res.status(200).json({
+        success: true,
+        mode: 'codex_export',
+        persisted: false,
+        researchPackage,
+        api_usage: { calls: 0, requests: [] },
+      });
+    } catch (error) {
+      return res.status(error?.statusCode || 500).json({
+        error: 'Nao foi possivel preparar o pacote para Codex.',
+        details: error.message,
+        api_usage: { calls: 0, requests: [] },
+      });
+    }
+  };
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    return res
-      .status(405)
-      .json({
-        error: "Metodo nao permitido.",
-      });
-  }
-
-  const manual = req.method === "POST";
-
-  if (!(manual ? hasValidWireGeekAuth(req) : hasValidCronAuth(req))) {
-    return res
-      .status(401)
-      .json({
-        error: "Acesso nao autorizado.",
-      });
-  }
-
-  try {
-    const result =
-      await runEditorialRequest(
-        manual
-          ? { source: "manual" }
-          : { source: "cron", slot: cronSlot() },
-        async (output, run) => {
-          const executed =
-            await executeBriefing(run);
-
-          return output
-            .status(executed.status)
-            .json(executed.body);
-        }
-      );
-
-    return res
-      .status(result.status)
-      .json(result.body);
-  } catch (error) {
-    console.error(
-      "WIRE/GEEK: erro no executor Briefing OpenAI:",
-      error
-    );
-
-    return res
-      .status(error?.statusCode || 500)
-      .json({
-        error:
-          "Nao foi possivel executar o Briefing OpenAI.",
-        details:
-          error?.message ||
-          "Erro desconhecido.",
-      });
-  }
-}
+export default createResearchExportHandler();

@@ -161,18 +161,34 @@ export default function BriefingBannerSection({ item }) {
               )
             : data.details;
 
-        const backendCode =
-          typeof data.code === "string" &&
-          data.code.trim()
-            ? `[${data.code.trim()}]`
-            : "";
+        const diagnosticDetails = [
+          `HTTP ${response.status}`,
+          `code: ${
+            typeof data.code === "string" &&
+            data.code.trim()
+              ? data.code.trim()
+              : "null"
+          }`,
+          `error: ${
+            data.error ||
+            "Não foi possível gerar os banners do Briefing."
+          }`,
+          `details: ${details || "null"}`,
+        ].join(" | ");
+
+        console.error(
+          "WIRE/GEEK: diagnóstico HTTP da geração de banners:",
+          {
+            status: response.status,
+            code: data.code || null,
+            error: data.error || null,
+            details: data.details || null,
+          }
+        );
 
         throw new Error(
           [
-            details ||
-              data.error ||
-              "Não foi possível gerar os banners do Briefing.",
-            backendCode,
+            diagnosticDetails,
             data.aviso,
           ]
             .filter(Boolean)

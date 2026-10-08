@@ -749,6 +749,11 @@ export default function SitePublicationPanel({
                 ? ` — Afirmacao contestada: ${reviewDraft.issue.claim}`
                 : ""}
             </div>
+            {reviewDraft.issue?.reason && (
+              <p className="mt-2 font-mono text-[10px] text-wg-danger">
+                Motivo informado pelo verificador: {reviewDraft.issue.reason}
+              </p>
+            )}
             {reviewDraft.issue?.quote && (
               <p className="mt-2 font-mono text-[10px] text-wg-muted">
                 Trecho citado: {reviewDraft.issue.quote}

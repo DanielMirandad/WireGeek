@@ -5,6 +5,8 @@ import sharp from "sharp";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib/banner-renderer-briefing.mjs";
 import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canonical.mjs";
+import { createPreviewZip } from "../lib/briefing-preview-zip.mjs";
+import { loadPreviewFixture403 } from "../lib/briefing-preview-fixture-403.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
@@ -769,15 +771,24 @@ async function handleBriefingGeneratedBanners(
    * Este fluxo usa somente o pipeline do Briefing.
    */
 
-  const briefing = await loadCanonicalBannerRequest(
-    createClient(
-      String(process.env.SUPABASE_URL || "").trim(),
-      String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim(),
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    ),
-    noticiaId,
-    body
-  );
+  if (preview && process.env.VERCEL_ENV !== "preview") {
+    throw Object.assign(
+      new Error("Fixture permitido somente no ambiente Preview."),
+      { statusCode: 403 }
+    );
+  }
+
+  const briefing = preview
+    ? loadPreviewFixture403()
+    : await loadCanonicalBannerRequest(
+        createClient(
+          String(process.env.SUPABASE_URL || "").trim(),
+          String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim(),
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        ),
+        noticiaId,
+        body
+      );
 
   const editorialBanners =
     briefing.banners.filter(
@@ -826,6 +837,13 @@ async function handleBriefingGeneratedBanners(
       briefing
     );
 
+  if (preview && (!Array.isArray(images) || images.length !== 2)) {
+    throw Object.assign(
+      new Error("Preview 403 exige exatamente duas imagens editoriais."),
+      { statusCode: 422, code: "PREVIEW_IMAGES_INCOMPLETE" }
+    );
+  }
+
   if (
     !Array.isArray(images) ||
     images.length < 1 ||
@@ -871,7 +889,7 @@ async function handleBriefingGeneratedBanners(
   };
 
   try {
-    visualTitle =
+    visualTitle = preview ? briefing.visual_title :
       await deriveBannerVisualTitle({
         categoria:
           briefing.categoria,
@@ -915,7 +933,7 @@ async function handleBriefingGeneratedBanners(
    */
 
   const rendered = [];
-  let thematicTitleRegenerated = false;
+  let thematicTitleRegenerated = preview;
 
   for (
     let index = 0;
@@ -1083,25 +1101,17 @@ async function handleBriefingGeneratedBanners(
 
   // Return before CTA, UUIDs, uploads, publications and auto-approval.
   if (preview) {
-    for (const item of rendered) {
-      if (!Buffer.isBuffer(item.png) || !item.png.length || item.png.length > 2 * 1024 * 1024) {
-        throw Object.assign(new Error('PNG de preview invalido ou acima de 2 MiB.'), { statusCode: 413 });
-      }
-    }
-    const payload = {
-      success: true, mode: 'briefing-preview', persisted: false,
-      noticia_id: noticiaId, partial: partialGeneration, editorial_count: rendered.length,
-      banners: rendered.map(item => ({
-        type: 'editorial', index: item.bannerIndex, mimeType: 'image/png',
-        width: WIDTH, height: HEIGHT,
-        data_url: 'data:image/png;base64,' + item.png.toString('base64'),
-      })),
-    };
-    if (Buffer.byteLength(JSON.stringify(payload)) > 4 * 1024 * 1024) {
-      throw Object.assign(new Error('Resposta de preview acima de 4 MiB.'), { statusCode: 413 });
+    let zip;
+    try {
+      zip = createPreviewZip(rendered);
+    } catch (error) {
+      throw Object.assign(error, { statusCode: 413 });
     }
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json(payload);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="wiregeek-403-preview.zip"');
+    res.setHeader('Content-Length', zip.length);
+    return res.status(200).send(zip);
   }
 
   const ctaOutput =

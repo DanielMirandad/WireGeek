@@ -1,9 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
+import { withoutGenerationCache } from '../lib/generation-cache.mjs';
 import sharp from "sharp";
 import { hasValidWireGeekAuth } from "./auth.js";
 import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib/banner-renderer-briefing.mjs";
 import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canonical.mjs";
+import { createPreviewZip } from "../lib/briefing-preview-zip.mjs";
+import { loadPreviewFixture403 } from "../lib/briefing-preview-fixture-403.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
@@ -694,7 +697,17 @@ async function handleBriefingGeneratedBanners(
     );
   }
 
+  // Reject ambiguous flags before any work; preview has an explicit mode.
+  if (['preview', 'dry_run', 'persist'].some(key => Object.hasOwn(body, key)) ||
+      (body.mode !== undefined && !['briefing', 'briefing-preview'].includes(body.mode))) {
+    throw inputError('Modo de banner invalido. Use briefing-preview explicitamente.');
+  }
+  const preview = body.mode === 'briefing-preview';
   const noticiaId = canonicalNewsId(body.noticia_id);
+  if (preview && (noticiaId !== 403 ||
+      Object.keys(body).some(key => !['mode', 'noticia_id'].includes(key)))) {
+    throw inputError('O preview aceita somente mode e noticia_id da noticia 403.');
+  }
 
   const manualImageOverride =
     body.manual_image_override === true;
@@ -713,6 +726,7 @@ async function handleBriefingGeneratedBanners(
    * outro MP4/container.
    */
   if (
+    !preview &&
     !manualImageOverride &&
     isAutoPublishEnabled() &&
     body.noticia_id
@@ -757,15 +771,24 @@ async function handleBriefingGeneratedBanners(
    * Este fluxo usa somente o pipeline do Briefing.
    */
 
-  const briefing = await loadCanonicalBannerRequest(
-    createClient(
-      String(process.env.SUPABASE_URL || "").trim(),
-      String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim(),
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    ),
-    noticiaId,
-    body
-  );
+  if (preview && process.env.VERCEL_ENV !== "preview") {
+    throw Object.assign(
+      new Error("Fixture permitido somente no ambiente Preview."),
+      { statusCode: 403 }
+    );
+  }
+
+  const briefing = preview
+    ? loadPreviewFixture403()
+    : await loadCanonicalBannerRequest(
+        createClient(
+          String(process.env.SUPABASE_URL || "").trim(),
+          String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || "").trim(),
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        ),
+        noticiaId,
+        body
+      );
 
   const editorialBanners =
     briefing.banners.filter(
@@ -814,6 +837,13 @@ async function handleBriefingGeneratedBanners(
       briefing
     );
 
+  if (preview && (!Array.isArray(images) || images.length !== 2)) {
+    throw Object.assign(
+      new Error("Preview 403 exige exatamente duas imagens editoriais."),
+      { statusCode: 422, code: "PREVIEW_IMAGES_INCOMPLETE" }
+    );
+  }
+
   if (
     !Array.isArray(images) ||
     images.length < 1 ||
@@ -859,7 +889,7 @@ async function handleBriefingGeneratedBanners(
   };
 
   try {
-    visualTitle =
+    visualTitle = preview ? briefing.visual_title :
       await deriveBannerVisualTitle({
         categoria:
           briefing.categoria,
@@ -903,7 +933,7 @@ async function handleBriefingGeneratedBanners(
    */
 
   const rendered = [];
-  let thematicTitleRegenerated = false;
+  let thematicTitleRegenerated = preview;
 
   for (
     let index = 0;
@@ -1068,6 +1098,21 @@ async function handleBriefingGeneratedBanners(
    * - Gemini
    * - imagem editorial
    */
+
+  // Return before CTA, UUIDs, uploads, publications and auto-approval.
+  if (preview) {
+    let zip;
+    try {
+      zip = createPreviewZip(rendered);
+    } catch (error) {
+      throw Object.assign(error, { statusCode: 413 });
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="wiregeek-403-preview.zip"');
+    res.setHeader('Content-Length', zip.length);
+    return res.status(200).send(zip);
+  }
 
   const ctaOutput =
     await renderCtaBanner({
@@ -1448,10 +1493,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    return await handleBriefingGeneratedBanners(
-      req,
-      res
-    );
+    const work = () => handleBriefingGeneratedBanners(req, res);
+    return await (req.body?.mode === 'briefing-preview'
+      ? withoutGenerationCache(work)
+      : work());
   } catch (error) {
     console.error(
       "WIRE/GEEK BRIEFING: erro ao gerar carrossel:",

@@ -484,8 +484,9 @@ export default function SitePublicationPanel({
     }
   }
 
-  async function verifyReviewDraft() {
-    if (!reviewDraft || reviewing || generating || publishing) return;
+  async function verifyReviewDraft(override = null) {
+    const selectedDraft = override || reviewDraft;
+    if (!selectedDraft || reviewing || generating || publishing || savingApproval) return;
     setReviewing(true);
     setError("");
     setEditorialApproved(false);
@@ -497,8 +498,8 @@ export default function SitePublicationPanel({
         body: JSON.stringify({
           action: "verify-editorial",
           noticia_id: noticiaId,
-          materia_site: reviewDraft.materia_site,
-          resumo_site: reviewDraft.resumo_site,
+          materia_site: selectedDraft.materia_site,
+          resumo_site: selectedDraft.resumo_site,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -990,6 +991,19 @@ export default function SitePublicationPanel({
                 )}
             </div>
 
+            {!reviewDraft && editorialValidation.valid && !approvalReceipt && !editorialApproved && (
+              <button
+                type="button"
+                disabled={generating || reviewing || publishing || savingApproval}
+                onClick={() => verifyReviewDraft({
+                  materia_site: siteBody,
+                  resumo_site: siteExcerpt,
+                })}
+                className="wg-button wg-button-secondary wg-button-compact font-mono uppercase"
+              >
+                {reviewing ? "Verificando..." : "Verificar texto existente"}
+              </button>
+            )}
             <button
               type="button"
               onClick={

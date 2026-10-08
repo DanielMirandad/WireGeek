@@ -185,6 +185,10 @@ export default function SitePublicationPanel({
   ] =
     useState(false);
 
+  // Rejected drafts exist only in React memory; never persisted.
+  const [reviewDraft, setReviewDraft] = useState(null);
+  const [reviewing, setReviewing] = useState(false);
+
   const loadStatus =
     useCallback(
       async ({
@@ -290,6 +294,7 @@ export default function SitePublicationPanel({
     setSiteExcerpt("");
     setSiteBody("");
     setEditorialApproved(false);
+    setReviewDraft(null);
     setError("");
   }, [
     noticiaId,
@@ -369,6 +374,9 @@ export default function SitePublicationPanel({
           .catch(() => ({}));
 
       if (!response.ok) {
+        if (data?.review?.materia_site && data?.review?.resumo_site && mountedRef.current) {
+          setReviewDraft(data.review);
+        }
         const details =
           Array.isArray(
             data?.details
@@ -416,6 +424,8 @@ export default function SitePublicationPanel({
         return;
       }
 
+      setReviewDraft(null);
+
       setSiteBody(
         generatedBody
       );
@@ -441,7 +451,50 @@ export default function SitePublicationPanel({
     }
   }
 
+  async function verifyReviewDraft() {
+    if (!reviewDraft || reviewing || generating || publishing) return;
+    setReviewing(true);
+    setError("");
+    setEditorialApproved(false);
+    try {
+      const response = await fetch("/api/publicacoes?mode=site-publish", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify-editorial",
+          noticia_id: noticiaId,
+          materia_site: reviewDraft.materia_site,
+          resumo_site: reviewDraft.resumo_site,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (data?.review && mountedRef.current) setReviewDraft(data.review);
+        const details = Array.isArray(data?.details) ? data.details.join(" ") : "";
+        throw new Error([data?.error, details].filter(Boolean).join(" ") || "Falha verificando revisao.");
+      }
+      if (!data?.data?.materia_site || !data?.data?.resumo_site) {
+        throw new Error("Resposta de verificacao incompleta.");
+      }
+      if (mountedRef.current) {
+        setSiteBody(data.data.materia_site);
+        setSiteExcerpt(data.data.resumo_site);
+        setReviewDraft(null);
+      }
+    } catch (err) {
+      if (mountedRef.current) setError(err?.message || "Falha verificando revisao.");
+    } finally {
+      if (mountedRef.current) setReviewing(false);
+    }
+  }
+
   function approveEditorial() {
+    if (reviewDraft) {
+      setEditorialApproved(false);
+      setError("O rascunho rejeitado precisa passar por nova verificacao factual.");
+      return;
+    }
     if (!editorialValidation.valid) {
       setEditorialApproved(
         false
@@ -460,6 +513,10 @@ export default function SitePublicationPanel({
   }
 
   async function publish() {
+    if (reviewDraft) {
+      setError("Rascunho rejeitado: publicacao bloqueada ate nova verificacao.");
+      return;
+    }
     if (
       publishing ||
       generating ||
@@ -679,6 +736,69 @@ export default function SitePublicationPanel({
           </button>
         </div>
 
+        {reviewDraft && (
+          <div className="mt-4 border border-wg-danger bg-wg-raised p-3">
+            <div className="font-mono text-[10px] font-bold uppercase text-wg-danger">
+              Rascunho rejeitado — somente revisao, publicacao bloqueada
+            </div>
+            <div className="mt-2 font-mono text-[10px] text-wg-muted">
+              {reviewDraft.issue?.unidade
+                ? `Unidade editorial ${reviewDraft.issue.unidade}`
+                : "Verificacao pendente"}
+              {reviewDraft.issue?.claim
+                ? ` — Afirmacao contestada: ${reviewDraft.issue.claim}`
+                : ""}
+            </div>
+            {reviewDraft.issue?.quote && (
+              <p className="mt-2 font-mono text-[10px] text-wg-muted">
+                Trecho citado: {reviewDraft.issue.quote}
+              </p>
+            )}
+            {reviewDraft.issue?.source_url && (
+              <p className="mt-1 break-all font-mono text-[9px] text-wg-muted">
+                Fonte: {reviewDraft.issue.source_url}
+              </p>
+            )}
+            <label className="mt-3 block font-mono text-[9px] uppercase text-wg-muted">
+              Resumo em revisao
+              <textarea
+                value={reviewDraft.resumo_site}
+                onChange={event => setReviewDraft(current => ({
+                  ...current, resumo_site: event.target.value,
+                }))}
+                rows={3}
+                maxLength={280}
+                disabled={reviewing}
+                className="wg-field mt-2 resize-y font-mono leading-5"
+              />
+            </label>
+            <label className="mt-3 block font-mono text-[9px] uppercase text-wg-muted">
+              Materia rejeitada — edite e verifique novamente
+              <textarea
+                value={reviewDraft.materia_site}
+                onChange={event => setReviewDraft(current => ({
+                  ...current, materia_site: event.target.value,
+                }))}
+                rows={14}
+                maxLength={3500}
+                disabled={reviewing}
+                className="wg-field mt-2 resize-y font-mono leading-5"
+              />
+            </label>
+            <div className="mt-2 font-mono text-[9px] text-wg-muted">
+              O texto rejeitado permanece apenas nesta sessao da pagina. A nova verificacao pode consumir uma chamada OpenAI.
+            </div>
+            <button
+              type="button"
+              onClick={verifyReviewDraft}
+              disabled={reviewing || generating || publishing}
+              className="wg-button wg-button-secondary wg-button-compact mt-3 font-mono uppercase"
+            >
+              {reviewing ? "Verificando revisao..." : "Verificar texto corrigido"}
+            </button>
+          </div>
+        )}
+
         <div className="mt-4">
           <label
             htmlFor={`site-excerpt-${noticiaId}`}
@@ -809,7 +929,9 @@ export default function SitePublicationPanel({
               disabled={
                 generating ||
                 publishing ||
-                !editorialValidation.valid
+                !editorialValidation.valid ||
+                Boolean(reviewDraft) ||
+                reviewing
               }
               className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
             >
@@ -890,7 +1012,9 @@ export default function SitePublicationPanel({
               generating ||
               publishing ||
               !editorialApproved ||
-              !editorialValidation.valid
+              !editorialValidation.valid ||
+              Boolean(reviewDraft) ||
+              reviewing
             }
             className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
           >

@@ -296,3 +296,44 @@ test('frontend review retains rejected text separately and blocks approval and p
   assert.match(panel, /Boolean\(reviewDraft\)/);
   assert.match(panel, /Rascunho rejeitado/);
 });
+
+
+test('verification prompt explicitly supports faithful bilingual paraphrase but rejects extrapolations', async () => {
+  const calls = [];
+  const response = await generate(options({ onCall: request => calls.push(request) }));
+  assert.equal(response.status, 200);
+  const verification = calls.find(call => call.purpose === 'site-editorial-verification');
+  assert.ok(verification);
+  const instructions = verification.instructions;
+  assert.match(instructions, /equivalencia de sentido entre ingles e portugues/);
+  assert.match(instructions, /parafrase ou traducao fiel pode ter supported=true/);
+  assert.match(instructions, /has been quietly rolling out the past few weeks/);
+  assert.match(instructions, /referencia temporal relativa pode ser ancorada na data publicada/);
+  assert.match(instructions, /sem inventar dia de inicio, data exata/);
+  assert.match(instructions, /precos, versoes de firmware, modelos, nomes, datas/);
+  assert.match(instructions, /sujeito e modalidade/);
+  assert.match(instructions, /Mudanca de modelo, valor, versao, data, sujeito, certeza/);
+  assert.match(instructions, /trecho deve SEMPRE conter texto literal da fonte/);
+  assert.match(instructions, /use supported=false/);
+});
+
+test('translation guidance never overrides a model rejection or a nonliteral English citation', async () => {
+  const falseClaim = claims();
+  falseClaim.unidades[1].claims[0] = {
+    claim: 'O Bose Gen 3 recebeu firmware 10.12.13 em 27 de setembro.',
+    supported: false, fonte: 0, trecho: 'Documento literal.',
+  };
+  const unsupported = await generate(options({ verification: falseClaim }));
+  assert.equal(unsupported.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+  assert.equal(unsupported.status, 422);
+
+  const falseQuote = claims();
+  falseQuote.unidades[1].claims[0] = {
+    claim: 'O firmware vinha sendo distribuido nas ultimas semanas.',
+    supported: true, fonte: 0,
+    trecho: 'The firmware has been quietly rolling out the past few weeks.',
+  };
+  const invalidQuote = await generate(options({ verification: falseQuote }));
+  assert.equal(invalidQuote.json.code, 'EDITORIAL_QUOTE_MISMATCH');
+  assert.equal(invalidQuote.status, 422);
+});

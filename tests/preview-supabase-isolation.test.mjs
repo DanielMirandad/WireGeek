@@ -148,3 +148,45 @@ test('Production and ordinary local execution retain existing behavior', () => {
     assert.equal(assertPreviewSupabaseIsolation({ VERCEL_ENV }), null);
   }
 });
+
+test('restricted diagnostic identifies only variable, reason and actual backend selection', async () => {
+  const scenarios = [
+    [{ SUPABASE_SERVICE_ROLE_KEY: 'unusable-synthetic' }, 'SUPABASE_SERVICE_ROLE_KEY', 'INVALID_FORMAT', true],
+    [{ SUPABASE_SECRET_KEY: 'unusable-synthetic' }, 'SUPABASE_SECRET_KEY', 'INVALID_FORMAT', false],
+    [{ SUPABASE_SERVICE_ROLE_KEY: 'e30.bm90LWpzb24.synthetic' }, 'SUPABASE_SERVICE_ROLE_KEY', 'INVALID_STRUCTURE', true],
+    [{ SUPABASE_SERVICE_ROLE_KEY: jwt('bytxdmxpqsdxxcjbufnf') }, 'SUPABASE_SERVICE_ROLE_KEY', 'PROJECT_MISMATCH', true],
+    [{ SUPABASE_SERVICE_ROLE_KEY: jwt(ref, 'anon') }, 'SUPABASE_SERVICE_ROLE_KEY', 'ROLE_MISMATCH', true],
+    [{ NEXT_PUBLIC_SUPABASE_ANON_KEY: jwt('bytxdmxpqsdxxcjbufnf', 'anon') }, 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'PROJECT_MISMATCH', false],
+    [{ SUPABASE_SERVICE_ROLE_KEY: '', SUPABASE_SECRET_KEY: 'invalid' }, 'SUPABASE_SECRET_KEY', 'INVALID_FORMAT', true],
+    [{ SUPABASE_SERVICE_ROLE_KEY: '', SUPABASE_SECRET_KEY: '' }, 'SUPABASE_SECRET_KEY', 'MISSING_PRIVATE_KEY', true],
+  ];
+  for (const [change, variable, reason, selected] of scenarios) await withEnv({ ...config(), ...change }, async () => {
+    const res = response();
+    await handler({ ...req(), method: 'GET', query: { noticia_id: 1, action: 'isolation-diagnostic' } }, res,
+      { supabase: { from() { assert.fail('database'); } } });
+    assert.equal(res.statusCode, 503);
+    assert.deepEqual(res.data.diagnostic, { variable, reason, used_by_backend: selected });
+    assert.equal(res.data.connection_confirmed, false);
+    assert.doesNotMatch(JSON.stringify(res.data), /synthetic|sb_secret|sb_publishable|bytxdmxp|lftqhpo|e30/);
+  });
+});
+
+test('diagnostic requires authentication and Preview and never returns database errors', async () => {
+  const request = { ...req(), method: 'GET', query: { noticia_id: 1, action: 'isolation-diagnostic' } };
+  await withEnv(config(), async () => {
+    const unauth = response(); await handler({ ...request, headers: {} }, unauth);
+    assert.equal(unauth.statusCode, 401); assert.equal(unauth.data.diagnostic, undefined);
+    for (const success of [true, false]) {
+      const res = response();
+      const supabase = { supabaseUrl: url, from() { return { select() { return this; }, eq() { return this; },
+        async maybeSingle() { if (!success) throw new Error('sensitive credential and URL'); return { data: { id: 1 } }; } }; } };
+      await handler(request, res, { supabase });
+      assert.equal(res.statusCode, success ? 200 : 503);
+      assert.equal(res.data.connection_confirmed, success);
+      assert.doesNotMatch(JSON.stringify(res.data), /sensitive|credential|supabase.co/);
+    }
+  });
+  await withEnv({ ...config(), VERCEL_ENV: 'production' }, async () => {
+    const res = response(); await handler(request, res); assert.equal(res.statusCode, 404);
+  });
+});

@@ -5,6 +5,7 @@ import { createHmac } from 'node:crypto';
 import { generateSiteEditorialPreview, validateSiteEditorialInput } from '../lib/site-editorial.mjs';
 import handler from '../lib/site-publish-handler.mjs';
 import { createGenerationCache } from '../lib/generation-cache.mjs';
+import { issueEditorialReceipt, verifyEditorialReceipt } from '../lib/site-editorial-approval.mjs';
 
 // Synthetic structural fixtures only; model stubs do not prove semantic entailment.
 function draft(bodyLength = 1800, count = 6, excerptLength = 120) {
@@ -494,4 +495,91 @@ test('generation-stage timeout is reported separately without entering verificat
   assert.equal(response.json.code, 'EDITORIAL_INFERENCE_FAILED');
   assert.deepEqual(response.json.details, ['OPENAI_TIMEOUT']);
   assert.deepEqual(calls, ['site-editorial']);
+});
+
+test('approval receipt is signed for exact verified text, specific news and expires', () => {
+  const previous = process.env.WIREGEEK_ACCESS_KEY;
+  process.env.WIREGEEK_ACCESS_KEY = 'synthetic-approval-secret';
+  try {
+    const value = draft();
+    const hashes = [snapshot.source_hash];
+    const now = 1791400000000;
+    const receipt = issueEditorialReceipt(7, value.materia_site, value.resumo_site, hashes, now);
+    assert.ok(receipt);
+    assert.deepEqual(verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site, now + 100), {
+      version: 1, noticia_id: 7,
+      body_hash: verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site, now + 100).body_hash,
+      excerpt_hash: verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site, now + 100).excerpt_hash,
+      source_hashes: hashes, expires_at: now + 3600000,
+    });
+    assert.equal(verifyEditorialReceipt(receipt, 8, value.materia_site, value.resumo_site, now + 100), null);
+    assert.equal(verifyEditorialReceipt(receipt, 7, value.materia_site + 'x', value.resumo_site, now + 100), null);
+    assert.equal(verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site + 'x', now + 100), null);
+    assert.equal(verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site, now + 3600001), null);
+    assert.equal(verifyEditorialReceipt(receipt.slice(0, -1) + (receipt.endsWith('a') ? 'b' : 'a'), 7, value.materia_site, value.resumo_site, now), null);
+  } finally {
+    if (previous === undefined) delete process.env.WIREGEEK_ACCESS_KEY;
+    else process.env.WIREGEEK_ACCESS_KEY = previous;
+  }
+});
+
+test('approval save requires proof, stores verified editorial only, and GET restores it without publishing', async () => {
+  const previousKey = process.env.WIREGEEK_ACCESS_KEY;
+  const previousAutomation = process.env.WIREGEEK_AUTOMATION_KEY;
+  process.env.WIREGEEK_ACCESS_KEY = 'synthetic-approval-secret';
+  process.env.WIREGEEK_AUTOMATION_KEY = 'synthetic-test-key';
+  const value = draft();
+  const sourceHashes = [snapshot.source_hash];
+  const receipt = issueEditorialReceipt(7, value.materia_site, value.resumo_site, sourceHashes);
+  const stored = [];
+  const record = {
+    noticia_id: 7, materia_site: value.materia_site, resumo_site: value.resumo_site,
+    approved_at: '2026-10-08T12:00:00Z', updated_at: '2026-10-08T12:00:00Z',
+  };
+  const supabase = { from(table) {
+    assert.equal(table, 'site_editorial_approvals');
+    const chain = {
+      select() { return this; }, eq() { return this; },
+      async maybeSingle() { return { data: stored.length ? record : null, error: null }; },
+      upsert(data, opts) {
+        assert.equal(opts.onConflict, 'noticia_id');
+        assert.deepEqual(data.source_hashes, sourceHashes);
+        assert.equal(data.materia_site, value.materia_site);
+        stored.push(data);
+        return { select() { return { async single() { return { data: record, error: null }; } }; } };
+      },
+    };
+    return chain;
+  } };
+  try {
+    const denied = res();
+    await handler(request({ action: 'approve-editorial', materia_site: value.materia_site,
+      resumo_site: value.resumo_site }), denied, { supabase });
+    assert.equal(denied.statusCode, 422);
+    assert.deepEqual(stored, []);
+    const saved = res();
+    await handler(request({ action: 'approve-editorial', materia_site: value.materia_site,
+      resumo_site: value.resumo_site, approval_receipt: receipt }), saved, { supabase });
+    assert.equal(saved.statusCode, 200);
+    assert.equal(stored.length, 1);
+    const loaded = res();
+    await handler({ ...request(), method: 'GET', query: {
+      noticia_id: 7, action: 'approved-editorial',
+    } }, loaded, { supabase });
+    assert.equal(loaded.statusCode, 200);
+    assert.equal(loaded.value.data.materia_site, value.materia_site);
+  } finally {
+    for (const [k,v] of [['WIREGEEK_ACCESS_KEY',previousKey],['WIREGEEK_AUTOMATION_KEY',previousAutomation]]) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
+  }
+});
+
+test('UI stores approval through API and restores without calling site publish', () => {
+  const source = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
+  assert.match(source, /action: "approve-editorial"/);
+  assert.match(source, /action=approved-editorial/);
+  assert.match(source, /setSavedApproval\(result.data\)/);
+  assert.match(source, /!savedApproval/);
+  assert.match(source, /setApprovalReceipt\(null\)/);
 });

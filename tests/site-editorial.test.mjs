@@ -38,7 +38,7 @@ function options({ value = draft(), verification = claims(value), onCall = () =>
     assert.equal(request.tools, undefined);
     assert.equal(request.text.format.strict, true);
     assert.ok(!request.input.includes('artigo canônico não é evidência'));
-    return { text: JSON.stringify(request.purpose === 'site-editorial' ? value : verification) };
+    return { text: JSON.stringify(['site-editorial', 'site-editorial-repair'].includes(request.purpose) ? value : verification) };
   } };
 }
 const generate = opts => generateSiteEditorialPreview({ supabase: db(), noticiaId: 7 }, opts);
@@ -665,4 +665,102 @@ test('direct publication attempts fail closed without a valid persisted approval
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
+});
+
+test('automatically repairs one unsupported factual claim with natural copy and rechecks entire draft', async () => {
+  const initial = draft();
+  const corrected = draft(1900, 7, 140);
+  const rejection = claims(initial);
+  rejection.unidades[2].claims[0] = { claim: 'Motociclista habilidosa', supported: false,
+    fonte: 0, evidencia: 0, motivo: 'A fonte nao comprova habilidade de pilotagem.' };
+  const calls = [];
+  const result = await generate({
+    ...options(),
+    async createResponse(request) {
+      calls.push(request);
+      if (request.purpose === 'site-editorial') return { text: JSON.stringify(initial) };
+      if (request.purpose === 'site-editorial-repair') {
+        const context = JSON.parse(request.input);
+        assert.equal(context.rodada, 1);
+        assert.equal(context.diagnostico.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+        assert.ok(request.instructions.includes('naturalidade'));
+        return { text: JSON.stringify(corrected) };
+      }
+      return { text: JSON.stringify(calls.filter(c => c.purpose === 'site-editorial-verification').length === 1
+        ? rejection : claims(corrected)) };
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.json.data.materia_site, corrected.materia_site);
+  assert.equal(result.json.data.diagnostico.paragrafos, 7);
+  assert.deepEqual(calls.map(x => x.purpose), [
+    'site-editorial', 'site-editorial-verification', 'site-editorial-repair',
+    'site-editorial-verification',
+  ]);
+  assert.equal(JSON.parse(calls[3].input).unidades.length, 8);
+});
+
+test('auto-repair is bounded at two rounds and never approves unsupported copy', async () => {
+  const versions = [draft(1900), draft(2000)];
+  const calls = [];
+  const result = await generate({
+    ...options(),
+    async createResponse(request) {
+      calls.push(request.purpose);
+      if (request.purpose === 'site-editorial') return { text: JSON.stringify(draft()) };
+      if (request.purpose === 'site-editorial-repair') {
+        return { text: JSON.stringify(versions[calls.filter(x => x === 'site-editorial-repair').length - 1]) };
+      }
+      const value = request.purpose === 'site-editorial-verification';
+      assert.equal(value, true);
+      const fail = claims();
+      fail.unidades[0].claims[0].supported = false;
+      fail.unidades[0].claims[0].motivo = 'Inferencia sem suporte';
+      return { text: JSON.stringify(fail) };
+    },
+  });
+  assert.equal(result.status, 422);
+  assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+  assert.equal(result.json.data, undefined);
+  assert.equal(calls.filter(p => p === 'site-editorial-repair').length, 2);
+  assert.equal(calls.filter(p => p === 'site-editorial-verification').length, 3);
+});
+
+test('incomplete verifier and invalid source citations never enter auto-repair', async () => {
+  for (const kind of ['incomplete', 'citation']) {
+    const calls = [];
+    const result = await generate({
+      ...options(),
+      async createResponse(request) {
+        calls.push(request.purpose);
+        if (request.purpose === 'site-editorial') return { text: JSON.stringify(draft()) };
+        if (request.purpose === 'site-editorial-repair') assert.fail('repair must not run');
+        const report = claims();
+        if (kind === 'incomplete') report.unidades.pop();
+        else report.unidades[0].claims[0].evidencia = 999;
+        return { text: JSON.stringify(report) };
+      },
+    });
+    assert.equal(result.status, 422);
+    assert.deepEqual(calls, ['site-editorial', 'site-editorial-verification']);
+  }
+});
+
+test('invalid repair output leaves a rejected draft unapproved and uncached', async () => {
+  let calls = 0;
+  const generationCache = newCache();
+  const response = async request => {
+    calls++;
+    if (request.purpose === 'site-editorial') return { text: JSON.stringify(draft()) };
+    if (request.purpose === 'site-editorial-repair') return { text: JSON.stringify(draft(1000)) };
+    const report = claims();
+    report.unidades[0].claims[0].supported = false;
+    return { text: JSON.stringify(report) };
+  };
+  for (let i = 0; i < 2; i++) {
+    const result = await generate({ ...options(), generationCache, createResponse: response });
+    assert.equal(result.status, 422);
+    assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+  }
+  assert.equal(calls, 6);
 });

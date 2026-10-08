@@ -446,3 +446,52 @@ test('verification selects server-extracted indexed evidence instead of model-wr
   assert.equal(schema.evidencia.type, 'integer');
   assert.equal(schema.trecho, undefined);
 });
+
+
+test('OpenAI failures identify the stage and safe upstream category without exposing provider secrets', async () => {
+  for (const [message, status] of [
+    ['OPENAI_TIMEOUT', 504],
+    ['OPENAI_RATE_LIMITED', 429],
+    ['OPENAI_NETWORK_ERROR', 502],
+    ['OPENAI_AUTH_ERROR', 502],
+    ['OPENAI_UPSTREAM_ERROR', 502],
+  ]) {
+    const response = await generate({
+      ...options(),
+      async createResponse(request) {
+        if (request.purpose === 'site-editorial-verification') throw new Error(message);
+        return { text: JSON.stringify(draft()) };
+      },
+    });
+    assert.equal(response.status, status);
+    assert.equal(response.json.code, 'EDITORIAL_VERIFICATION_API_FAILED');
+    assert.deepEqual(response.json.details, [message]);
+    assert.equal(response.json.data, undefined);
+    assert.equal(response.json.review, undefined);
+  }
+  const unknown = await generate({
+    ...options(),
+    async createResponse(request) {
+      if (request.purpose === 'site-editorial-verification') throw new Error('secret provider request details');
+      return { text: JSON.stringify(draft()) };
+    },
+  });
+  assert.equal(unknown.status, 502);
+  assert.deepEqual(unknown.json.details, ['OPENAI_UNKNOWN_ERROR']);
+  assert.ok(!JSON.stringify(unknown.json).includes('secret provider'));
+});
+
+test('generation-stage timeout is reported separately without entering verification', async () => {
+  const calls = [];
+  const response = await generate({
+    ...options(),
+    async createResponse(request) {
+      calls.push(request.purpose);
+      throw new Error('OPENAI_TIMEOUT');
+    },
+  });
+  assert.equal(response.status, 504);
+  assert.equal(response.json.code, 'EDITORIAL_INFERENCE_FAILED');
+  assert.deepEqual(response.json.details, ['OPENAI_TIMEOUT']);
+  assert.deepEqual(calls, ['site-editorial']);
+});

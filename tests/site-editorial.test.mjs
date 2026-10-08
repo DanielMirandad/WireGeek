@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
-import { generateSiteEditorialPreview, validateSiteEditorialInput, findLiteralEvidenceCandidate } from '../lib/site-editorial.mjs';
+import { generateSiteEditorialPreview, validateSiteEditorialInput } from '../lib/site-editorial.mjs';
 import handler from '../lib/site-publish-handler.mjs';
 import { createGenerationCache } from '../lib/generation-cache.mjs';
 
@@ -27,7 +27,7 @@ function db(row = news, error = null) {
 const newCache = () => createGenerationCache({ name: 'test-editorial', ttlMs: 10000, maxEntries: 4, persistent: null });
 function claims(value = draft()) {
   return { unidades: value.materia_site.split('\n\n').concat(value.resumo_site).map((_, indice) => ({
-    indice, cobertura_completa: true, claims: [{ claim: `Fato sintetico ${indice}`, supported: true, fonte: 0, trecho: 'Documento literal.', motivo: 'Trecho confirma o fato.' }],
+    indice, cobertura_completa: true, claims: [{ claim: `Fato sintetico ${indice}`, supported: true, fonte: 0, evidencia: 0, motivo: 'Trecho confirma o fato.' }],
   })) };
 }
 function options({ value = draft(), verification = claims(value), onCall = () => {}, captureSource = async () => snapshot,
@@ -112,7 +112,7 @@ test('unsupported claims, omitted units, forged literal citations and repeated c
   const expected = [
     'EDITORIAL_VERIFICATION_INCOMPLETE', 'EDITORIAL_VERIFICATION_INCOMPLETE',
     'EDITORIAL_UNSUPPORTED_CLAIM', 'EDITORIAL_VERIFICATION_INCOMPLETE',
-    'EDITORIAL_QUOTE_MISMATCH', 'EDITORIAL_VERIFICATION_INCOMPLETE',
+    'EDITORIAL_EVIDENCE_INVALID', 'EDITORIAL_VERIFICATION_INCOMPLETE',
     'EDITORIAL_REPEATED_CLAIMS', 'EDITORIAL_VERIFICATION_INCOMPLETE',
   ];
   for (const [index, verification] of variants.entries()) {
@@ -234,7 +234,7 @@ test('existing status and publish flows keep canonical image and upstream confir
 
 test('rejected draft is returned only for transient review and identifies unsupported claim', async () => {
   const verification = claims();
-  verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, trecho: '', motivo: 'Detalhe sem suporte documental.' };
+  verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, evidencia: 0, motivo: 'Detalhe sem suporte documental.' };
   const result = await generate(options({ verification }));
   assert.equal(result.status, 422);
   assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
@@ -314,15 +314,15 @@ test('verification prompt explicitly supports faithful bilingual paraphrase but 
   assert.match(instructions, /precos, versoes de firmware, modelos, nomes, datas/);
   assert.match(instructions, /sujeito e modalidade/);
   assert.match(instructions, /Mudanca de modelo, valor, versao, data, sujeito, certeza/);
-  assert.match(instructions, /trecho deve SEMPRE conter texto literal da fonte/);
+  assert.match(instructions, /selecione somente indices de evidencias existentes/);
   assert.match(instructions, /use supported=false/);
 });
 
-test('translation guidance never overrides a model rejection or a nonliteral English citation', async () => {
+test('translation guidance never overrides a model rejection or an invalid evidence index', async () => {
   const falseClaim = claims();
   falseClaim.unidades[1].claims[0] = {
     claim: 'O Bose Gen 3 recebeu firmware 10.12.13 em 27 de setembro.',
-    supported: false, fonte: 0, trecho: 'Documento literal.', motivo: 'Modelo e versao divergem.',
+    supported: false, fonte: 0, evidencia: 0, motivo: 'Modelo e versao divergem.',
   };
   const unsupported = await generate(options({ verification: falseClaim }));
   assert.equal(unsupported.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
@@ -332,10 +332,10 @@ test('translation guidance never overrides a model rejection or a nonliteral Eng
   falseQuote.unidades[1].claims[0] = {
     claim: 'O firmware vinha sendo distribuido nas ultimas semanas.',
     supported: true, fonte: 0,
-    trecho: 'The firmware has been quietly rolling out the past few weeks.', motivo: 'Literal nao aparece na fonte.',
+    evidencia: 999, motivo: 'Referencia invalida.',
   };
   const invalidQuote = await generate(options({ verification: falseQuote }));
-  assert.equal(invalidQuote.json.code, 'EDITORIAL_QUOTE_MISMATCH');
+  assert.equal(invalidQuote.json.code, 'EDITORIAL_EVIDENCE_INVALID');
   assert.equal(invalidQuote.status, 422);
 });
 
@@ -347,7 +347,7 @@ test('Bose bilingual grounding: evidence may confirm a faithful paraphrase but n
   verified.unidades[0].claims[0] = {
     claim: 'O Bose QuietComfort Ultra Headphones Gen 2 recebe Bluetooth LE Audio e Auracast beta com firmware 10.12.12.',
     supported: true, fonte: 0,
-    trecho: 'A new firmware update for the $449 Bose QuietComfort Ultra Headphones Gen 2 adds support for Bluetooth LE Audio and Auracast as beta features.',
+    evidencia: 0,
     motivo: 'A evidencia cita o modelo, os recursos e o status beta.',
   };
   const ok = await generate(options({ verification: verified, captureSource: async () => newsSource }));
@@ -372,7 +372,7 @@ test('Bose regression: incorrect firmware, product model and precise date remain
   for (const [claimText, reason] of cases) {
     const verification = claims();
     verification.unidades[0].claims[0] = {
-      claim: claimText, supported: false, fonte: 0, trecho: 'Documento literal.', motivo: reason,
+      claim: claimText, supported: false, fonte: 0, evidencia: 0, motivo: reason,
     };
     const response = await generate(options({ verification }));
     assert.equal(response.status, 422);
@@ -393,48 +393,56 @@ test('verification request demands specific factual reasons for every supported 
   assert.match(request.instructions, /nao marque false apenas por idioma ou redacao/);
 });
 
-test('Bose byline stitched onto firmware sentence is diagnosed, never treated as evidence', async () => {
+
+test('Bose byline and firmware are never stitched into invented evidence', async () => {
   const sourceText = 'Bose starts adding Auracast to its headphones by John Higgins Sep 28, 2026, 7:31 PM UTC A new firmware update for Bose Headphones Gen 2 adds beta features. The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
   const stitched = 'by John Higgins Sep 28, 2026, 7:31 PM UTC The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
-  const excerpt = findLiteralEvidenceCandidate(stitched, sourceText);
-  assert.ok(excerpt.includes('The firmware update, labeled 10.12.12'));
-  assert.ok(sourceText.includes(excerpt));
   assert.ok(!sourceText.includes(stitched));
-  assert.equal(findLiteralEvidenceCandidate('no matching real sentence at all', sourceText), '');
+  const requests = [];
   const verification = claims();
   verification.unidades[1].claims[0] = {
     claim: 'O firmware vinha sendo distribuido discretamente nas ultimas semanas',
-    supported: true, fonte: 0, trecho: stitched, motivo: 'Trecho documental.',
+    supported: true, fonte: 0, evidencia: 0, motivo: 'A fonte confirma a distribuicao gradual.',
   };
   const response = await generate(options({
     verification, captureSource: async () => ({ ...snapshot, text: sourceText }),
-  }));
-  assert.equal(response.status, 422);
-  assert.equal(response.json.code, 'EDITORIAL_QUOTE_MISMATCH');
-  assert.equal(response.json.data, undefined);
-  assert.equal(response.json.review.issue.candidate, excerpt);
-});
-
-test('Bose continuous literal firmware evidence still passes with bilingual claim', async () => {
-  const sourceText = 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks. Documento literal. Dados verificados.';
-  const verification = claims();
-  verification.unidades[1].claims[0] = {
-    claim: 'O firmware vinha sendo distribuido discretamente nas ultimas semanas.',
-    supported: true, fonte: 0,
-    trecho: 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.',
-    motivo: 'Trecho continuo sustenta a traducao.',
-  };
-  const response = await generate(options({
-    verification, captureSource: async () => ({ ...snapshot, text: sourceText }),
+    onCall: request => requests.push(request),
   }));
   assert.equal(response.status, 200);
+  const prompt = JSON.parse(requests.find(request => request.purpose === 'site-editorial-verification').input);
+  const literal = prompt.fontes[0].evidencias[0].texto;
+  assert.ok(sourceText.includes(literal));
+  assert.ok(!prompt.fontes[0].evidencias.some(item => item.texto === stitched));
 });
 
-test('verification requests contiguous direct source evidence rather than stitched citation', async () => {
+test('Bose version with periods stays intact in server-selected evidence', async () => {
+  const sourceText = 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks. Documento literal. Dados verificados.';
+  const requests = [];
+  const response = await generate(options({
+    captureSource: async () => ({ ...snapshot, text: sourceText }),
+    onCall: request => requests.push(request),
+  }));
+  assert.equal(response.status, 200);
+  const prompt = JSON.parse(requests.find(request => request.purpose === 'site-editorial-verification').input);
+  assert.ok(prompt.fontes[0].evidencias.some(item => item.texto.includes('10.12.12')));
+});
+
+test('model cannot fabricate source evidence index even if marking claim supported', async () => {
+  const verification = claims();
+  verification.unidades[1].claims[0].evidencia = 999;
+  const result = await generate(options({ verification }));
+  assert.equal(result.status, 422);
+  assert.equal(result.json.code, 'EDITORIAL_EVIDENCE_INVALID');
+  assert.equal(result.json.data, undefined);
+});
+
+test('verification selects server-extracted indexed evidence instead of model-written quotes', async () => {
   const requests = [];
   await generate(options({ onCall: request => requests.push(request) }));
   const verification = requests.find(request => request.purpose === 'site-editorial-verification');
-  assert.match(verification.instructions, /UM UNICO trecho CONTINUO/);
-  assert.match(verification.instructions, /sem inserir byline, data do cabecalho/);
-  assert.match(verification.instructions, /divida-a em claims atomicas/);
+  assert.ok(verification);
+  assert.match(verification.instructions, /selecione somente indices de evidencias existentes/);
+  const schema = verification.text.format.schema.properties.unidades.items.properties.claims.items.properties;
+  assert.equal(schema.evidencia.type, 'integer');
+  assert.equal(schema.trecho, undefined);
 });

@@ -208,8 +208,17 @@ test('existing status and publish flows keep canonical image and upstream confir
   Object.assign(process.env, { WIREGEEK_AUTOMATION_KEY: 'synthetic-test-key', BAGACA_SITE_PUBLISH_URL: 'https://example.org/api/integrations/wiregeek/publish', BAGACA_SITE_PUBLISH_KEY: 'synthetic-publish-key' });
   const tables = [];
   const publication = { slug: 'pauta-sintetica', status: 'published' };
+  const approved = { noticia_id: 7, ...draft(), source_hashes: [snapshot.source_hash], approved_at: '2026-10-08T12:00:00Z' };
   const supabase = { from(table) {
     tables.push(table);
+    if (table === 'site_editorial_approvals') return {
+      select() { return this; }, eq() { return this; },
+      async maybeSingle() { return { data: {
+        noticia_id: approved.noticia_id,
+        materia_site: approved.materia_site, resumo_site: approved.resumo_site,
+        source_hashes: approved.source_hashes, approved_at: approved.approved_at,
+      }, error: null }; },
+    };
     const chain = { then(resolve) { resolve({ data: table === 'publicacoes' ? [{ source_image_url: 'https://example.org/image.png' }] : [publication], error: null }); } };
     for (const method of ['select', 'eq', 'not', 'in', 'order', 'limit']) chain[method] = () => chain;
     return chain;
@@ -221,7 +230,7 @@ test('existing status and publish flows keep canonical image and upstream confir
       return { ok: true, status: 201, json: async () => ({ action: 'published' }) };
     };
     const published = res(); await handler(request({ action: 'publish' }), published, { supabase });
-    assert.equal(published.statusCode, 201); assert.deepEqual(tables, ['publicacoes', 'site_news']);
+    assert.equal(published.statusCode, 201); assert.deepEqual(tables, ['site_editorial_approvals', 'publicacoes', 'site_news']);
     assert.equal(published.value.data.site_url, 'https://example.org/noticias/pauta-sintetica');
     const status = res(); await handler({ ...request(), method: 'GET', query: { noticia_id: 7 } }, status, { supabase });
     assert.equal(status.value.published, true);
@@ -609,4 +618,51 @@ test('panel provides verify-existing action rather than regenerating an approved
   assert.match(source, /Verificar texto existente/);
   assert.match(source, /verifyReviewDraft\(\{\s*materia_site: siteBody,/);
   assert.match(source, /const selectedDraft = override \|\| reviewDraft/);
+});
+
+
+test('direct publication attempts fail closed without a valid persisted approval', async () => {
+  const saved = Object.fromEntries(['WIREGEEK_AUTOMATION_KEY', 'BAGACA_SITE_PUBLISH_URL', 'BAGACA_SITE_PUBLISH_KEY'].map(k => [k, process.env[k]]));
+  const oldFetch = globalThis.fetch;
+  Object.assign(process.env, {
+    WIREGEEK_AUTOMATION_KEY: 'synthetic-test-key',
+    BAGACA_SITE_PUBLISH_URL: 'https://example.org/api/integrations/wiregeek/publish',
+    BAGACA_SITE_PUBLISH_KEY: 'synthetic-publish-key',
+  });
+  const valid = draft();
+  const approval = {
+    noticia_id: 7, materia_site: valid.materia_site, resumo_site: valid.resumo_site,
+    approved_at: '2026-10-08T12:00:00Z', source_hashes: [snapshot.source_hash],
+  };
+  const cases = [
+    ['missing approval', null, null, 409],
+    ['wrong news ID', { ...approval, noticia_id: 8 }, null, 409],
+    ['malformed editorial', { ...approval, materia_site: 'unsupported draft' }, null, 409],
+    ['missing source hashes', { ...approval, source_hashes: [] }, null, 409],
+    ['missing approval timestamp', { ...approval, approved_at: null }, null, 409],
+    ['database inaccessible', null, { message: 'db inaccessible' }, 503],
+  ];
+  try {
+    globalThis.fetch = () => assert.fail('Blocked request must not reach upstream publishing');
+    for (const [description, row, error, expected] of cases) {
+      const supabase = { from(table) {
+        assert.equal(table, 'site_editorial_approvals', description);
+        return { select() { return this; }, eq(field, id) {
+          assert.equal(field, 'noticia_id');
+          assert.equal(id, 7); return this;
+        }, async maybeSingle() { return { data: row, error }; } };
+      } };
+      const result = res();
+      await handler(request({ action: 'publish' }), result, { supabase });
+      assert.equal(result.statusCode, expected, description);
+      assert.equal(result.value.success, false, description);
+      assert.equal(result.value.code, expected === 503 ?
+        'EDITORIAL_APPROVAL_STORAGE_UNAVAILABLE' : 'EDITORIAL_APPROVAL_REQUIRED', description);
+    }
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });

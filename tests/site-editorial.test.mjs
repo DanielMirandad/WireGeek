@@ -120,7 +120,8 @@ test('unsupported claims, omitted units, forged literal citations and repeated c
     assert.equal(result.status, 422);
     assert.equal(result.json.code, expected[index]);
     assert.equal(result.json.data, undefined);
-    assert.ok(!JSON.stringify(result.json).includes('Documento literal.'));
+    assert.equal(result.json.data, undefined);
+    assert.ok((result.json.review?.issue?.quote || '').length <= 350);
   }
 });
 
@@ -341,7 +342,7 @@ test('translation guidance never overrides a model rejection or a nonliteral Eng
 
 test('Bose bilingual grounding: evidence may confirm a faithful paraphrase but never bypasses unsupported verdict', async () => {
   const evidence = 'A new firmware update for the $449 Bose QuietComfort Ultra Headphones Gen 2 adds support for Bluetooth LE Audio and Auracast as beta features. The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
-  const newsSource = { ...snapshot, text: evidence };
+  const newsSource = { ...snapshot, text: evidence + ' Documento literal. Dados verificados.' };
   const verified = claims();
   verified.unidades[0].claims[0] = {
     claim: 'O Bose QuietComfort Ultra Headphones Gen 2 recebe Bluetooth LE Audio e Auracast beta com firmware 10.12.12.',

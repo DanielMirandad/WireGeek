@@ -219,14 +219,14 @@ test('semantic article selects real headline and removes recommendations, ads an
     <p>A new firmware update for Bose QuietComfort Ultra Headphones Gen 2 adds Bluetooth LE Audio and Auracast as beta features.</p>
     <p>The firmware 10.12.12 also improves USB audio for gaming and web conferencing, with support planned for other models.</p>
     <aside class="recirculation">Most Popular Xbox has secured GTA 6 streaming rights.</aside>
-    <div class="advertisement">Advertiser Content From</div></article>
+    <div class="advertisement">Advertiser Content From</div><div class="tly2fw0">Follow topics and authors</div></article>
     <section class="related-stories">Google investments and unrelated headlines</section>
     <footer>Top Stories and advertisements</footer></body></html>`;
   const snapshot = extractSource(html, 'text/html', 'https://example.org/tech/bose');
   assert.equal(snapshot.title, 'Bose starts adding Auracast to its headphones');
   assert.equal(snapshot.publicado_em, '2026-09-28');
   assert.match(snapshot.text, /firmware 10\.12\.12/);
-  for (const noise of ['Most Popular', 'GTA 6', 'Advertiser Content', 'Google investments', 'Top Stories', 'Skip to main content']) {
+  for (const noise of ['Most Popular', 'GTA 6', 'Advertiser Content', 'Follow topics and authors', 'Google investments', 'Top Stories', 'Skip to main content']) {
     assert.ok(!snapshot.text.includes(noise), noise);
   }
   assert.equal(snapshot.source_hash, extractSource(html, 'text/html', 'https://example.org/tech/bose').source_hash);

@@ -185,6 +185,14 @@ export default function SitePublicationPanel({
   ] =
     useState(false);
 
+  // Rejected drafts exist only in React memory; never persisted.
+  const [reviewDraft, setReviewDraft] = useState(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [approvalReceipt, setApprovalReceipt] = useState(null);
+  const [savingApproval, setSavingApproval] = useState(false);
+  const [savedApproval, setSavedApproval] = useState(null);
+
+
   const loadStatus =
     useCallback(
       async ({
@@ -290,6 +298,9 @@ export default function SitePublicationPanel({
     setSiteExcerpt("");
     setSiteBody("");
     setEditorialApproved(false);
+    setReviewDraft(null);
+    setApprovalReceipt(null);
+    setSavedApproval(null);
     setError("");
   }, [
     noticiaId,
@@ -308,6 +319,30 @@ export default function SitePublicationPanel({
   }, [
     loadStatus,
   ]);
+
+  useEffect(() => {
+    if (!Number.isSafeInteger(noticiaId) || noticiaId <= 0) return;
+    let cancelled = false;
+    const loadApproved = async () => {
+      try {
+        const response = await fetch(
+          `/api/publicacoes?mode=site-publish&action=approved-editorial&noticia_id=${encodeURIComponent(noticiaId)}`,
+          { credentials: "include" }
+        );
+        if (!response.ok) return;
+        const result = await response.json();
+        if (cancelled || !result?.data) return;
+        setSiteBody(result.data.materia_site || "");
+        setSiteExcerpt(result.data.resumo_site || "");
+        setSavedApproval(result.data);
+        setEditorialApproved(true);
+      } catch {
+        // Storage must not authorize anything on failure.
+      }
+    };
+    loadApproved();
+    return () => { cancelled = true; };
+  }, [noticiaId]);
 
   const editorialValidation =
     validateSiteEditorialDraft({
@@ -333,6 +368,8 @@ export default function SitePublicationPanel({
 
     setGenerating(true);
     setEditorialApproved(false);
+    setApprovalReceipt(null);
+    setSavedApproval(null);
     setError("");
 
     try {
@@ -369,6 +406,9 @@ export default function SitePublicationPanel({
           .catch(() => ({}));
 
       if (!response.ok) {
+        if (data?.review?.materia_site && data?.review?.resumo_site && mountedRef.current) {
+          setReviewDraft(data.review);
+        }
         const details =
           Array.isArray(
             data?.details
@@ -416,6 +456,9 @@ export default function SitePublicationPanel({
         return;
       }
 
+      setReviewDraft(null);
+      setApprovalReceipt(data?.data?.approval_receipt || null);
+
       setSiteBody(
         generatedBody
       );
@@ -441,28 +484,96 @@ export default function SitePublicationPanel({
     }
   }
 
-  function approveEditorial() {
-    if (!editorialValidation.valid) {
-      setEditorialApproved(
-        false
-      );
+  async function verifyReviewDraft(override = null) {
+    const selectedDraft = override || reviewDraft;
+    if (!selectedDraft || reviewing || generating || publishing || savingApproval) return;
+    setReviewing(true);
+    setError("");
+    setEditorialApproved(false);
+    try {
+      const response = await fetch("/api/publicacoes?mode=site-publish", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify-editorial",
+          noticia_id: noticiaId,
+          materia_site: selectedDraft.materia_site,
+          resumo_site: selectedDraft.resumo_site,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (data?.review && mountedRef.current) setReviewDraft(data.review);
+        const details = Array.isArray(data?.details) ? data.details.join(" ") : "";
+        throw new Error([data?.error, details].filter(Boolean).join(" ") || "Falha verificando revisao.");
+      }
+      if (!data?.data?.materia_site || !data?.data?.resumo_site) {
+        throw new Error("Resposta de verificacao incompleta.");
+      }
+      if (mountedRef.current) {
+        setSiteBody(data.data.materia_site);
+        setSiteExcerpt(data.data.resumo_site);
+        setReviewDraft(null);
+        setApprovalReceipt(data.data.approval_receipt || null);
+        setSavedApproval(null);
+      }
+    } catch (err) {
+      if (mountedRef.current) setError(err?.message || "Falha verificando revisao.");
+    } finally {
+      if (mountedRef.current) setReviewing(false);
+    }
+  }
 
-      setError(
-        editorialValidation.errors[0] ||
-        "Materia editorial invalida."
-      );
-
+  async function approveEditorial() {
+    if (reviewDraft || !editorialValidation.valid || savingApproval || generating || reviewing) {
+      setError(reviewDraft ? "Verifique o rascunho corrigido antes de aprovar." :
+        "A materia ainda nao atende ao contrato editorial.");
       return;
     }
-
+    if (!approvalReceipt) {
+      setError("Esta versao precisa ser verificada novamente antes de ser salva.");
+      return;
+    }
+    setSavingApproval(true);
     setError("");
-    setEditorialApproved(true);
+    try {
+      const response = await fetch("/api/publicacoes?mode=site-publish", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve-editorial", noticia_id: noticiaId,
+          materia_site: siteBody, resumo_site: siteExcerpt,
+          approval_receipt: approvalReceipt,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.data) {
+        throw new Error(result?.error || "Nao foi possivel salvar a aprovacao.");
+      }
+      if (mountedRef.current) {
+        setSavedApproval(result.data);
+        setEditorialApproved(true);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setEditorialApproved(false);
+        setError(err?.message || "Falha ao salvar aprovacao editorial.");
+      }
+    } finally {
+      if (mountedRef.current) setSavingApproval(false);
+    }
   }
 
   async function publish() {
+    if (reviewDraft) {
+      setError("Rascunho rejeitado: publicacao bloqueada ate nova verificacao.");
+      return;
+    }
     if (
       publishing ||
       generating ||
+      savingApproval ||
       !Number.isInteger(
         noticiaId
       ) ||
@@ -480,7 +591,8 @@ export default function SitePublicationPanel({
       return;
     }
 
-    if (!editorialApproved) {
+    if (!editorialApproved || !savedApproval ||
+        savedApproval.materia_site !== siteBody || savedApproval.resumo_site !== siteExcerpt) {
       setError(
         "Aprove a materia antes de publicar no site."
       );
@@ -679,6 +791,80 @@ export default function SitePublicationPanel({
           </button>
         </div>
 
+        {reviewDraft && (
+          <div className="mt-4 border border-wg-danger bg-wg-raised p-3">
+            <div className="font-mono text-[10px] font-bold uppercase text-wg-danger">
+              Rascunho rejeitado — somente revisao, publicacao bloqueada
+            </div>
+            <div className="mt-2 font-mono text-[10px] text-wg-muted">
+              {reviewDraft.issue?.unidade
+                ? `Unidade editorial ${reviewDraft.issue.unidade}`
+                : "Verificacao pendente"}
+              {reviewDraft.issue?.claim
+                ? ` — Afirmacao contestada: ${reviewDraft.issue.claim}`
+                : ""}
+            </div>
+            {reviewDraft.issue?.reason && (
+              <p className="mt-2 font-mono text-[10px] text-wg-danger">
+                Motivo informado pelo verificador: {reviewDraft.issue.reason}
+              </p>
+            )}
+            {reviewDraft.issue?.quote && (
+              <p className="mt-2 font-mono text-[10px] text-wg-muted">
+                Trecho citado: {reviewDraft.issue.quote}
+              </p>
+            )}
+            {reviewDraft.issue?.candidate && (
+              <p className="mt-2 font-mono text-[10px] text-wg-muted">
+                Trecho continuo localizado na fonte (somente diagnostico, nao aprovado):
+                {" "}{reviewDraft.issue.candidate}
+              </p>
+            )}
+            {reviewDraft.issue?.source_url && (
+              <p className="mt-1 break-all font-mono text-[9px] text-wg-muted">
+                Fonte: {reviewDraft.issue.source_url}
+              </p>
+            )}
+            <label className="mt-3 block font-mono text-[9px] uppercase text-wg-muted">
+              Resumo em revisao
+              <textarea
+                value={reviewDraft.resumo_site}
+                onChange={event => setReviewDraft(current => ({
+                  ...current, resumo_site: event.target.value,
+                }))}
+                rows={3}
+                maxLength={280}
+                disabled={reviewing}
+                className="wg-field mt-2 resize-y font-mono leading-5"
+              />
+            </label>
+            <label className="mt-3 block font-mono text-[9px] uppercase text-wg-muted">
+              Materia rejeitada — edite e verifique novamente
+              <textarea
+                value={reviewDraft.materia_site}
+                onChange={event => setReviewDraft(current => ({
+                  ...current, materia_site: event.target.value,
+                }))}
+                rows={14}
+                maxLength={3500}
+                disabled={reviewing}
+                className="wg-field mt-2 resize-y font-mono leading-5"
+              />
+            </label>
+            <div className="mt-2 font-mono text-[9px] text-wg-muted">
+              O texto rejeitado permanece apenas nesta sessao da pagina. A nova verificacao pode consumir uma chamada OpenAI.
+            </div>
+            <button
+              type="button"
+              onClick={verifyReviewDraft}
+              disabled={reviewing || generating || publishing}
+              className="wg-button wg-button-secondary wg-button-compact mt-3 font-mono uppercase"
+            >
+              {reviewing ? "Verificando revisao..." : "Verificar texto corrigido"}
+            </button>
+          </div>
+        )}
+
         <div className="mt-4">
           <label
             htmlFor={`site-excerpt-${noticiaId}`}
@@ -696,6 +882,8 @@ export default function SitePublicationPanel({
               setSiteExcerpt(
                 event.target.value
               );
+              setApprovalReceipt(null);
+              setSavedApproval(null);
 
               setEditorialApproved(
                 false
@@ -738,6 +926,8 @@ export default function SitePublicationPanel({
               setSiteBody(
                 event.target.value
               );
+              setApprovalReceipt(null);
+              setSavedApproval(null);
 
               setEditorialApproved(
                 false
@@ -801,6 +991,19 @@ export default function SitePublicationPanel({
                 )}
             </div>
 
+            {!reviewDraft && editorialValidation.valid && !approvalReceipt && !editorialApproved && (
+              <button
+                type="button"
+                disabled={generating || reviewing || publishing || savingApproval}
+                onClick={() => verifyReviewDraft({
+                  materia_site: siteBody,
+                  resumo_site: siteExcerpt,
+                })}
+                className="wg-button wg-button-secondary wg-button-compact font-mono uppercase"
+              >
+                {reviewing ? "Verificando..." : "Verificar texto existente"}
+              </button>
+            )}
             <button
               type="button"
               onClick={
@@ -809,7 +1012,9 @@ export default function SitePublicationPanel({
               disabled={
                 generating ||
                 publishing ||
-                !editorialValidation.valid
+                !editorialValidation.valid ||
+                Boolean(reviewDraft) ||
+                reviewing
               }
               className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
             >
@@ -890,7 +1095,10 @@ export default function SitePublicationPanel({
               generating ||
               publishing ||
               !editorialApproved ||
-              !editorialValidation.valid
+              !savedApproval ||
+              !editorialValidation.valid ||
+              Boolean(reviewDraft) ||
+              reviewing
             }
             className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
           >

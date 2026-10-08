@@ -208,3 +208,36 @@ test('literalidade continua rejeitando parafrase semanticamente parecida', async
     /SOURCE_EXCERPT_NOT_LITERAL/
   );
 });
+
+
+test('semantic article selects real headline and removes recommendations, ads and navigation', () => {
+  const html = `<html><head><title>The Verge</title>
+    <meta property="og:title" content="Bose starts adding Auracast to its headphones">
+    <meta property="article:published_time" content="2026-09-28T19:31:24Z"></head>
+    <body><nav>Skip to main content Navigation</nav>
+    <article><h1>Bose starts adding Auracast to its headphones</h1>
+    <p>A new firmware update for Bose QuietComfort Ultra Headphones Gen 2 adds Bluetooth LE Audio and Auracast as beta features.</p>
+    <p>The firmware 10.12.12 also improves USB audio for gaming and web conferencing, with support planned for other models.</p>
+    <aside class="recirculation">Most Popular Xbox has secured GTA 6 streaming rights.</aside>
+    <div class="advertisement">Advertiser Content From</div><div class="tly2fw0">Follow topics and authors</div></article>
+    <section class="related-stories">Google investments and unrelated headlines</section>
+    <footer>Top Stories and advertisements</footer></body></html>`;
+  const snapshot = extractSource(html, 'text/html', 'https://example.org/tech/bose');
+  assert.equal(snapshot.title, 'Bose starts adding Auracast to its headphones');
+  assert.equal(snapshot.publicado_em, '2026-09-28');
+  assert.match(snapshot.text, /firmware 10\.12\.12/);
+  for (const noise of ['Most Popular', 'GTA 6', 'Advertiser Content', 'Follow topics and authors', 'Google investments', 'Top Stories', 'Skip to main content']) {
+    assert.ok(!snapshot.text.includes(noise), noise);
+  }
+  assert.equal(snapshot.source_hash, extractSource(html, 'text/html', 'https://example.org/tech/bose').source_hash);
+});
+
+test('text-only and non-article pages keep fallback content and do not accept tiny article wrappers', () => {
+  const page = '<html><head><title>Boletim completo</title></head><body><article>Breve.</article><main><p>' +
+    'A informação comprovada está no corpo principal. '.repeat(8) +
+    '</p></main></body></html>';
+  const snapshot = extractSource(page, 'text/html', 'https://example.org/boletim');
+  assert.match(snapshot.text, /informação comprovada/);
+  assert.equal(snapshot.title, 'Boletim completo');
+  assert.match(extractSource('Conteúdo oficial. '.repeat(10), 'text/plain', 'https://example.org/plain').text, /Conteúdo oficial/);
+});

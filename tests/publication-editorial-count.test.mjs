@@ -79,6 +79,9 @@ for (const count of [1, 2]) {
     const rows = fixture(count);
     const h = harness(rows);
     const payload = await h.payload();
+    assert.deepEqual(Array.from(payload.captionInfo.hashtags), ['#cinema', '#trailer', '#estreia', '#filme', '#bagacastudios']);
+    assert.equal(payload.captionInfo.hashtags_count, 5);
+    assert.equal(rows[0].hashtags.at(-1), '#wiregeek');
     assert.deepEqual(Array.from(payload.bannerUrls), [...rows.map(row => row.banner_url), rows[0].cta_url]);
     const response = await h.invoke({ instagram_reel_asset: true });
     assert.equal(response.statusCode, 200);

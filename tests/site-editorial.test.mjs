@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHmac } from 'node:crypto';
-import { generateSiteEditorialPreview, validateSiteEditorialInput } from '../lib/site-editorial.mjs';
+import { generateSiteEditorialPreview, validateSiteEditorialInput, findLiteralEvidenceCandidate } from '../lib/site-editorial.mjs';
 import handler from '../lib/site-publish-handler.mjs';
 import { createGenerationCache } from '../lib/generation-cache.mjs';
 
@@ -391,4 +391,50 @@ test('verification request demands specific factual reasons for every supported 
   assert.equal(request.text.format.schema.properties.unidades.items.properties.claims.items.properties.motivo.type, 'string');
   assert.match(request.instructions, /supported=false exige motivo especifico/);
   assert.match(request.instructions, /nao marque false apenas por idioma ou redacao/);
+});
+
+test('Bose byline stitched onto firmware sentence is diagnosed, never treated as evidence', async () => {
+  const sourceText = 'Bose starts adding Auracast to its headphones by John Higgins Sep 28, 2026, 7:31 PM UTC A new firmware update for Bose Headphones Gen 2 adds beta features. The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
+  const stitched = 'by John Higgins Sep 28, 2026, 7:31 PM UTC The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
+  const excerpt = findLiteralEvidenceCandidate(stitched, sourceText);
+  assert.ok(excerpt.includes('The firmware update, labeled 10.12.12'));
+  assert.ok(sourceText.includes(excerpt));
+  assert.ok(!sourceText.includes(stitched));
+  assert.equal(findLiteralEvidenceCandidate('no matching real sentence at all', sourceText), '');
+  const verification = claims();
+  verification.unidades[1].claims[0] = {
+    claim: 'O firmware vinha sendo distribuido discretamente nas ultimas semanas',
+    supported: true, fonte: 0, trecho: stitched, motivo: 'Trecho documental.',
+  };
+  const response = await generate(options({
+    verification, captureSource: async () => ({ ...snapshot, text: sourceText }),
+  }));
+  assert.equal(response.status, 422);
+  assert.equal(response.json.code, 'EDITORIAL_QUOTE_MISMATCH');
+  assert.equal(response.json.data, undefined);
+  assert.equal(response.json.review.issue.candidate, excerpt);
+});
+
+test('Bose continuous literal firmware evidence still passes with bilingual claim', async () => {
+  const sourceText = 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks. Documento literal. Dados verificados.';
+  const verification = claims();
+  verification.unidades[1].claims[0] = {
+    claim: 'O firmware vinha sendo distribuido discretamente nas ultimas semanas.',
+    supported: true, fonte: 0,
+    trecho: 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.',
+    motivo: 'Trecho continuo sustenta a traducao.',
+  };
+  const response = await generate(options({
+    verification, captureSource: async () => ({ ...snapshot, text: sourceText }),
+  }));
+  assert.equal(response.status, 200);
+});
+
+test('verification requests contiguous direct source evidence rather than stitched citation', async () => {
+  const requests = [];
+  await generate(options({ onCall: request => requests.push(request) }));
+  const verification = requests.find(request => request.purpose === 'site-editorial-verification');
+  assert.match(verification.instructions, /UM UNICO trecho CONTINUO/);
+  assert.match(verification.instructions, /sem inserir byline, data do cabecalho/);
+  assert.match(verification.instructions, /divida-a em claims atomicas/);
 });

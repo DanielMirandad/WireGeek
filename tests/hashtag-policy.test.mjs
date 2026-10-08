@@ -36,20 +36,46 @@ test('novas legendas bloqueiam contagem invalida, duplicatas e tags malformadas'
   }
 });
 
-test('containers antigos mantem legenda, caixa e hash para ausencia de perfis, V1 e V2', () => {
-  for (const profiles of [[], selectInstagramProfilesV1(article), selectInstagramProfiles(article)]) {
-    // Independent reconstruction of the caption format before this change.
-    const caption = [article, INSTAGRAM_REEL_CAPTION_FOOTER,
-      ...(profiles.length ? [`Perfis: ${profiles.map(name => `@${name}`).join(' ')}`] : []),
-      oldTags.join(' ')].join('\n\n');
-    const hash = createHash('sha256').update(caption, 'utf8').digest('hex');
-    const group = [{ instagram_parent_container_id: 'existing', instagram_caption_sha256: hash }];
-    const before = structuredClone(group);
-    const result = buildGroupInstagramReelCaption({ article, hashtags: oldTags, group });
-    assert.equal(result.caption, caption);
-    assert.equal(result.caption_sha256, hash);
-    assert.deepEqual(group, before);
-    assert.throws(() => buildGroupInstagramReelCaption({ article: article + ' Alterado.', hashtags: oldTags, group }), /Auditoria manual/);
+const historicalFooter = [
+  '---',
+  'Estaremos acompanhando tudo e traremos as informações até vocês.',
+  'SEGUE A GENTE, COMPARTILHA E COMENTA!',
+  'LIVES TODOS OS SÁBADOS!!',
+  'https://www.twitch.tv/bagacacast_lives',
+  'https://youtube.com/@bagacastudios',
+  'REDES SOCIAIS:',
+  'Instagram: @bagacastudios',
+  'Youtube: @bagacastudios',
+  'SEJA VIP:',
+  'https://linktr.ee/Bagacacast',
+  'CANAL DE CORTES:',
+  'https://www.youtube.com/@CortesBCastOficial',
+].join('\n');
+
+function originalContainerCaption(footer, profiles) {
+  return [article, footer,
+    ...(profiles.length ? [`Perfis: ${profiles.map(name => `@${name}`).join(' ')}`] : []),
+    oldTags.join(' '),
+  ].join('\n\n');
+}
+
+test('containers antes e depois do PR #25 mantem legenda e hash para nenhum perfil, V1 e V2', () => {
+  for (const footer of [historicalFooter, INSTAGRAM_REEL_CAPTION_FOOTER]) {
+    for (const profiles of [[], selectInstagramProfilesV1(article), selectInstagramProfiles(article)]) {
+      const caption = originalContainerCaption(footer, profiles);
+      const hash = createHash('sha256').update(caption, 'utf8').digest('hex');
+      const group = [{ instagram_parent_container_id: 'existing', instagram_caption_sha256: hash }];
+      const before = structuredClone(group);
+      const result = buildGroupInstagramReelCaption({ article, hashtags: oldTags, group });
+      assert.equal(result.caption, caption);
+      assert.equal(result.footer, footer);
+      assert.equal(result.caption_sha256, hash);
+      assert.deepEqual(group, before);
+      assert.throws(
+        () => buildGroupInstagramReelCaption({ article: article + ' Alterado.', hashtags: oldTags, group }),
+        /Auditoria manual/
+      );
+    }
   }
 });
 

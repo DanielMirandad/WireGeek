@@ -188,6 +188,10 @@ export default function SitePublicationPanel({
   // Rejected drafts exist only in React memory; never persisted.
   const [reviewDraft, setReviewDraft] = useState(null);
   const [reviewing, setReviewing] = useState(false);
+  const [approvalReceipt, setApprovalReceipt] = useState(null);
+  const [savingApproval, setSavingApproval] = useState(false);
+  const [savedApproval, setSavedApproval] = useState(null);
+
 
   const loadStatus =
     useCallback(
@@ -295,6 +299,8 @@ export default function SitePublicationPanel({
     setSiteBody("");
     setEditorialApproved(false);
     setReviewDraft(null);
+    setApprovalReceipt(null);
+    setSavedApproval(null);
     setError("");
   }, [
     noticiaId,
@@ -313,6 +319,30 @@ export default function SitePublicationPanel({
   }, [
     loadStatus,
   ]);
+
+  useEffect(() => {
+    if (!Number.isSafeInteger(noticiaId) || noticiaId <= 0) return;
+    let cancelled = false;
+    const loadApproved = async () => {
+      try {
+        const response = await fetch(
+          `/api/publicacoes?mode=site-publish&action=approved-editorial&noticia_id=${encodeURIComponent(noticiaId)}`,
+          { credentials: "include" }
+        );
+        if (!response.ok) return;
+        const result = await response.json();
+        if (cancelled || !result?.data) return;
+        setSiteBody(result.data.materia_site || "");
+        setSiteExcerpt(result.data.resumo_site || "");
+        setSavedApproval(result.data);
+        setEditorialApproved(true);
+      } catch {
+        // Storage must not authorize anything on failure.
+      }
+    };
+    loadApproved();
+    return () => { cancelled = true; };
+  }, [noticiaId]);
 
   const editorialValidation =
     validateSiteEditorialDraft({
@@ -338,6 +368,8 @@ export default function SitePublicationPanel({
 
     setGenerating(true);
     setEditorialApproved(false);
+    setApprovalReceipt(null);
+    setSavedApproval(null);
     setError("");
 
     try {
@@ -425,6 +457,7 @@ export default function SitePublicationPanel({
       }
 
       setReviewDraft(null);
+      setApprovalReceipt(data?.data?.approval_receipt || null);
 
       setSiteBody(
         generatedBody
@@ -481,6 +514,8 @@ export default function SitePublicationPanel({
         setSiteBody(data.data.materia_site);
         setSiteExcerpt(data.data.resumo_site);
         setReviewDraft(null);
+        setApprovalReceipt(data.data.approval_receipt || null);
+        setSavedApproval(null);
       }
     } catch (err) {
       if (mountedRef.current) setError(err?.message || "Falha verificando revisao.");
@@ -489,27 +524,44 @@ export default function SitePublicationPanel({
     }
   }
 
-  function approveEditorial() {
-    if (reviewDraft) {
-      setEditorialApproved(false);
-      setError("O rascunho rejeitado precisa passar por nova verificacao factual.");
+  async function approveEditorial() {
+    if (reviewDraft || !editorialValidation.valid || savingApproval || generating || reviewing) {
+      setError(reviewDraft ? "Verifique o rascunho corrigido antes de aprovar." :
+        "A materia ainda nao atende ao contrato editorial.");
       return;
     }
-    if (!editorialValidation.valid) {
-      setEditorialApproved(
-        false
-      );
-
-      setError(
-        editorialValidation.errors[0] ||
-        "Materia editorial invalida."
-      );
-
+    if (!approvalReceipt) {
+      setError("Esta versao precisa ser verificada novamente antes de ser salva.");
       return;
     }
-
+    setSavingApproval(true);
     setError("");
-    setEditorialApproved(true);
+    try {
+      const response = await fetch("/api/publicacoes?mode=site-publish", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve-editorial", noticia_id: noticiaId,
+          materia_site: siteBody, resumo_site: siteExcerpt,
+          approval_receipt: approvalReceipt,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.data) {
+        throw new Error(result?.error || "Nao foi possivel salvar a aprovacao.");
+      }
+      if (mountedRef.current) {
+        setSavedApproval(result.data);
+        setEditorialApproved(true);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setEditorialApproved(false);
+        setError(err?.message || "Falha ao salvar aprovacao editorial.");
+      }
+    } finally {
+      if (mountedRef.current) setSavingApproval(false);
+    }
   }
 
   async function publish() {
@@ -520,6 +572,7 @@ export default function SitePublicationPanel({
     if (
       publishing ||
       generating ||
+      savingApproval ||
       !Number.isInteger(
         noticiaId
       ) ||
@@ -537,7 +590,8 @@ export default function SitePublicationPanel({
       return;
     }
 
-    if (!editorialApproved) {
+    if (!editorialApproved || !savedApproval ||
+        savedApproval.materia_site !== siteBody || savedApproval.resumo_site !== siteExcerpt) {
       setError(
         "Aprove a materia antes de publicar no site."
       );
@@ -827,6 +881,8 @@ export default function SitePublicationPanel({
               setSiteExcerpt(
                 event.target.value
               );
+              setApprovalReceipt(null);
+              setSavedApproval(null);
 
               setEditorialApproved(
                 false
@@ -869,6 +925,8 @@ export default function SitePublicationPanel({
               setSiteBody(
                 event.target.value
               );
+              setApprovalReceipt(null);
+              setSavedApproval(null);
 
               setEditorialApproved(
                 false
@@ -1023,6 +1081,7 @@ export default function SitePublicationPanel({
               generating ||
               publishing ||
               !editorialApproved ||
+              !savedApproval ||
               !editorialValidation.valid ||
               Boolean(reviewDraft) ||
               reviewing

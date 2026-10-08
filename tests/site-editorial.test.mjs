@@ -27,7 +27,7 @@ function db(row = news, error = null) {
 const newCache = () => createGenerationCache({ name: 'test-editorial', ttlMs: 10000, maxEntries: 4, persistent: null });
 function claims(value = draft()) {
   return { unidades: value.materia_site.split('\n\n').concat(value.resumo_site).map((_, indice) => ({
-    indice, cobertura_completa: true, claims: [{ claim: `Fato sintetico ${indice}`, supported: true, fonte: 0, trecho: 'Documento literal.' }],
+    indice, cobertura_completa: true, claims: [{ claim: `Fato sintetico ${indice}`, supported: true, fonte: 0, trecho: 'Documento literal.', motivo: 'Trecho confirma o fato.' }],
   })) };
 }
 function options({ value = draft(), verification = claims(value), onCall = () => {}, captureSource = async () => snapshot,
@@ -233,7 +233,7 @@ test('existing status and publish flows keep canonical image and upstream confir
 
 test('rejected draft is returned only for transient review and identifies unsupported claim', async () => {
   const verification = claims();
-  verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, trecho: '' };
+  verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, trecho: '', motivo: 'Detalhe sem suporte documental.' };
   const result = await generate(options({ verification }));
   assert.equal(result.status, 422);
   assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
@@ -321,7 +321,7 @@ test('translation guidance never overrides a model rejection or a nonliteral Eng
   const falseClaim = claims();
   falseClaim.unidades[1].claims[0] = {
     claim: 'O Bose Gen 3 recebeu firmware 10.12.13 em 27 de setembro.',
-    supported: false, fonte: 0, trecho: 'Documento literal.',
+    supported: false, fonte: 0, trecho: 'Documento literal.', motivo: 'Modelo e versao divergem.',
   };
   const unsupported = await generate(options({ verification: falseClaim }));
   assert.equal(unsupported.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
@@ -331,9 +331,63 @@ test('translation guidance never overrides a model rejection or a nonliteral Eng
   falseQuote.unidades[1].claims[0] = {
     claim: 'O firmware vinha sendo distribuido nas ultimas semanas.',
     supported: true, fonte: 0,
-    trecho: 'The firmware has been quietly rolling out the past few weeks.',
+    trecho: 'The firmware has been quietly rolling out the past few weeks.', motivo: 'Literal nao aparece na fonte.',
   };
   const invalidQuote = await generate(options({ verification: falseQuote }));
   assert.equal(invalidQuote.json.code, 'EDITORIAL_QUOTE_MISMATCH');
   assert.equal(invalidQuote.status, 422);
+});
+
+
+test('Bose bilingual grounding: evidence may confirm a faithful paraphrase but never bypasses unsupported verdict', async () => {
+  const evidence = 'A new firmware update for the $449 Bose QuietComfort Ultra Headphones Gen 2 adds support for Bluetooth LE Audio and Auracast as beta features. The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
+  const newsSource = { ...snapshot, text: evidence };
+  const verified = claims();
+  verified.unidades[0].claims[0] = {
+    claim: 'O Bose QuietComfort Ultra Headphones Gen 2 recebe Bluetooth LE Audio e Auracast beta com firmware 10.12.12.',
+    supported: true, fonte: 0,
+    trecho: 'A new firmware update for the $449 Bose QuietComfort Ultra Headphones Gen 2 adds support for Bluetooth LE Audio and Auracast as beta features.',
+    motivo: 'A evidencia cita o modelo, os recursos e o status beta.',
+  };
+  const ok = await generate(options({ verification: verified, captureSource: async () => newsSource }));
+  assert.equal(ok.status, 200);
+  const rejected = structuredClone(verified);
+  rejected.unidades[0].claims[0].supported = false;
+  rejected.unidades[0].claims[0].motivo = 'O verificador discorda do suporte a data e firmware.';
+  const blocked = await generate(options({ verification: rejected, captureSource: async () => newsSource }));
+  assert.equal(blocked.status, 422);
+  assert.equal(blocked.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+  assert.match(blocked.json.review.issue.reason, /firmware/);
+  assert.match(blocked.json.review.issue.quote, /QuietComfort Ultra/);
+  assert.equal(blocked.json.data, undefined);
+});
+
+test('Bose regression: incorrect firmware, product model and precise date remain rejected', async () => {
+  const cases = [
+    ['Versao de firmware 10.12.13', 'A fonte somente confirma 10.12.12'],
+    ['QuietComfort Ultra Headphones Gen 3', 'A fonte somente confirma Gen 2'],
+    ['Firmware lancado em 20 de setembro', 'Fonte nao informa esse dia preciso'],
+  ];
+  for (const [claimText, reason] of cases) {
+    const verification = claims();
+    verification.unidades[0].claims[0] = {
+      claim: claimText, supported: false, fonte: 0, trecho: 'Documento literal.', motivo: reason,
+    };
+    const response = await generate(options({ verification }));
+    assert.equal(response.status, 422);
+    assert.equal(response.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+    assert.equal(response.json.review.issue.reason, reason);
+    assert.equal(response.json.data, undefined);
+  }
+});
+
+test('verification request demands specific factual reasons for every supported and unsupported claim', async () => {
+  const calls = [];
+  const response = await generate(options({ onCall: request => calls.push(request) }));
+  assert.equal(response.status, 200);
+  const request = calls.find(call => call.purpose === 'site-editorial-verification');
+  assert.ok(request);
+  assert.equal(request.text.format.schema.properties.unidades.items.properties.claims.items.properties.motivo.type, 'string');
+  assert.match(request.instructions, /supported=false exige motivo especifico/);
+  assert.match(request.instructions, /nao marque false apenas por idioma ou redacao/);
 });

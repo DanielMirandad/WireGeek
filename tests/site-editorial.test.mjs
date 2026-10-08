@@ -109,7 +109,19 @@ test('unsupported claims, omitted units, forged literal citations and repeated c
     v => v.unidades[1].claims[0].claim = v.unidades[0].claims[0].claim, v => v.unidades[1].indice = 0]) {
     const v = claims(); mutate(v); variants.push(v);
   }
-  for (const verification of variants) assert.equal((await generate(options({ verification }))).json.code, 'INVALID_SITE_EDITORIAL_GROUNDING');
+  const expected = [
+    'EDITORIAL_VERIFICATION_INCOMPLETE', 'EDITORIAL_VERIFICATION_INCOMPLETE',
+    'EDITORIAL_UNSUPPORTED_CLAIM', 'EDITORIAL_VERIFICATION_INCOMPLETE',
+    'EDITORIAL_QUOTE_MISMATCH', 'EDITORIAL_VERIFICATION_INCOMPLETE',
+    'EDITORIAL_REPEATED_CLAIMS', 'EDITORIAL_VERIFICATION_INCOMPLETE',
+  ];
+  for (const [index, verification] of variants.entries()) {
+    const result = await generate(options({ verification }));
+    assert.equal(result.status, 422);
+    assert.equal(result.json.code, expected[index]);
+    assert.equal(result.json.data, undefined);
+    assert.ok(!JSON.stringify(result.json).includes('Documento literal.'));
+  }
 });
 
 test('malformed JSON, provider failure and unavailable verification never return a draft', async () => {
@@ -121,7 +133,22 @@ test('malformed JSON, provider failure and unavailable verification never return
     if (request.purpose.endsWith('verification')) throw new Error('unavailable');
     return { text: JSON.stringify(draft()) };
   } });
-  assert.equal(result.status, 422); assert.equal(result.json.data, undefined);
+  assert.equal(result.status, 502);
+  assert.equal(result.json.code, 'EDITORIAL_VERIFICATION_API_FAILED');
+  assert.equal(result.json.data, undefined);
+  assert.ok(!JSON.stringify(result.json).includes('unavailable'));
+});
+
+test('invalid verification JSON fails separately without leaking provider output', async () => {
+  const response = await generate({
+    ...options(), createResponse: async request => request.purpose === 'site-editorial'
+      ? { text: JSON.stringify(draft()) }
+      : { text: 'PROVIDER_SECRET_NOT_JSON' },
+  });
+  assert.equal(response.status, 502);
+  assert.equal(response.json.code, 'EDITORIAL_VERIFICATION_RESPONSE_INVALID');
+  assert.ok(!JSON.stringify(response.json).includes('PROVIDER_SECRET_NOT_JSON'));
+  assert.equal(response.json.data, undefined);
 });
 
 test('cache reuses only verified drafts; force regenerates; source changes invalidate', async () => {

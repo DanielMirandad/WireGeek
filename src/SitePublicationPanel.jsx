@@ -759,6 +759,12 @@ export default function SitePublicationPanel({
                 Trecho citado: {reviewDraft.issue.quote}
               </p>
             )}
+            {reviewDraft.issue?.candidate && (
+              <p className="mt-2 font-mono text-[10px] text-wg-muted">
+                Trecho continuo localizado na fonte (somente diagnostico, nao aprovado):
+                {" "}{reviewDraft.issue.candidate}
+              </p>
+            )}
             {reviewDraft.issue?.source_url && (
               <p className="mt-1 break-all font-mono text-[9px] text-wg-muted">
                 Fonte: {reviewDraft.issue.source_url}

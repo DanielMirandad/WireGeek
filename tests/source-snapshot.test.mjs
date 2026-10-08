@@ -225,7 +225,7 @@ test('semantic article selects real headline and removes recommendations, ads an
   const snapshot = extractSource(html, 'text/html', 'https://example.org/tech/bose');
   assert.equal(snapshot.title, 'Bose starts adding Auracast to its headphones');
   assert.equal(snapshot.publicado_em, '2026-09-28');
-  assert.match(snapshot.text, /firmware 10\\.12\\.12/);
+  assert.match(snapshot.text, /firmware 10\.12\.12/);
   for (const noise of ['Most Popular', 'GTA 6', 'Advertiser Content', 'Google investments', 'Top Stories', 'Skip to main content']) {
     assert.ok(!snapshot.text.includes(noise), noise);
   }

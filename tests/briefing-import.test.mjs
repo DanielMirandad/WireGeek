@@ -29,7 +29,7 @@ function validPayload() {
         ],
         hashtags: [
           "#games",
-          "#wiregeek",
+          "#bagacastudios",
           "#culturageek",
           "#noticias",
           "#gaming",
@@ -46,6 +46,20 @@ function validPayload() {
     ],
   };
 }
+
+test("regra global bloqueia importacao API e Codex antes da persistencia", async () => {
+  for (const origin of ["api", "codex"]) {
+    for (const invalid of ["#wiregeek", "#noticias", "#BagacaStudios"]) {
+      const payload = validPayload();
+      payload.news[0].hashtags[1] = invalid;
+      let writes = 0;
+      await assert.rejects(persistCanonicalBriefing(payload, {
+        origin, progress: async () => {},
+      }, { persist: async () => { writes++; } }), /hashtags|hashtag/);
+      assert.equal(writes, 0);
+    }
+  }
+});
 
 test("source import corresponde exclusivamente à origem codex", () => {
   assert.equal(

@@ -24,7 +24,7 @@ function validItem() {
       "#culturapop",
       "#trailer",
       "#streaming",
-      "#wiregeek",
+      "#bagacastudios",
     ],
     fontes: [
       {
@@ -250,7 +250,7 @@ test("aceita hashtag unicode sem espaco", () => {
     "#anime",
     "#mangá",
     "#games",
-    "#culturapop",
+    "#bagacastudios",
   ];
 
   const errors =
@@ -262,6 +262,19 @@ test("aceita hashtag unicode sem espaco", () => {
     ),
     false
   );
+});
+
+test("rejeita marca ausente, marca proibida e duplicatas sem alterar a noticia", () => {
+  for (const hashtags of [
+    ["#cinema", "#trailer", "#filme", "#estreia", "#noticias"],
+    ["#cinema", "#trailer", "#filme", "#wiregeek", "#bagacastudios"],
+    ["#cinema", "#cinema", "#filme", "#estreia", "#bagacastudios"],
+  ]) {
+    const item = { ...validItem(), hashtags };
+    const before = structuredClone(item);
+    assert.ok(validateCanonicalShape(item).length > 0);
+    assert.deepEqual(item, before);
+  }
 });
 
 test("rejeita hashtag sem #", () => {

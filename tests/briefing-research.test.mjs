@@ -26,7 +26,7 @@ const canonical = { news: [{
     'A nova atualização adiciona conteúdos inéditos e mudanças importantes confirmadas oficialmente pela equipe responsável pelo jogo.',
     'Os jogadores receberão novos recursos, ajustes de balanceamento e melhorias gerais quando a atualização estiver disponível oficialmente.',
   ],
-  hashtags: ['#games', '#wiregeek', '#culturageek', '#noticias', '#gaming'],
+  hashtags: ['#games', '#bagacastudios', '#culturageek', '#noticias', '#gaming'],
   fontes: [{ titulo: 'Fonte oficial', url: 'https://example.com/noticia', publicado_em: '2026-10-04' }],
   image_query: 'official game update image',
 }] };

@@ -105,7 +105,7 @@ test('unsupported claims, omitted units, forged literal citations and repeated c
   const variants = [];
   for (const mutate of [v => v.unidades.pop(), v => v.unidades[0].cobertura_completa = false,
     v => v.unidades[6].claims[0].supported = false, v => v.unidades[0].claims[0].fonte = 99,
-    v => v.unidades[0].claims[0].trecho = 'Trecho inventado', v => v.unidades[0].claims = [],
+    v => v.unidades[0].claims[0].evidencia = 999, v => v.unidades[0].claims = [],
     v => v.unidades[1].claims[0].claim = v.unidades[0].claims[0].claim, v => v.unidades[1].indice = 0]) {
     const v = claims(); mutate(v); variants.push(v);
   }
@@ -314,7 +314,7 @@ test('verification prompt explicitly supports faithful bilingual paraphrase but 
   assert.match(instructions, /precos, versoes de firmware, modelos, nomes, datas/);
   assert.match(instructions, /sujeito e modalidade/);
   assert.match(instructions, /Mudanca de modelo, valor, versao, data, sujeito, certeza/);
-  assert.match(instructions, /selecione somente indices de evidencias existentes/);
+  assert.match(instructions, /selecione somente um indice fornecido/);
   assert.match(instructions, /use supported=false/);
 });
 
@@ -441,7 +441,7 @@ test('verification selects server-extracted indexed evidence instead of model-wr
   await generate(options({ onCall: request => requests.push(request) }));
   const verification = requests.find(request => request.purpose === 'site-editorial-verification');
   assert.ok(verification);
-  assert.match(verification.instructions, /selecione somente indices de evidencias existentes/);
+  assert.match(verification.instructions, /selecione somente um indice fornecido/);
   const schema = verification.text.format.schema.properties.unidades.items.properties.claims.items.properties;
   assert.equal(schema.evidencia.type, 'integer');
   assert.equal(schema.trecho, undefined);

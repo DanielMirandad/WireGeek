@@ -229,3 +229,70 @@ test('existing status and publish flows keep canonical image and upstream confir
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   }
 });
+
+
+test('rejected draft is returned only for transient review and identifies unsupported claim', async () => {
+  const verification = claims();
+  verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, trecho: '' };
+  const result = await generate(options({ verification }));
+  assert.equal(result.status, 422);
+  assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+  assert.equal(result.json.review.materia_site, draft().materia_site);
+  assert.equal(result.json.review.resumo_site, draft().resumo_site);
+  assert.equal(result.json.review.issue.unidade, 2);
+  assert.match(result.json.review.issue.claim, /produto inexistente/);
+  assert.equal(result.json.data, undefined);
+});
+
+test('corrected draft runs only verification, never the first generation call', async () => {
+  const calls = [];
+  const value = draft();
+  const result = await generateSiteEditorialPreview({
+    supabase: db(), noticiaId: 7, reviewDraft: value,
+  }, options({ value, onCall: r => calls.push(r) }));
+  assert.equal(result.status, 200);
+  assert.equal(result.json.data.materia_site, value.materia_site);
+  assert.deepEqual(calls.map(r => r.purpose), ['site-editorial-verification']);
+});
+
+test('failed corrected draft remains blocked and can be reviewed without publication', async () => {
+  const verification = claims();
+  verification.unidades[1].claims[0].supported = false;
+  const result = await generateSiteEditorialPreview({
+    supabase: db(), noticiaId: 7, reviewDraft: draft(),
+  }, options({ verification }));
+  assert.equal(result.status, 422);
+  assert.equal(result.json.data, undefined);
+  assert.equal(result.json.review.issue.unidade, 2);
+});
+
+test('correction handler rejects oversize text before source reads and never uses publish action', async () => {
+  const key = process.env.WIREGEEK_AUTOMATION_KEY;
+  process.env.WIREGEEK_AUTOMATION_KEY = 'synthetic-test-key';
+  try {
+    const invalid = res();
+    await handler(request({
+      action: 'verify-editorial', materia_site: 'x'.repeat(3501), resumo_site: 'Resumo',
+    }), invalid, { supabase: { from() { assert.fail('database read'); } } });
+    assert.equal(invalid.statusCode, 422);
+    const calls = [];
+    const valid = res();
+    const value = draft();
+    await handler(request({
+      action: 'verify-editorial', materia_site: value.materia_site, resumo_site: value.resumo_site,
+    }), valid, { supabase: db(), editorialOptions: options({ onCall: r => calls.push(r) }) });
+    assert.equal(valid.statusCode, 200);
+    assert.deepEqual(calls.map(r => r.purpose), ['site-editorial-verification']);
+  } finally {
+    if (key === undefined) delete process.env.WIREGEEK_AUTOMATION_KEY;
+    else process.env.WIREGEEK_AUTOMATION_KEY = key;
+  }
+});
+
+test('frontend review retains rejected text separately and blocks approval and publication', () => {
+  const panel = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /setReviewDraft\(data\.review\)/);
+  assert.match(panel, /action: "verify-editorial"/);
+  assert.match(panel, /Boolean\(reviewDraft\)/);
+  assert.match(panel, /Rascunho rejeitado/);
+});

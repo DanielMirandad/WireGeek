@@ -583,3 +583,30 @@ test('UI stores approval through API and restores without calling site publish',
   assert.match(source, /!savedApproval/);
   assert.match(source, /setApprovalReceipt\(null\)/);
 });
+
+test('existing editorial can be reverified without generation and gains a server-signed receipt', async () => {
+  const previous = process.env.WIREGEEK_ACCESS_KEY;
+  process.env.WIREGEEK_ACCESS_KEY = 'synthetic-approval-secret';
+  try {
+    const calls = [];
+    const value = draft();
+    const response = await generateSiteEditorialPreview({
+      supabase: db(), noticiaId: 7, reviewDraft: value,
+    }, options({ onCall: call => calls.push(call.purpose) }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls, ['site-editorial-verification']);
+    const receipt = response.json.data.approval_receipt;
+    assert.ok(receipt);
+    assert.ok(verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site));
+  } finally {
+    if (previous === undefined) delete process.env.WIREGEEK_ACCESS_KEY;
+    else process.env.WIREGEEK_ACCESS_KEY = previous;
+  }
+});
+
+test('panel provides verify-existing action rather than regenerating an approved draft', () => {
+  const source = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
+  assert.match(source, /Verificar texto existente/);
+  assert.match(source, /verifyReviewDraft\(\{\s*materia_site: siteBody,/);
+  assert.match(source, /const selectedDraft = override \|\| reviewDraft/);
+});

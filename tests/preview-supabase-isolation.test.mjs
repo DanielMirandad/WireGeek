@@ -190,3 +190,36 @@ test('diagnostic requires authentication and Preview and never returns database 
     const res = response(); await handler(request, res); assert.equal(res.statusCode, 404);
   });
 });
+
+test('unused private JWT with another role stays harmless but project must match', () => {
+  const unused = { ...config(), SUPABASE_SECRET_KEY: jwt(ref, 'anon') };
+  assert.equal(assertPreviewSupabaseIsolation(unused).project_ref, ref);
+  const conflicting = { ...unused, SUPABASE_SECRET_KEY: jwt('bytxdmxpqsdxxcjbufnf', 'anon') };
+  assert.throws(() => assertPreviewSupabaseIsolation(conflicting), error =>
+    error.code === 'PREVIEW_SUPABASE_KEY_MISMATCH' &&
+    error.diagnostic?.reason === 'PROJECT_MISMATCH' &&
+    error.diagnostic?.used_by_backend === false);
+});
+
+test('an alternative with anon role never becomes an authorized private fallback', () => {
+  const env = { ...config(), SUPABASE_SERVICE_ROLE_KEY: '', SUPABASE_SECRET_KEY: jwt(ref, 'anon') };
+  assert.throws(() => assertPreviewSupabaseIsolation(env), error =>
+    error.code === 'PREVIEW_SUPABASE_KEY_MISMATCH' &&
+    error.diagnostic?.variable === 'SUPABASE_SECRET_KEY' &&
+    error.diagnostic?.reason === 'ROLE_MISMATCH' &&
+    error.diagnostic?.used_by_backend === true);
+});
+
+test('unused malformed private key remains blocked without reading news', async () => {
+  await withEnv({ ...config(), SUPABASE_SECRET_KEY: 'not-a-key' }, async () => {
+    const res = response();
+    await handler(req('generate-editorial'), res, { supabase: {
+      supabaseUrl: url, from() { assert.fail('DB must not be accessed'); },
+    }, editorialOptions: {
+      createResponse() { assert.fail('inference must not run'); },
+      captureSource() { assert.fail('source must not load'); },
+    } });
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.data.code, 'PREVIEW_SUPABASE_KEY_MISMATCH');
+  });
+});

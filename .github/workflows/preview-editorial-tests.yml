@@ -20,7 +20,6 @@ jobs:
       OPENAI_API_KEY: ""
       SUPABASE_SERVICE_ROLE_KEY: ""
       SUPABASE_SECRET_KEY: ""
-      SITE_EDITORIAL_MAX_REPAIR_ROUNDS: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

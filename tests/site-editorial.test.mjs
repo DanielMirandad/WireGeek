@@ -790,3 +790,19 @@ test('Preview cost cap of zero repairs stops after one verifier rejection', asyn
     else process.env.SITE_EDITORIAL_MAX_REPAIR_ROUNDS = previous;
   }
 });
+
+test('paid A/B pilot cannot run before persistent transport reservation is wired', async () => {
+  const previous = process.env.SITE_EDITORIAL_AB_PILOT_ENABLED;
+  process.env.SITE_EDITORIAL_AB_PILOT_ENABLED = '1';
+  try {
+    const result = await generateSiteEditorialPreview({ supabase: db(), noticiaId: 7 }, {
+      async createResponse() { assert.fail('No paid request is allowed'); },
+      async captureSource() { assert.fail('Must stop before source reads'); },
+    });
+    assert.equal(result.status, 503);
+    assert.equal(result.json.code, 'EDITORIAL_PILOT_TRANSPORT_NOT_READY');
+  } finally {
+    if (previous === undefined) delete process.env.SITE_EDITORIAL_AB_PILOT_ENABLED;
+    else process.env.SITE_EDITORIAL_AB_PILOT_ENABLED = previous;
+  }
+});

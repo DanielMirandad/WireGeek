@@ -764,3 +764,29 @@ test('invalid repair output leaves a rejected draft unapproved and uncached', as
   }
   assert.equal(calls, 6);
 });
+
+test('Preview cost cap of zero repairs stops after one verifier rejection', async () => {
+  const previous = process.env.SITE_EDITORIAL_MAX_REPAIR_ROUNDS;
+  process.env.SITE_EDITORIAL_MAX_REPAIR_ROUNDS = '0';
+  try {
+    const calls = [];
+    const result = await generate({
+      ...options(),
+      async createResponse(request) {
+        calls.push(request.purpose);
+        if (request.purpose === 'site-editorial') return { text: JSON.stringify(draft()) };
+        if (request.purpose === 'site-editorial-repair') assert.fail('repair must be disabled');
+        const fail = claims();
+        fail.unidades[0].claims[0].supported = false;
+        fail.unidades[0].claims[0].motivo = 'Nao consta na evidencia';
+        return { text: JSON.stringify(fail) };
+      },
+    });
+    assert.equal(result.status, 422);
+    assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
+    assert.deepEqual(calls, ['site-editorial', 'site-editorial-verification']);
+  } finally {
+    if (previous === undefined) delete process.env.SITE_EDITORIAL_MAX_REPAIR_ROUNDS;
+    else process.env.SITE_EDITORIAL_MAX_REPAIR_ROUNDS = previous;
+  }
+});

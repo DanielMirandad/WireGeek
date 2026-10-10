@@ -25,7 +25,7 @@ test('missing or excessive dollar ceiling blocks', () => {
   }
 });
 test('worst-case token expenditure above cap blocks', () => {
-  const result = planEditorialPilot({ requests: [{ ...req, maxInputTokens: 5_000_000 }], prices });
+  const result = planEditorialPilot({ requests: [{ ...req, maxInputTokens: 5_000_000 }], prices, budgetUsd: 5 });
   assert.equal(result.code, 'PILOT_BUDGET_EXCEEDED');
 });
 test('20 calls within a stated price and token ceiling only produce offline estimate', () => {

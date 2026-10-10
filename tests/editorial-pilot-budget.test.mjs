@@ -49,3 +49,15 @@ test('each fractional micro-USD reservation rounds upward', () => {
   assert.equal(result.allowed, true);
   assert.equal(result.estimatedMaxUsd, 0.000002);
 });
+
+test('charged tools are blocked until their costs have a conservative bound', () => {
+  for (const extra of [
+    { tools: [{ type: 'web_search_preview' }] },
+    { tools: [] },
+    { toolChoice: 'auto' },
+    { webSearchCalls: 1 },
+  ]) {
+    const result = planEditorialPilot({ requests: [{ ...req, ...extra }], prices, budgetUsd: 5 });
+    assert.equal(result.code, 'PILOT_REQUEST_UNBOUNDED');
+  }
+});

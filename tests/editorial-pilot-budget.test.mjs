@@ -34,3 +34,18 @@ test('20 calls within a stated price and token ceiling only produce offline esti
   assert.equal(result.requestCount, 20);
   assert.equal(result.executionEnabled, false);
 });
+
+test('zero-priced models fail closed rather than hiding an unknown rate', () => {
+  const result = planEditorialPilot({ requests: [req], prices: {
+    draft: { inputPerMillion: 0, outputPerMillion: 2 },
+  }, budgetUsd: 5 });
+  assert.equal(result.code, 'PILOT_REQUEST_UNBOUNDED');
+});
+test('each fractional micro-USD reservation rounds upward', () => {
+  const request = { ...req, maxInputTokens: 1, maxOutputTokens: 1 };
+  const result = planEditorialPilot({ requests: [request, request], prices: {
+    draft: { inputPerMillion: 0.1, outputPerMillion: 0.1 },
+  }, budgetUsd: 5 });
+  assert.equal(result.allowed, true);
+  assert.equal(result.estimatedMaxUsd, 0.000002);
+});

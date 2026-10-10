@@ -37,3 +37,11 @@ test('denial, RPC error and ambiguous failure never grant reservation', async ()
   assert.equal(JSON.stringify(result).includes('secret'), false);
  }
 });
+
+test('reservation exceeding USD 5 never reaches the ledger', async () => {
+  const supabase = { rpc() { assert.fail('oversized reservation must not touch database'); } };
+  for (const reserveMicroUsd of [5_000_001, Number.MAX_SAFE_INTEGER, 1.5]) {
+    const result = await reserveEditorialPilotRequest({ ...request, reserveMicroUsd, supabase });
+    assert.equal(result.code, 'PILOT_RESERVATION_INVALID');
+  }
+});

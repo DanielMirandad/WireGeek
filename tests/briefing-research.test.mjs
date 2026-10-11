@@ -23,8 +23,8 @@ const canonical = { news: [{
   titulo: 'Nova atualização oficial do jogo foi anunciada', titulo_curto: 'Atualização do jogo',
   categoria: 'games', materia: 'A atualização foi anunciada oficialmente e traz novos conteúdos para os jogadores.',
   highlights: [
-    'A nova atualização adiciona conteúdos inéditos e mudanças importantes confirmadas oficialmente pela equipe responsável pelo jogo.',
-    'Os jogadores receberão novos recursos, ajustes de balanceamento e melhorias gerais quando a atualização estiver disponível oficialmente.',
+    'A atualização adiciona conteúdos inéditos confirmados oficialmente pela equipe do jogo.',
+    'O jogo receberá novos recursos e ajustes de balanceamento oficiais.',
   ],
   hashtags: ['#games', '#bagacastudios', '#culturageek', '#noticias', '#gaming'],
   fontes: [{ titulo: 'Fonte oficial', url: 'https://example.com/noticia', publicado_em: '2026-10-04' }],

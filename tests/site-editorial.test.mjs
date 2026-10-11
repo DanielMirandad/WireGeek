@@ -84,15 +84,15 @@ test('source failures or invalid snapshots fail closed without inference', async
   }
 });
 
-test('unavailable secondary source is excluded and verified source still permits safe draft', async () => {
+test('unavailable secondary source blocks generation when fewer than two verified sources remain', async () => {
   const row = { ...news, fontes: [{ url: news.url }, { url: 'https://example.org/second' }] };
   const captured = [];
   const inputs = [];
   const result = await generateSiteEditorialPreview({ supabase: db(row), noticiaId: 7 }, options({ captureSource: async url => {
     captured.push(url); if (url.endsWith('second')) throw new Error('BLOCKED'); return snapshot;
   }, onCall: request => inputs.push(request.input) }));
-  assert.equal(result.status, 200); assert.deepEqual(captured, [news.url, row.fontes[1].url]);
-  assert.ok(inputs.length > 0);
+  assert.equal(result.status, 422); assert.equal(result.json.code, 'INSUFFICIENT_SOURCE_EVIDENCE'); assert.deepEqual(captured, [news.url, row.fontes[1].url]);
+  assert.equal(inputs.length, 0);
   assert.ok(inputs.every(input => !input.includes('https://example.org/second')));
 });
 test('all blocked sources still prevent site editorial generation', async () => {
@@ -104,7 +104,7 @@ test('all blocked sources still prevent site editorial generation', async () => 
 
 test('invalid length or artificial repeated paragraphs skip the verification call', async () => {
   let count = 0;
-  for (const value of [draft(1799), { ...draft(), materia_site: Array(6).fill('Paragrafo repetido. '.repeat(18)).join('\n\n') }]) {
+  for (const value of [draft(999), { ...draft(), materia_site: Array(6).fill('Paragrafo repetido. '.repeat(18)).join('\n\n') }]) {
     const result = await generate(options({ value, onCall: () => count++ }));
     assert.equal(result.json.code, 'INVALID_SITE_EDITORIAL');
   }
@@ -114,7 +114,7 @@ test('invalid length or artificial repeated paragraphs skip the verification cal
 test('unsupported claims, omitted units, forged literal citations and repeated claims fail closed', async () => {
   const variants = [];
   for (const mutate of [v => v.unidades.pop(), v => v.unidades[0].cobertura_completa = false,
-    v => v.unidades[6].claims[0].supported = false, v => v.unidades[0].claims[0].fonte = 99,
+    v => v.unidades[5].claims[0].supported = false, v => v.unidades[0].claims[0].fonte = 99,
     v => v.unidades[0].claims[0].evidencia = 999, v => v.unidades[0].claims = [],
     v => v.unidades[1].claims[0].claim = v.unidades[0].claims[0].claim, v => v.unidades[1].indice = 0]) {
     const v = claims(); mutate(v); variants.push(v);

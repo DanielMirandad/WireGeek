@@ -24,3 +24,17 @@ test('real transport is blocked before checking key or executing any network req
     else process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED=before;
   }
 });
+
+test('paid transport refuses missing ledger before any outbound HTTP request', async () => {
+ const names=['WIREGEEK_PAID_HOMOLOGATION_ENABLED','WIREGEEK_HOMOLOGATION_PILOT_ID','WIREGEEK_HOMOLOGATION_ARM','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY'];
+ const saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED='1';
+ for(const name of names.slice(1)) delete process.env[name];
+ try {
+  await assert.rejects(createOpenAIResponse({
+   model:'gpt-6-luna',purpose:'site-editorial',input:'Fonte verificada de teste',maxOutputTokens:100,
+  }), /HOMOLOGATION_LEDGER_NOT_CONFIGURED/);
+ } finally {
+  for(const name of names) if(saved[name] === undefined) delete process.env[name]; else process.env[name]=saved[name];
+ }
+});

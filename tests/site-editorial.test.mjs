@@ -482,3 +482,11 @@ test('source diagnosis reports capture failures without calling OpenAI or publis
     else process.env.WIREGEEK_AUTOMATION_KEY = previous;
   }
 });
+
+
+test('editorial panel exposes a separate zero-AI source diagnostic action', () => {
+  const panel = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /action: "diagnose-editorial-sources"/);
+  assert.match(panel, /Diagnosticar fontes \(sem IA\)/);
+  assert.match(panel, /sourceDiagnosis\.sources/);
+});

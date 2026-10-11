@@ -44,11 +44,11 @@ function options({ value = draft(), verification = claims(value), onCall = () =>
 const generate = opts => generateSiteEditorialPreview({ supabase: db(), noticiaId: 7 }, opts);
 
 test('server enforces inclusive character, paragraph and excerpt boundaries', () => {
-  for (const [length, count, excerpt] of [[1000, 3, 120], [3500, 5, 280]]) {
+  for (const [length, count, excerpt] of [[1500, 3, 120], [3500, 5, 280]]) {
     const d = draft(length, count, excerpt);
     assert.equal(validateSiteEditorialInput({ materiaSite: d.materia_site, resumoSite: d.resumo_site }).valid, true);
   }
-  for (const [length, count, excerpt] of [[999, 3, 120], [3501, 5, 120], [1800, 2, 120], [1800, 6, 120], [1800, 5, 119], [1800, 5, 281]]) {
+  for (const [length, count, excerpt] of [[1499, 3, 120], [3501, 5, 120], [1800, 2, 120], [1800, 6, 120], [1800, 5, 119], [1800, 5, 281]]) {
     const d = draft(length, count, excerpt);
     assert.equal(validateSiteEditorialInput({ materiaSite: d.materia_site, resumoSite: d.resumo_site }).valid, false);
   }

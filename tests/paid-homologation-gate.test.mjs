@@ -18,7 +18,7 @@ test('real transport is blocked before checking key or executing any network req
   const before = process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED;
   process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED='1';
   try {
-    await assert.rejects(createOpenAIResponse({model:'test',purpose:'briefing',input:'dummy',maxOutputTokens:10}), /HOMOLOGATION_TRANSPORT_RESERVATION_REQUIRED/);
+    await assert.rejects(createOpenAIResponse({model:'test',purpose:'briefing',input:'dummy',maxOutputTokens:10}), /HOMOLOGATION_REQUEST_UNBOUNDED/);
   } finally {
     if (before === undefined) delete process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED;
     else process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED=before;

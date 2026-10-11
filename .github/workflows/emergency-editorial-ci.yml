@@ -7,6 +7,8 @@ on:
       - 'lib/openai-responses.mjs'
       - 'lib/paid-homologation-gate.mjs'
       - 'lib/paid-homologation-reserved-transport.mjs'
+      - 'lib/paid-homologation-pricing.mjs'
+      - 'tests/paid-homologation-pricing.test.mjs'
       - 'lib/editorial-pilot-reservation.mjs'
       - 'tests/paid-homologation-reserved-transport.test.mjs'
       - 'tests/paid-homologation-gate.test.mjs'

@@ -190,6 +190,8 @@ export default function SitePublicationPanel({
   const [reviewing, setReviewing] = useState(false);
   const [approvalReceipt, setApprovalReceipt] = useState(null);
   const [savingApproval, setSavingApproval] = useState(false);
+  const [diagnosingSources, setDiagnosingSources] = useState(false);
+  const [sourceDiagnosis, setSourceDiagnosis] = useState(null);
   const [savedApproval, setSavedApproval] = useState(null);
 
 
@@ -352,6 +354,26 @@ export default function SitePublicationPanel({
       excerpt:
         siteExcerpt,
     });
+
+  async function diagnoseEditorialSources() {
+    if (diagnosingSources || generating || publishing || loading) return;
+    setDiagnosingSources(true);
+    setSourceDiagnosis(null);
+    try {
+      const response = await fetch("/api/publicacoes?mode=site-publish", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "diagnose-editorial-sources", noticia_id: noticiaId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.data) throw new Error(result?.error || "Diagnostico indisponivel.");
+      if (mountedRef.current) setSourceDiagnosis(result.data);
+    } catch (error) {
+      if (mountedRef.current) setError(error?.message || "Falha no diagnostico das fontes.");
+    } finally {
+      if (mountedRef.current) setDiagnosingSources(false);
+    }
+  }
 
   async function generateEditorial() {
     if (
@@ -778,6 +800,11 @@ export default function SitePublicationPanel({
             </div>
           </div>
 
+          <button type="button" onClick={diagnoseEditorialSources}
+            disabled={loading || diagnosingSources || generating || publishing}
+            className="border border-wg-border-strong px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-wg-muted disabled:opacity-40">
+            {diagnosingSources ? "Diagnosticando..." : "Diagnosticar fontes (sem IA)"}
+          </button>
           <button
             type="button"
             onClick={
@@ -798,6 +825,14 @@ export default function SitePublicationPanel({
           </button>
         </div>
 
+        {sourceDiagnosis && (
+          <div className="mt-3 border border-wg-border p-3 font-mono text-[10px] text-wg-muted">
+            <div>{sourceDiagnosis.captured}/{sourceDiagnosis.required} fontes capturadas — {sourceDiagnosis.ready ? "Pronto para gerar" : "Captura insuficiente"}</div>
+            {(sourceDiagnosis.sources || []).map(item => (
+              <div key={item.source}>Fonte {item.source}: {item.code}</div>
+            ))}
+          </div>
+        )}
         {reviewDraft && (
           <div className="mt-4 border border-wg-danger bg-wg-raised p-3">
             <div className="font-mono text-[10px] font-bold uppercase text-wg-danger">

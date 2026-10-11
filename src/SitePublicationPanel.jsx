@@ -62,7 +62,7 @@ function validateSiteEditorialDraft({
     paragraphs.length > 10
   ) {
     errors.push(
-      "A materia precisa ter entre 6 e 10 paragrafos."
+      "A materia precisa ter entre 3 e 5 paragrafos."
     );
   }
 
@@ -962,7 +962,7 @@ export default function SitePublicationPanel({
             </span>
 
             <span>
-              esperado 6-10
+              esperado 3-5
             </span>
           </div>
         </div>

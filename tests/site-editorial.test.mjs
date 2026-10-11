@@ -110,15 +110,15 @@ test('invalid length or artificial repeated paragraphs skip the verification cal
   assert.equal(count, 2);
 });
 
-test('cache reuses only verified drafts; force regenerates; source changes invalidate', async () => {
+test('cache reuses structurally valid drafts; force regenerates; source changes invalidate', async () => {
   let calls = 0, source = snapshot;
   const opts = options({ onCall: () => calls++, captureSource: async () => source });
   await generate(opts); await generate(opts); assert.equal(calls, 1);
-  await generateSiteEditorialPreview({ supabase: db(), noticiaId: 7, forceRegenerate: true }, opts); assert.equal(calls, 4);
+  await generateSiteEditorialPreview({ supabase: db(), noticiaId: 7, forceRegenerate: true }, opts); assert.equal(calls, 2);
   source = { ...snapshot, text: snapshot.text + ' Mais dados.' };
-  await generate(opts); assert.equal(calls, 6);
+  await generate(opts); assert.equal(calls, 3);
   const bad = options({ value: draft(1799), onCall: () => calls++ });
-  await generate(bad); await generate(bad); assert.equal(calls, 8);
+  await generate(bad); await generate(bad); assert.equal(calls, 5);
 });
 
 function res() { return { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k] = v; },

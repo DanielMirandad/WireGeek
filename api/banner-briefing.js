@@ -859,9 +859,19 @@ async function handleBriefingGeneratedBanners(
     title_theme: "",
   };
 
+  // Preserve canonical franchise subtitles when the approved two-line
+  // thematic layout can represent both parts without rewriting either.
+  const canonicalTitleParts = String(briefing.titulo_curto || "")
+    .split(/:\\s*/, 2).map(part => part.trim());
+  const preserveCanonicalTitle = canonicalTitleParts.length === 2 &&
+    canonicalTitleParts.every(Boolean) &&
+    canonicalTitleParts[0].length <= 24 &&
+    canonicalTitleParts[1].length <= 32;
+
   try {
-    visualTitle =
-      await deriveBannerVisualTitle({
+    visualTitle = preserveCanonicalTitle
+      ? { title_main: canonicalTitleParts[0], title_theme: canonicalTitleParts[1] }
+      : await deriveBannerVisualTitle({
         categoria:
           briefing.categoria,
 
@@ -1011,7 +1021,7 @@ async function handleBriefingGeneratedBanners(
           visualTitle,
           error.code === "TITLE_MAIN_TOO_WIDE" ? "title_main" : "title_theme"
         );
-        if (!recoveredTitle) throw error;
+        if (!recoveredTitle || preserveCanonicalTitle) throw error;
         visualTitle = recoveredTitle;
 
         index--;

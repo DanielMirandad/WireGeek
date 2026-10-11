@@ -496,7 +496,7 @@ export default function SitePublicationPanel({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "verify-editorial",
+          action: "authorize-editorial",
           noticia_id: noticiaId,
           materia_site: selectedDraft.materia_site,
           resumo_site: selectedDraft.resumo_site,
@@ -526,25 +526,35 @@ export default function SitePublicationPanel({
   }
 
   async function approveEditorial() {
-    if (reviewDraft || !editorialValidation.valid || savingApproval || generating || reviewing) {
-      setError(reviewDraft ? "Verifique o rascunho corrigido antes de aprovar." :
-        "A materia ainda nao atende ao contrato editorial.");
-      return;
-    }
-    if (!approvalReceipt) {
-      setError("Esta versao precisa ser verificada novamente antes de ser salva.");
+    if (!editorialValidation.valid || savingApproval || generating || reviewing) {
+      setError("A materia ainda nao atende ao contrato editorial.");
       return;
     }
     setSavingApproval(true);
     setError("");
     try {
+      let receipt = approvalReceipt;
+      if (!receipt) {
+        const authorization = await fetch("/api/publicacoes?mode=site-publish", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "authorize-editorial", noticia_id: noticiaId,
+            materia_site: siteBody, resumo_site: siteExcerpt }),
+        });
+        const authorized = await authorization.json().catch(() => ({}));
+        if (!authorization.ok || !authorized?.data?.approval_receipt) {
+          throw new Error(authorized?.error || "Nao foi possivel autorizar o texto.");
+        }
+        receipt = authorized.data.approval_receipt;
+        if (mountedRef.current) setApprovalReceipt(receipt);
+      }
       const response = await fetch("/api/publicacoes?mode=site-publish", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "approve-editorial", noticia_id: noticiaId,
           materia_site: siteBody, resumo_site: siteExcerpt,
-          approval_receipt: approvalReceipt,
+          approval_receipt: receipt,
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -566,10 +576,6 @@ export default function SitePublicationPanel({
   }
 
   async function publish() {
-    if (reviewDraft) {
-      setError("Rascunho rejeitado: publicacao bloqueada ate nova verificacao.");
-      return;
-    }
     if (
       publishing ||
       generating ||
@@ -794,7 +800,7 @@ export default function SitePublicationPanel({
         {reviewDraft && (
           <div className="mt-4 border border-wg-danger bg-wg-raised p-3">
             <div className="font-mono text-[10px] font-bold uppercase text-wg-danger">
-              Rascunho rejeitado — somente revisao, publicacao bloqueada
+              Rascunho anterior — revisao humana disponivel
             </div>
             <div className="mt-2 font-mono text-[10px] text-wg-muted">
               {reviewDraft.issue?.unidade
@@ -839,7 +845,7 @@ export default function SitePublicationPanel({
               />
             </label>
             <label className="mt-3 block font-mono text-[9px] uppercase text-wg-muted">
-              Materia rejeitada — edite e verifique novamente
+              Materia para revisao manual
               <textarea
                 value={reviewDraft.materia_site}
                 onChange={event => setReviewDraft(current => ({
@@ -852,7 +858,7 @@ export default function SitePublicationPanel({
               />
             </label>
             <div className="mt-2 font-mono text-[9px] text-wg-muted">
-              O texto rejeitado permanece apenas nesta sessao da pagina. A nova verificacao pode consumir uma chamada OpenAI.
+              O texto rejeitado permanece apenas nesta sessao da pagina. A autorizacao manual nao realiza nova chamada OpenAI.
             </div>
             <button
               type="button"
@@ -860,7 +866,7 @@ export default function SitePublicationPanel({
               disabled={reviewing || generating || publishing}
               className="wg-button wg-button-secondary wg-button-compact mt-3 font-mono uppercase"
             >
-              {reviewing ? "Verificando revisao..." : "Verificar texto corrigido"}
+              {reviewing ? "Autorizando..." : "Usar texto corrigido"}
             </button>
           </div>
         )}
@@ -1001,7 +1007,7 @@ export default function SitePublicationPanel({
                 })}
                 className="wg-button wg-button-secondary wg-button-compact font-mono uppercase"
               >
-                {reviewing ? "Verificando..." : "Verificar texto existente"}
+                {reviewing ? "Autorizando..." : "Autorizar texto existente"}
               </button>
             )}
             <button
@@ -1097,7 +1103,6 @@ export default function SitePublicationPanel({
               !editorialApproved ||
               !savedApproval ||
               !editorialValidation.valid ||
-              Boolean(reviewDraft) ||
               reviewing
             }
             className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"

@@ -1,3 +1,6 @@
+import { checkPreviewLedgerPostAccess } from '../lib/preview-ledger-post-guard.mjs';
+import { hasValidSession } from './auth.js';
+import { runPreviewLedgerHomologation } from '../lib/preview-ledger-homologation.mjs';
 import { createClient } from '@supabase/supabase-js';
 import { assertPreviewSupabaseIsolation } from '../lib/preview-supabase-isolation.mjs';
 
@@ -21,9 +24,61 @@ export async function checkPreviewLedgerHealth(env = process.env, makeClient = c
   }
 }
 
-export default async function handler(req, res) {
+export function createPreviewLedgerHandler(dependencies = {}) {
+  return async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'GET') return res.status(405).json({ ok: false });
-  const result = await checkPreviewLedgerHealth();
-  return res.status(result.status).json(result.body);
+
+  if (req.method === 'GET') {
+    const result = await checkPreviewLedgerHealth();
+    return res.status(result.status).json(result.body);
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ ok: false });
+  }
+
+  const denial = checkPreviewLedgerPostAccess(
+    req,
+    process.env,
+    dependencies.validateSession ?? hasValidSession,
+  );
+
+  if (denial) {
+    return res.status(denial.status).json(denial.body);
+  }
+
+  try {
+    assertPreviewSupabaseIsolation(process.env);
+
+    const supabase = (dependencies.createClient ?? createClient)(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SECRET_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      },
+    );
+
+    assertPreviewSupabaseIsolation(process.env, supabase);
+
+    const result = await (dependencies.runHomologation ?? runPreviewLedgerHomologation)(supabase);
+
+    return res.status(result.ok === true ? 200 : 503).json({
+      ok: result.ok === true,
+      code: result.ok === true
+        ? 'LEDGER_MOCK_HOMOLOGATION_PASSED'
+        : 'LEDGER_HOMOLOGATION_FAILED',
+    });
+  } catch {
+    return res.status(503).json({
+      ok: false,
+      code: 'LEDGER_HOMOLOGATION_UNAVAILABLE',
+    });
+  }
 }
+}
+
+export default createPreviewLedgerHandler();

@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'lib/source-snapshot.mjs'
+      - 'lib/openai-responses.mjs'
+      - 'lib/paid-homologation-gate.mjs'
+      - 'tests/paid-homologation-gate.test.mjs'
+      - 'package.json'
       - 'tests/source-snapshot.test.mjs'
       - '.github/workflows/emergency-editorial-ci.yml'
   workflow_dispatch:

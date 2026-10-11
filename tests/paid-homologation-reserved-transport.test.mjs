@@ -70,3 +70,20 @@ test('an incorrect Supabase project prevents all sends', async () => {
   assert.equal(result.code,'PILOT_TEST_PROJECT_REQUIRED');
   assert.equal(sent,false);assert.equal(supabase.calls.length,0);
 });
+
+test('ledger budget exhaustion blocks all HTTP sends and settlement', async () => {
+ const supabase=db(); const calls=[];
+ supabase.rpc=async(name,args)=>{calls.push(name);return {data:false,error:null};};
+ const result=await executeReservedHomologation({supabase,reservation,send:async()=>{calls.push('HTTP');return response;}});
+ assert.equal(result.success,false);assert.equal(result.code,'PILOT_RESERVATION_DENIED');
+ assert.deepEqual(calls,['reserve_editorial_pilot_request']);
+});
+test('usage reconciliation reports exact measured micro-dollar charge', async () => {
+ const supabase=db();
+ const result=await executeReservedHomologation({supabase,reservation,send:async()=>response});
+ assert.equal(result.success,true);
+ const completion=supabase.calls.find(x=>x.name==='complete_editorial_pilot_reservation');
+ assert.equal(completion.args.p_input_tokens,30);
+ assert.equal(completion.args.p_output_tokens,20);
+ assert.equal(completion.args.p_actual_micro_usd,13);
+});

@@ -8,7 +8,7 @@ test("new Reel trims only article to fit 2200 characters", () => {
   const article = ("Notícia verificada sobre um lançamento anunciado oficialmente. ").repeat(45);
   const result = buildInstagramReelCaption({ article, hashtags, profileUsernames: ["bagacastudios"] });
   assert.ok(result.caption_length <= 2200);
-  assert.ok(result.caption.includes("https://bagacastudios.com.br"));
+  assert.ok(result.caption.includes("Confira a matéria completa no Bagaça Studios."));
   assert.ok(result.caption.includes("Perfis: @bagacastudios"));
   assert.ok(result.caption.endsWith(hashtags.join(" ")));
   assert.ok(result.caption.includes("…"));

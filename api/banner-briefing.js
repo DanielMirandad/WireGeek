@@ -862,7 +862,7 @@ async function handleBriefingGeneratedBanners(
   // Preserve canonical franchise subtitles when the approved two-line
   // thematic layout can represent both parts without rewriting either.
   const canonicalTitleParts = String(briefing.titulo_curto || "")
-    .split(/:\\s*/, 2).map(part => part.trim());
+    .split(/:\s*/, 2).map(part => part.trim());
   const preserveCanonicalTitle = canonicalTitleParts.length === 2 &&
     canonicalTitleParts.every(Boolean) &&
     canonicalTitleParts[0].length <= 24 &&

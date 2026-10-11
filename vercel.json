@@ -25,8 +25,17 @@
     },
     "api/briefing-executor.js": {
       "maxDuration": 300
+    },
+    "api/site-autopublish.js": {
+      "maxDuration": 300
     }
   },
+  "crons": [
+    {
+      "path": "/api/site-autopublish",
+      "schedule": "0 13 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

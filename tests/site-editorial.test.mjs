@@ -84,13 +84,22 @@ test('source failures or invalid snapshots fail closed without inference', async
   }
 });
 
-test('all canonical URLs are captured once; any blocked source blocks the draft', async () => {
+test('unavailable secondary source is excluded and verified source still permits safe draft', async () => {
   const row = { ...news, fontes: [{ url: news.url }, { url: 'https://example.org/second' }] };
   const captured = [];
+  const inputs = [];
   const result = await generateSiteEditorialPreview({ supabase: db(row), noticiaId: 7 }, options({ captureSource: async url => {
     captured.push(url); if (url.endsWith('second')) throw new Error('BLOCKED'); return snapshot;
-  }, onCall: () => assert.fail('inference') }));
-  assert.equal(result.status, 422); assert.deepEqual(captured, [news.url, row.fontes[1].url]);
+  }, onCall: request => inputs.push(request.input) }));
+  assert.equal(result.status, 200); assert.deepEqual(captured, [news.url, row.fontes[1].url]);
+  assert.ok(inputs.length > 0);
+  assert.ok(inputs.every(input => !input.includes('https://example.org/second')));
+});
+test('all blocked sources still prevent site editorial generation', async () => {
+  const row = { ...news, fontes: [{ url: 'https://example.org/second' }] };
+  const result = await generateSiteEditorialPreview({ supabase: db(row), noticiaId: 7 },
+    options({ captureSource: async () => { throw new Error('BLOCKED'); }, onCall: () => assert.fail('inference') }));
+  assert.equal(result.status, 422);
 });
 
 test('invalid length or artificial repeated paragraphs skip the verification call', async () => {

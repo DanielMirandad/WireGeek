@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   resolveBriefingBannerImages,
+  searchQueries,
 } from "../lib/banner-images-briefing.mjs";
 
 import {
@@ -898,3 +899,12 @@ test(
     );
   }
 );
+
+test('busca de imagens prioriza o nome canônico da obra sem concatenar manchete', () => {
+ const request=makeRequest();
+ request.titulo_curto='The Relic: First Guardian';
+ request.titulo='The Relic: First Guardian chega ao Nintendo Switch 2 em 9 de outubro com fantasia sombria e 80 chefes';
+ request.banners[0].image_query=request.titulo;
+ assert.equal(searchQueries(request,request.banners[0])[0],'The Relic: First Guardian');
+ assert.ok(searchQueries(request,request.banners[0]).every(query=>query.length < 130));
+});

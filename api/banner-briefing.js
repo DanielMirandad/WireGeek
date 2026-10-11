@@ -1,3 +1,4 @@
+import { splitCanonicalVisualTitle } from "../lib/banner-canonical-title.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -6,6 +7,7 @@ import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib
 import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canonical.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
+import { shortenRejectedVisualTitle } from "../lib/banner-title-recovery.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 
@@ -858,9 +860,12 @@ async function handleBriefingGeneratedBanners(
     title_theme: "",
   };
 
+  const canonicalTitleParts = splitCanonicalVisualTitle(briefing.titulo_curto);
+  const preserveCanonicalTitle = canonicalTitleParts !== null;
   try {
-    visualTitle =
-      await deriveBannerVisualTitle({
+    visualTitle = preserveCanonicalTitle
+      ? { title_main: canonicalTitleParts[0], title_theme: canonicalTitleParts[1] }
+      : await deriveBannerVisualTitle({
         categoria:
           briefing.categoria,
 
@@ -995,7 +1000,7 @@ async function handleBriefingGeneratedBanners(
         thematicTitleRegenerated = true;
 
         console.warn(
-          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; regenerando uma unica vez.",
+          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; encurtando sem nova inferencia.",
           {
             noticia_id:
               body.noticia_id ||
@@ -1006,33 +1011,12 @@ async function handleBriefingGeneratedBanners(
           }
         );
 
-        visualTitle =
-          await deriveBannerVisualTitle(
-            {
-              categoria:
-                briefing.categoria,
-
-              titulo:
-                briefing.titulo,
-
-              titulo_curto:
-                briefing.titulo_curto,
-
-              materia:
-                briefing.materia,
-            },
-            {
-              forceRegenerate: true,
-              widthFeedback: {
-                field: error.code === "TITLE_MAIN_TOO_WIDE"
-                  ? "title_main"
-                  : "title_theme",
-                previousValue: error.code === "TITLE_MAIN_TOO_WIDE"
-                  ? visualTitle.title_main
-                  : visualTitle.title_theme,
-              },
-            }
-          );
+        const recoveredTitle = shortenRejectedVisualTitle(
+          visualTitle,
+          error.code === "TITLE_MAIN_TOO_WIDE" ? "title_main" : "title_theme"
+        );
+        if (!recoveredTitle || preserveCanonicalTitle) throw error;
+        visualTitle = recoveredTitle;
 
         index--;
         continue;

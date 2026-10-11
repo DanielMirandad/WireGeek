@@ -40,7 +40,7 @@ test('deterministic visible text, NFC, title, date, stable hash and final URL', 
   assert.equal(verified.candidatos[0].evidencias[0].publicado_em, '2026-10-04');
   assert.equal(raw.candidatos[0].evidencias[0].publicado_em, 'inventada');
   raw.candidatos[0].evidencias[0].trecho = 'Uma paráfrase da atualização';
-  await assert.rejects(verifyCollectedSources(raw, { captureSource: async () => snapshot }), /NOT_LITERAL/);
+  await assert.rejects(verifyCollectedSources(raw, { captureSource: async () => snapshot }), /SOURCE_NO_VERIFIED_CANDIDATES/);
 });
 test('redirects revalidate destinations and enforce a finite limit', async () => {
   await assert.rejects(captureSourceSnapshot('https://example.org/a', { resolve, request: transport([{ status: 302, headers: { location: 'http://127.0.0.1/a' } }]) }), /SSRF/);
@@ -205,7 +205,7 @@ test('literalidade continua rejeitando parafrase semanticamente parecida', async
           async () => snapshot
       }
     ),
-    /SOURCE_EXCERPT_NOT_LITERAL/
+    /SOURCE_NO_VERIFIED_CANDIDATES/
   );
 });
 
@@ -240,4 +240,26 @@ test('text-only and non-article pages keep fallback content and do not accept ti
   assert.match(snapshot.text, /informação comprovada/);
   assert.equal(snapshot.title, 'Boletim completo');
   assert.match(extractSource('Conteúdo oficial. '.repeat(10), 'text/plain', 'https://example.org/plain').text, /Conteúdo oficial/);
+});
+
+test('discard blocked candidate but preserve independently literal verified story', async () => {
+  const evidence = (url, trecho) => ({ fato: 'Fato confirmado', fonte: 'Fonte oficial', url, trecho, publicado_em: '' });
+  const collected = { candidatos: [
+    { titulo: 'Bloqueado', evidencias: [evidence('https://blocked.example/a', 'unverified text')] },
+    { titulo: 'Comprovado', evidencias: [evidence('https://valid.example/story', 'Official release confirmed today')] },
+  ] };
+  const verified = await verifyCollectedSources(collected, {
+    captureSource: async url => {
+      if (url.includes('blocked')) throw new Error('SOURCE_HTTP_403');
+      return { final_url: url, text: 'Official release confirmed today with full details.', publicado_em: '2026-10-11', source_hash: 'sha256:' + 'a'.repeat(64) };
+    },
+  });
+  assert.equal(verified.candidatos.length, 1);
+  assert.equal(verified.candidatos[0].titulo, 'Comprovado');
+  assert.equal(verified.candidatos[0].evidencias[0].source_verified, true);
+});
+test('all unverified candidates still block the editorial run', async () => {
+  await assert.rejects(verifyCollectedSources({ candidatos: [{
+    evidencias: [{ fato: 'Unverified', fonte: 'None', url: 'https://blocked.example', trecho: 'not found' }],
+  }] }, { captureSource: async () => { throw new Error('SOURCE_HTTP_403'); } }), /SOURCE_NO_VERIFIED_CANDIDATES/);
 });

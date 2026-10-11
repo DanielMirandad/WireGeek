@@ -71,3 +71,13 @@ test('legacy layout retains positions; thematic overflow fails instead of scalin
   assert.equal(layout.bounds.find(b=>b.text==='BAGAÇA').top,1260);
   await assert.rejects(renderBanner({...input,editorialCopy:'UMA NOTICIA COM MUITOS DETALHES IMPORTANTES PARA O PUBLICO. '.repeat(3)}),e=>e.code==='COPY_TOO_LONG');
 });
+
+
+test('thematic title preserves THE RELIC as two visibly separated words', async () => {
+  const {layout} = await renderBanner({...input,titleMain:'THE RELIC',titleTheme:'FIRST GUARDIAN'});
+  const main = layout.bounds.find(b => b.text === 'THE RELIC');
+  assert.ok(main, 'original word boundary must remain in title text');
+  assert.ok(main.width <= 950, 'thematic title must fit approved width');
+  assert.ok(layout.bounds.some(b => b.text === 'FIRST GUARDIAN'), 'original subtitle must be preserved');
+  assert.equal(main.top, 826, 'approved vertical layout must remain unchanged');
+});

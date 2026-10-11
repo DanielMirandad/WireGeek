@@ -1020,7 +1020,6 @@ export default function SitePublicationPanel({
                 generating ||
                 publishing ||
                 !editorialValidation.valid ||
-                Boolean(reviewDraft) ||
                 reviewing
               }
               className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"

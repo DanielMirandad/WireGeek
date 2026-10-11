@@ -1,3 +1,4 @@
+import { assessAutomaticImageReview } from "../lib/auto-image-review.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -1323,6 +1324,13 @@ async function handleBriefingGeneratedBanners(
     });
   }
 
+  // Eligibility is informational only. Image review never grants publication status.
+  const autoImageReview = assessAutomaticImageReview(images, {
+    enabled: process.env.WIREGEEK_AUTO_IMAGE_REVIEW === 'true',
+    trustedHosts: String(process.env.WIREGEEK_AUTO_IMAGE_TRUSTED_HOSTS || '')
+      .split(',').map(host => host.trim()).filter(Boolean),
+  });
+
   const autoPublishEnabled =
     !manualImageOverride &&
     isAutoPublishEnabled();
@@ -1434,6 +1442,8 @@ async function handleBriefingGeneratedBanners(
 
       auto_approval:
         autoApproval,
+
+      auto_image_review: autoImageReview,
 
       banners:
         completed,

@@ -42,3 +42,67 @@ for(const [label,url,allowed] of [
   assert.equal(res.code,500);
   assert.match(res.data.error,/Destino de publicacao Preview nao autorizado/);
 });
+
+test('authorized Preview dispatch uses safe POST and verifies persisted site_news', async () => {
+  const endpoint = `https://${host}${path}`;
+  const saved = new Map(vars.map(key => [key, process.env[key]]));
+  const previousFetch = globalThis.fetch;
+  const published = { id: 91, origin: 'wiregeek', wiregeek_noticia_id: 1, slug: 'noticia-aprovada', status: 'published' };
+  let called = 0;
+  let siteRead = 0;
+  try {
+    Object.assign(process.env, {
+      VERCEL_ENV: 'preview',
+      SUPABASE_URL: `https://${ref}.supabase.co`,
+      NEXT_PUBLIC_SUPABASE_URL: `https://${ref}.supabase.co`,
+      SUPABASE_SERVICE_ROLE_KEY: jwt('service_role'),
+      SUPABASE_SECRET_KEY: '',
+      WIREGEEK_AUTOMATION_KEY: 'test-secret',
+      WIREGEEK_ACCESS_KEY: '',
+      BAGACA_SITE_PUBLISH_URL: endpoint,
+      BAGACA_SITE_PREVIEW_PUBLISH_HOST: host,
+      BAGACA_SITE_PUBLISH_KEY: 'synthetic-publish-key',
+    });
+    globalThis.fetch = async (url, options) => {
+      called++;
+      assert.equal(url, endpoint);
+      assert.equal(options.method, 'POST');
+      assert.equal(options.redirect, 'error');
+      assert.equal(options.headers.Authorization, 'Bearer synthetic-publish-key');
+      assert.equal(options.headers['Content-Type'], 'application/json');
+      assert.deepEqual(JSON.parse(options.body), {
+        noticia_id: 1,
+        image_url: 'https://example.org/official.jpg',
+      });
+      return { ok: true, status: 201, json: async () => ({ action: 'published' }) };
+    };
+    const mocked = database();
+    const originalFrom = mocked.from.bind(mocked);
+    mocked.from = (table) => {
+      if (table === 'site_news') {
+        siteRead++;
+        return chain({ data: [published], error: null });
+      }
+      return originalFrom(table);
+    };
+    const res = response();
+    await handler({
+      method: 'POST',
+      headers: { 'x-wiregeek-automation-key': 'test-secret' },
+      body: { noticia_id: 1, action: 'publish' },
+      query: {},
+    }, res, { supabase: mocked });
+    assert.equal(called, 1);
+    assert.equal(siteRead, 1);
+    assert.equal(res.code, 201);
+    assert.equal(res.data.success, true);
+    assert.equal(res.data.data.slug, 'noticia-aprovada');
+    assert.equal(res.data.data.site_url, `https://${host}/noticias/noticia-aprovada`);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});

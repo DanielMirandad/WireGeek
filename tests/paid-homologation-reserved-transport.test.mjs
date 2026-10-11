@@ -42,3 +42,31 @@ test('unverifiable token usage retains the reservation',async()=>{
  assert.equal(result.code,'HOMOLOGATION_COST_UNVERIFIED');
  assert.equal(supabase.calls.length,1);
 });
+
+test('insufficient reserved price rejects before ledger and send', async () => {
+  const supabase=db(); let sent=false;
+  const result=await executeReservedHomologation({supabase,
+    reservation:{...reservation,reserveMicroUsd:1},
+    send:async()=>{sent=true;return response;}});
+  assert.equal(result.code,'HOMOLOGATION_PRICE_RESERVATION_INSUFFICIENT');
+  assert.equal(sent,false);assert.equal(supabase.calls.length,0);
+});
+test('failed settlement retains the reservation and reports uncertainty', async () => {
+  const supabase=db();let sends=0;
+  const real=supabase.rpc.bind(supabase);
+  supabase.rpc=async(name,args)=>name==='complete_editorial_pilot_reservation'
+    ? {data:false,error:null} : real(name,args);
+  const result=await executeReservedHomologation({supabase,reservation,
+    send:async()=>{sends++;return response;}});
+  assert.equal(result.code,'HOMOLOGATION_SETTLEMENT_UNCONFIRMED');
+  assert.equal(sends,1);
+  assert.equal(supabase.calls.filter(x=>x.name==='reserve_editorial_pilot_request').length,1);
+});
+test('an incorrect Supabase project prevents all sends', async () => {
+  const supabase=db();supabase.supabaseUrl='https://not-test.supabase.co/';
+  let sent=false;
+  const result=await executeReservedHomologation({supabase,reservation,
+    send:async()=>{sent=true;return response;}});
+  assert.equal(result.code,'PILOT_TEST_PROJECT_REQUIRED');
+  assert.equal(sent,false);assert.equal(supabase.calls.length,0);
+});

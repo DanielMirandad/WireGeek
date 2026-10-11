@@ -49,11 +49,11 @@ function validateSiteEditorialDraft({
   const errors = [];
 
   if (
-    normalizedBody.length < 1800 ||
+    normalizedBody.length < 1500 ||
     normalizedBody.length > 3500
   ) {
     errors.push(
-      "A materia precisa ter entre 1800 e 3500 caracteres."
+      "A materia precisa ter entre 1500 e 3500 caracteres."
     );
   }
 
@@ -955,7 +955,7 @@ export default function SitePublicationPanel({
             </span>
 
             <span>
-              minimo 1800
+              minimo 1500
             </span>
 
             <span>

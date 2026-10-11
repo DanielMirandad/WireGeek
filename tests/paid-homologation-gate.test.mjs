@@ -76,3 +76,19 @@ test('PR30 Preview never bypasses ledger when pilot flag is off', async () => {
   for(const name of names) if(saved[name]===undefined) delete process.env[name]; else process.env[name]=saved[name];
  }
 });
+
+test('paid Preview rejects unexpected request knobs before ledger or HTTP', async () => {
+ const names=['VERCEL_ENV','VERCEL_GIT_COMMIT_REF','WIREGEEK_PAID_HOMOLOGATION_ENABLED'];
+ const saved=Object.fromEntries(names.map(k=>[k,process.env[k]]));
+ Object.assign(process.env,{VERCEL_ENV:'preview',VERCEL_GIT_COMMIT_REF:'fix/editorial-test-cost-gate',WIREGEEK_PAID_HOMOLOGATION_ENABLED:'1'});
+ try {
+  for(const overrides of [
+   {service_tier:'priority'}, {prompt_cache_retention:'24h'},
+   {input:[{type:'input_image',image_url:'data:image/png;base64,AA=='}]},
+   {text:{format:{type:'json_object'}}},
+   {reasoning:{effort:'high'}},
+  ]) {
+   await assert.rejects(createOpenAIResponse({model:'gpt-6-luna',purpose:'site-editorial',input:'hello',maxOutputTokens:50,...overrides}),/HOMOLOGATION_REQUEST_UNBOUNDED/);
+  }
+ } finally { for(const [k,v] of Object.entries(saved)) if(v===undefined) delete process.env[k];else process.env[k]=v; }
+});

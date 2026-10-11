@@ -859,10 +859,28 @@ async function handleBriefingGeneratedBanners(
     title_theme: "",
   };
 
-  // Preserve canonical franchise subtitles when the approved two-line
-  // thematic layout can represent both parts without rewriting either.
-  const canonicalTitleParts = String(briefing.titulo_curto || "")
-    .split(/:\s*/, 2).map(part => part.trim());
+  // Prefer the exact canonical short title, splitting only at an existing
+  // colon or word boundary. Never paraphrase a title that fits two lines.
+  const canonicalShortTitle = String(briefing.titulo_curto || "").trim();
+  const colonIndex = canonicalShortTitle.indexOf(":");
+  let canonicalTitleParts = [];
+  if (colonIndex > 0) {
+    canonicalTitleParts = [
+      canonicalShortTitle.slice(0, colonIndex).trim(),
+      canonicalShortTitle.slice(colonIndex + 1).trim(),
+    ];
+  } else {
+    const words = canonicalShortTitle.split(/\s+/).filter(Boolean);
+    for (let cut = 1; cut < words.length; cut++) {
+      const left = words.slice(0, cut).join(" ");
+      const right = words.slice(cut).join(" ");
+      if (left.length <= 24 && right.length <= 32 &&
+          (!canonicalTitleParts.length || Math.abs(left.length - right.length) <
+            Math.abs(canonicalTitleParts[0].length - canonicalTitleParts[1].length))) {
+        canonicalTitleParts = [left, right];
+      }
+    }
+  }
   const preserveCanonicalTitle = canonicalTitleParts.length === 2 &&
     canonicalTitleParts.every(Boolean) &&
     canonicalTitleParts[0].length <= 24 &&

@@ -8,6 +8,7 @@ const validEnv = {
   VERCEL_ENV: 'preview',
   WIREGEEK_LEDGER_HOMOLOGATION_ENABLED: '1',
   VERCEL_URL: 'wiregeek-test.vercel.app',
+  WIREGEEK_ACCESS_KEY: 'synthetic-ledger-session-key',
 };
 
 function request(overrides = {}) {
@@ -123,6 +124,7 @@ test('malformed content-type array fails closed', async () => {
       VERCEL_ENV: 'preview',
       VERCEL_URL: 'wiregeek-test.vercel.app',
       WIREGEEK_LEDGER_HOMOLOGATION_ENABLED: '1',
+      WIREGEEK_ACCESS_KEY: validEnv.WIREGEEK_ACCESS_KEY,
     },
     () => true,
   );
@@ -148,6 +150,7 @@ test('malformed numeric content-type fails closed', async () => {
       VERCEL_ENV: 'preview',
       VERCEL_URL: 'wiregeek-test.vercel.app',
       WIREGEEK_LEDGER_HOMOLOGATION_ENABLED: '1',
+      WIREGEEK_ACCESS_KEY: validEnv.WIREGEEK_ACCESS_KEY,
     },
     () => true,
   );

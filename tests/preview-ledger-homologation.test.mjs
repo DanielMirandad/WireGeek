@@ -144,17 +144,7 @@ function makeLedger({
         const reservation = reservations.get(args.p_idempotency_key);
 
         if (!reservation) {
-          const budget = budgets.get(args.p_pilot_id);
-
-          if (
-            budget &&
-            budget.reserved_requests === 0 &&
-            budget.reserved_micro_usd === 0
-          ) {
-            budgets.delete(args.p_pilot_id);
-            return { data: true, error: null };
-          }
-
+          // The TEST cleanup RPC requires exactly one completed mock reservation.
           return { data: false, error: null };
         }
 
@@ -201,23 +191,29 @@ test('mock completes reservation and cleans only its fixture', async () => {
   ]);
 });
 
-test('denied reservation cleans empty fixture without releasing claim', async () => {
+test('denied reservation retains empty fixture and claim when cleanup is unconfirmed', async () => {
   const ledger = makeLedger({ denyReservation: true });
 
   const result = await runPreviewLedgerHomologation(ledger.db);
 
   assert.equal(result.ok, false);
-  assert.equal(result.code, 'PILOT_RESERVATION_DENIED');
-  assert.equal(result.cleanupConfirmed, true);
-  assert.equal(ledger.budgets.size, 0);
+  assert.equal(result.code, 'EMPTY_FIXTURE_CLEANUP_UNCONFIRMED');
+  assert.equal(result.cleanupConfirmed, false);
+  assert.equal(ledger.budgets.size, 1);
+  assert.ok(ledger.budgets.has(result.fixtureId));
   assert.equal(ledger.reservations.size, 0);
   assert.ok(ledger.db.claimed);
+
+  const repeated = await runPreviewLedgerHomologation(ledger.db);
+  assert.equal(repeated.code, 'LEDGER_HOMOLOGATION_ALREADY_CLAIMED');
+  assert.equal(ledger.budgets.size, 1);
 
   assert.deepEqual(ledger.calls, [
     'claim_editorial_pilot_mock_run',
     'create',
     'reserve_editorial_pilot_request',
     'cleanup_editorial_pilot_mock_fixture',
+    'claim_editorial_pilot_mock_run',
   ]);
 });
 

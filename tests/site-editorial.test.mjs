@@ -237,7 +237,7 @@ test('frontend review retains rejected text separately and blocks approval and p
   const panel = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
   assert.match(panel, /setReviewDraft\(data\.review\)/);
   assert.match(panel, /action: "authorize-editorial"/);
-  assert.match(panel, /Boolean\(reviewDraft\)/);
+  assert.doesNotMatch(panel, /Boolean\(reviewDraft\)\s*\|\|\s*reviewing/);
   assert.match(panel, /Rascunho anterior/);
 });
 
@@ -416,4 +416,14 @@ test('direct publication attempts fail closed without a valid persisted approval
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
+});
+
+
+test('human approval does not depend on obsolete AI review and obtains a receipt without inference', () => {
+  const panel = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
+  assert.match(panel, /action: "authorize-editorial"/);
+  assert.match(panel, /action: "approve-editorial"/);
+  assert.match(panel, /receipt = authorized\.data\.approval_receipt/);
+  assert.match(panel, /!editorialValidation\.valid/);
+  assert.doesNotMatch(panel, /Boolean\(reviewDraft\)\s*\|\|\s*reviewing/);
 });

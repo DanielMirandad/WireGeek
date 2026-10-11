@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { buildInstagramReelCaption, buildGroupInstagramReelCaption } from "../lib/instagram-reel.mjs";
 
 const hashtags = ["#games", "#geek", "#noticias", "#reels", "#bagacastudios"];
@@ -29,4 +30,33 @@ test("new group without container applies same caption limit", () => {
     group: [{ instagram_parent_container_id: null }],
   });
   assert.ok(result.caption_length <= 2200);
+});
+
+
+test("historical container with a valid long caption is matched without applying new limit", () => {
+  const article = "Noticia historica sobre jogos e lancamentos. ".repeat(54);
+  const footer = [
+    "---",
+    "Estaremos acompanhando tudo e traremos as informações até vocês.",
+    "SEGUE A GENTE, COMPARTILHA E COMENTA!",
+    "LIVES TODOS OS SÁBADOS!!",
+    "https://www.twitch.tv/bagacacast_lives",
+    "https://youtube.com/@bagacastudios",
+    "REDES SOCIAIS:",
+    "Instagram: @bagacastudios",
+    "Youtube: @bagacastudios",
+    "SEJA VIP:",
+    "https://linktr.ee/Bagacacast",
+    "CANAL DE CORTES:",
+    "https://www.youtube.com/@CortesBCastOficial",
+  ].join("\n");
+  const caption = [article.trim(), footer, hashtags.join(" ")].join("\n\n");
+  assert.ok(caption.length > 2200);
+  const hash = createHash("sha256").update(caption, "utf8").digest("hex");
+  const result = buildGroupInstagramReelCaption({
+    article, hashtags,
+    group: [{ instagram_parent_container_id: "existing-container", instagram_caption_sha256: hash }],
+  });
+  assert.equal(result.caption, caption);
+  assert.equal(result.caption_sha256, hash);
 });

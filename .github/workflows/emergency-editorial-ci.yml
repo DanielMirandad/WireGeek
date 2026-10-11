@@ -1,0 +1,22 @@
+name: Emergency editorial regression
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/source-snapshot.mjs'
+      - 'tests/source-snapshot.test.mjs'
+      - '.github/workflows/emergency-editorial-ci.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: git diff --check

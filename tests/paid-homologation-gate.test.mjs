@@ -63,3 +63,16 @@ test('paid request serialization is pinned between reserve and HTTP dispatch', a
   assert.match(source, /reservedBody \?\? JSON\.stringify\(body\)/);
   assert.match(source, /payload\.service_tier = 'default'/);
 });
+
+test('PR30 Preview never bypasses ledger when pilot flag is off', async () => {
+ const names=['VERCEL_ENV','VERCEL_GIT_COMMIT_REF','WIREGEEK_PAID_HOMOLOGATION_ENABLED'];
+ const saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ process.env.VERCEL_ENV='preview';
+ process.env.VERCEL_GIT_COMMIT_REF='fix/editorial-test-cost-gate';
+ delete process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED;
+ try {
+  await assert.rejects(createOpenAIResponse({model:'gpt-6-luna',purpose:'site-editorial',input:'test',maxOutputTokens:100}), /HOMOLOGATION_PREVIEW_DISABLED/);
+ } finally {
+  for(const name of names) if(saved[name]===undefined) delete process.env[name]; else process.env[name]=saved[name];
+ }
+});

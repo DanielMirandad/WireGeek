@@ -54,3 +54,12 @@ test('paid requests cannot run outside the isolated PR30 Preview', async () => {
    await assert.rejects(createOpenAIResponse({model:'gpt-6-luna',purpose:'site-editorial',input:'test',maxOutputTokens:10}), /HOMOLOGATION_PREVIEW_BRANCH_REQUIRED/);
  } finally { for(const [k,v] of Object.entries(saved)){if(v===undefined)delete process.env[k];else process.env[k]=v;} }
 });
+
+test('paid request serialization is pinned between reserve and HTTP dispatch', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../lib/openai-responses.mjs', import.meta.url), 'utf8');
+  assert.match(source, /const serializedBody = JSON\.stringify\(payload\)/);
+  assert.match(source, /reservedBody: serializedBody/);
+  assert.match(source, /reservedBody \?\? JSON\.stringify\(body\)/);
+  assert.match(source, /payload\.service_tier = 'default'/);
+});

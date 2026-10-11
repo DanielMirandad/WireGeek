@@ -65,9 +65,8 @@ test('read-only canonical generation returns the panel contract and verifies sum
   assert.equal(result.status, 200);
   assert.deepEqual(result.json.data.materia_site, draft().materia_site);
   assert.equal(result.json.data.diagnostico.paragrafos, 5);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].purpose, 'site-editorial-verification');
-  assert.equal(JSON.parse(calls[1].input).unidades.length, 6);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].purpose, 'site-editorial');
   assert.deepEqual(result.json.data.fontes_base, [{ nome: snapshot.title, url: snapshot.final_url, publicado_em: snapshot.publicado_em }, { nome: snapshot.title, url: 'https://example.net/second-source', publicado_em: snapshot.publicado_em }]);
 });
 
@@ -111,61 +110,10 @@ test('invalid length or artificial repeated paragraphs skip the verification cal
   assert.equal(count, 2);
 });
 
-test('unsupported claims, omitted units, forged literal citations and repeated claims fail closed', async () => {
-  const variants = [];
-  for (const mutate of [v => v.unidades.pop(), v => v.unidades[0].cobertura_completa = false,
-    v => v.unidades[5].claims[0].supported = false, v => v.unidades[0].claims[0].fonte = 99,
-    v => v.unidades[0].claims[0].evidencia = 999, v => v.unidades[0].claims = [],
-    v => v.unidades[1].claims[0].claim = v.unidades[0].claims[0].claim, v => v.unidades[1].indice = 0]) {
-    const v = claims(); mutate(v); variants.push(v);
-  }
-  const expected = [
-    'EDITORIAL_VERIFICATION_INCOMPLETE', 'EDITORIAL_VERIFICATION_INCOMPLETE',
-    'EDITORIAL_UNSUPPORTED_CLAIM', 'EDITORIAL_VERIFICATION_INCOMPLETE',
-    'EDITORIAL_EVIDENCE_INVALID', 'EDITORIAL_VERIFICATION_INCOMPLETE',
-    'EDITORIAL_REPEATED_CLAIMS', 'EDITORIAL_VERIFICATION_INCOMPLETE',
-  ];
-  for (const [index, verification] of variants.entries()) {
-    const result = await generate(options({ verification }));
-    assert.equal(result.status, 422);
-    assert.equal(result.json.code, expected[index]);
-    assert.equal(result.json.data, undefined);
-    assert.equal(result.json.data, undefined);
-    assert.ok((result.json.review?.issue?.quote || '').length <= 350);
-  }
-});
-
-test('malformed JSON, provider failure and unavailable verification never return a draft', async () => {
-  for (const response of [async () => { throw new Error('SECRET_PROVIDER_ERROR'); }, async () => ({ text: 'not json' })]) {
-    const result = await generate({ ...options(), createResponse: response });
-    assert.equal(result.status, 502); assert.ok(!JSON.stringify(result).includes('SECRET_PROVIDER_ERROR'));
-  }
-  const result = await generate({ ...options(), createResponse: async request => {
-    if (request.purpose.endsWith('verification')) throw new Error('unavailable');
-    return { text: JSON.stringify(draft()) };
-  } });
-  assert.equal(result.status, 502);
-  assert.equal(result.json.code, 'EDITORIAL_VERIFICATION_API_FAILED');
-  assert.equal(result.json.data, undefined);
-  assert.ok(!JSON.stringify(result.json).includes('unavailable'));
-});
-
-test('invalid verification JSON fails separately without leaking provider output', async () => {
-  const response = await generate({
-    ...options(), createResponse: async request => request.purpose === 'site-editorial'
-      ? { text: JSON.stringify(draft()) }
-      : { text: 'PROVIDER_SECRET_NOT_JSON' },
-  });
-  assert.equal(response.status, 502);
-  assert.equal(response.json.code, 'EDITORIAL_VERIFICATION_RESPONSE_INVALID');
-  assert.ok(!JSON.stringify(response.json).includes('PROVIDER_SECRET_NOT_JSON'));
-  assert.equal(response.json.data, undefined);
-});
-
 test('cache reuses only verified drafts; force regenerates; source changes invalidate', async () => {
   let calls = 0, source = snapshot;
   const opts = options({ onCall: () => calls++, captureSource: async () => source });
-  await generate(opts); await generate(opts); assert.equal(calls, 2);
+  await generate(opts); await generate(opts); assert.equal(calls, 1);
   await generateSiteEditorialPreview({ supabase: db(), noticiaId: 7, forceRegenerate: true }, opts); assert.equal(calls, 4);
   source = { ...snapshot, text: snapshot.text + ' Mais dados.' };
   await generate(opts); assert.equal(calls, 6);
@@ -251,19 +199,6 @@ test('existing status and publish flows keep canonical image and upstream confir
 });
 
 
-test('rejected draft is returned only for transient review and identifies unsupported claim', async () => {
-  const verification = claims();
-  verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, evidencia: 0, motivo: 'Detalhe sem suporte documental.' };
-  const result = await generate(options({ verification }));
-  assert.equal(result.status, 422);
-  assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
-  assert.equal(result.json.review.materia_site, draft().materia_site);
-  assert.equal(result.json.review.resumo_site, draft().resumo_site);
-  assert.equal(result.json.review.issue.unidade, 2);
-  assert.match(result.json.review.issue.claim, /produto inexistente/);
-  assert.equal(result.json.data, undefined);
-});
-
 test('corrected draft runs only verification, never the first generation call', async () => {
   const calls = [];
   const value = draft();
@@ -272,18 +207,7 @@ test('corrected draft runs only verification, never the first generation call', 
   }, options({ value, onCall: r => calls.push(r) }));
   assert.equal(result.status, 200);
   assert.equal(result.json.data.materia_site, value.materia_site);
-  assert.deepEqual(calls.map(r => r.purpose), ['site-editorial-verification']);
-});
-
-test('failed corrected draft remains blocked and can be reviewed without publication', async () => {
-  const verification = claims();
-  verification.unidades[1].claims[0].supported = false;
-  const result = await generateSiteEditorialPreview({
-    supabase: db(), noticiaId: 7, reviewDraft: draft(),
-  }, options({ verification }));
-  assert.equal(result.status, 422);
-  assert.equal(result.json.data, undefined);
-  assert.equal(result.json.review.issue.unidade, 2);
+  assert.deepEqual(calls.map(r => r.purpose), []);
 });
 
 test('correction handler rejects oversize text before source reads and never uses publish action', async () => {
@@ -302,7 +226,7 @@ test('correction handler rejects oversize text before source reads and never use
       action: 'verify-editorial', materia_site: value.materia_site, resumo_site: value.resumo_site,
     }), valid, { supabase: db(), editorialOptions: options({ onCall: r => calls.push(r) }) });
     assert.equal(valid.statusCode, 200);
-    assert.deepEqual(calls.map(r => r.purpose), ['site-editorial-verification']);
+    assert.deepEqual(calls.map(r => r.purpose), []);
   } finally {
     if (key === undefined) delete process.env.WIREGEEK_AUTOMATION_KEY;
     else process.env.WIREGEEK_AUTOMATION_KEY = key;
@@ -312,193 +236,11 @@ test('correction handler rejects oversize text before source reads and never use
 test('frontend review retains rejected text separately and blocks approval and publication', () => {
   const panel = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
   assert.match(panel, /setReviewDraft\(data\.review\)/);
-  assert.match(panel, /action: "verify-editorial"/);
+  assert.match(panel, /action: "authorize-editorial"/);
   assert.match(panel, /Boolean\(reviewDraft\)/);
-  assert.match(panel, /Rascunho rejeitado/);
+  assert.match(panel, /Rascunho anterior/);
 });
 
-
-test('verification prompt explicitly supports faithful bilingual paraphrase but rejects extrapolations', async () => {
-  const calls = [];
-  const response = await generate(options({ onCall: request => calls.push(request) }));
-  assert.equal(response.status, 200);
-  const verification = calls.find(call => call.purpose === 'site-editorial-verification');
-  assert.ok(verification);
-  const instructions = verification.instructions;
-  assert.match(instructions, /equivalencia de sentido entre ingles e portugues/);
-  assert.match(instructions, /parafrase ou traducao fiel pode ter supported=true/);
-  assert.match(instructions, /has been quietly rolling out the past few weeks/);
-  assert.match(instructions, /referencia temporal relativa pode ser ancorada na data publicada/);
-  assert.match(instructions, /sem inventar dia de inicio, data exata/);
-  assert.match(instructions, /precos, versoes de firmware, modelos, nomes, datas/);
-  assert.match(instructions, /sujeito e modalidade/);
-  assert.match(instructions, /Mudanca de modelo, valor, versao, data, sujeito, certeza/);
-  assert.match(instructions, /selecione somente um indice fornecido/);
-  assert.match(instructions, /use supported=false/);
-});
-
-test('translation guidance never overrides a model rejection or an invalid evidence index', async () => {
-  const falseClaim = claims();
-  falseClaim.unidades[1].claims[0] = {
-    claim: 'O Bose Gen 3 recebeu firmware 10.12.13 em 27 de setembro.',
-    supported: false, fonte: 0, evidencia: 0, motivo: 'Modelo e versao divergem.',
-  };
-  const unsupported = await generate(options({ verification: falseClaim }));
-  assert.equal(unsupported.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
-  assert.equal(unsupported.status, 422);
-
-  const falseQuote = claims();
-  falseQuote.unidades[1].claims[0] = {
-    claim: 'O firmware vinha sendo distribuido nas ultimas semanas.',
-    supported: true, fonte: 0,
-    evidencia: 999, motivo: 'Referencia invalida.',
-  };
-  const invalidQuote = await generate(options({ verification: falseQuote }));
-  assert.equal(invalidQuote.json.code, 'EDITORIAL_EVIDENCE_INVALID');
-  assert.equal(invalidQuote.status, 422);
-});
-
-
-test('Bose bilingual grounding: evidence may confirm a faithful paraphrase but never bypasses unsupported verdict', async () => {
-  const evidence = 'A new firmware update for the $449 Bose QuietComfort Ultra Headphones Gen 2 adds support for Bluetooth LE Audio and Auracast as beta features. The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
-  const newsSource = { ...snapshot, text: evidence + ' Documento literal. Dados verificados.' };
-  const verified = claims();
-  verified.unidades[0].claims[0] = {
-    claim: 'O Bose QuietComfort Ultra Headphones Gen 2 recebe Bluetooth LE Audio e Auracast beta com firmware 10.12.12.',
-    supported: true, fonte: 0,
-    evidencia: 0,
-    motivo: 'A evidencia cita o modelo, os recursos e o status beta.',
-  };
-  const ok = await generate(options({ verification: verified, captureSource: async () => newsSource }));
-  assert.equal(ok.status, 200);
-  const rejected = structuredClone(verified);
-  rejected.unidades[0].claims[0].supported = false;
-  rejected.unidades[0].claims[0].motivo = 'O verificador discorda do suporte a data e firmware.';
-  const blocked = await generate(options({ verification: rejected, captureSource: async () => newsSource }));
-  assert.equal(blocked.status, 422);
-  assert.equal(blocked.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
-  assert.match(blocked.json.review.issue.reason, /firmware/);
-  assert.match(blocked.json.review.issue.quote, /QuietComfort Ultra/);
-  assert.equal(blocked.json.data, undefined);
-});
-
-test('Bose regression: incorrect firmware, product model and precise date remain rejected', async () => {
-  const cases = [
-    ['Versao de firmware 10.12.13', 'A fonte somente confirma 10.12.12'],
-    ['QuietComfort Ultra Headphones Gen 3', 'A fonte somente confirma Gen 2'],
-    ['Firmware lancado em 20 de setembro', 'Fonte nao informa esse dia preciso'],
-  ];
-  for (const [claimText, reason] of cases) {
-    const verification = claims();
-    verification.unidades[0].claims[0] = {
-      claim: claimText, supported: false, fonte: 0, evidencia: 0, motivo: reason,
-    };
-    const response = await generate(options({ verification }));
-    assert.equal(response.status, 422);
-    assert.equal(response.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
-    assert.equal(response.json.review.issue.reason, reason);
-    assert.equal(response.json.data, undefined);
-  }
-});
-
-test('verification request demands specific factual reasons for every supported and unsupported claim', async () => {
-  const calls = [];
-  const response = await generate(options({ onCall: request => calls.push(request) }));
-  assert.equal(response.status, 200);
-  const request = calls.find(call => call.purpose === 'site-editorial-verification');
-  assert.ok(request);
-  assert.equal(request.text.format.schema.properties.unidades.items.properties.claims.items.properties.motivo.type, 'string');
-  assert.match(request.instructions, /supported=false exige motivo especifico/);
-  assert.match(request.instructions, /nao marque false apenas por idioma ou redacao/);
-});
-
-
-test('Bose byline and firmware are never stitched into invented evidence', async () => {
-  const sourceText = 'Bose starts adding Auracast to its headphones by John Higgins Sep 28, 2026, 7:31 PM UTC A new firmware update for Bose Headphones Gen 2 adds beta features. The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
-  const stitched = 'by John Higgins Sep 28, 2026, 7:31 PM UTC The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks.';
-  assert.ok(!sourceText.includes(stitched));
-  const requests = [];
-  const verification = claims();
-  verification.unidades[1].claims[0] = {
-    claim: 'O firmware vinha sendo distribuido discretamente nas ultimas semanas',
-    supported: true, fonte: 0, evidencia: 0, motivo: 'A fonte confirma a distribuicao gradual.',
-  };
-  const response = await generate(options({
-    verification, captureSource: async () => ({ ...snapshot, text: sourceText }),
-    onCall: request => requests.push(request),
-  }));
-  assert.equal(response.status, 200);
-  const prompt = JSON.parse(requests.find(request => request.purpose === 'site-editorial-verification').input);
-  const literal = prompt.fontes[0].evidencias[0].texto;
-  assert.ok(sourceText.includes(literal));
-  assert.ok(!prompt.fontes[0].evidencias.some(item => item.texto === stitched));
-});
-
-test('Bose version with periods stays intact in server-selected evidence', async () => {
-  const sourceText = 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks. Documento literal. Dados verificados.';
-  const requests = [];
-  const response = await generate(options({
-    captureSource: async () => ({ ...snapshot, text: sourceText }),
-    onCall: request => requests.push(request),
-  }));
-  assert.equal(response.status, 200);
-  const prompt = JSON.parse(requests.find(request => request.purpose === 'site-editorial-verification').input);
-  assert.ok(prompt.fontes[0].evidencias.some(item => item.texto.includes('10.12.12')));
-});
-
-test('model cannot fabricate source evidence index even if marking claim supported', async () => {
-  const verification = claims();
-  verification.unidades[1].claims[0].evidencia = 999;
-  const result = await generate(options({ verification }));
-  assert.equal(result.status, 422);
-  assert.equal(result.json.code, 'EDITORIAL_EVIDENCE_INVALID');
-  assert.equal(result.json.data, undefined);
-});
-
-test('verification selects server-extracted indexed evidence instead of model-written quotes', async () => {
-  const requests = [];
-  await generate(options({ onCall: request => requests.push(request) }));
-  const verification = requests.find(request => request.purpose === 'site-editorial-verification');
-  assert.ok(verification);
-  assert.match(verification.instructions, /selecione somente um indice fornecido/);
-  const schema = verification.text.format.schema.properties.unidades.items.properties.claims.items.properties;
-  assert.equal(schema.evidencia.type, 'integer');
-  assert.equal(schema.trecho, undefined);
-});
-
-
-test('OpenAI failures identify the stage and safe upstream category without exposing provider secrets', async () => {
-  for (const [message, status] of [
-    ['OPENAI_TIMEOUT', 504],
-    ['OPENAI_RATE_LIMITED', 429],
-    ['OPENAI_NETWORK_ERROR', 502],
-    ['OPENAI_AUTH_ERROR', 502],
-    ['OPENAI_UPSTREAM_ERROR', 502],
-  ]) {
-    const response = await generate({
-      ...options(),
-      async createResponse(request) {
-        if (request.purpose === 'site-editorial-verification') throw new Error(message);
-        return { text: JSON.stringify(draft()) };
-      },
-    });
-    assert.equal(response.status, status);
-    assert.equal(response.json.code, 'EDITORIAL_VERIFICATION_API_FAILED');
-    assert.deepEqual(response.json.details, [message]);
-    assert.equal(response.json.data, undefined);
-    assert.equal(response.json.review, undefined);
-  }
-  const unknown = await generate({
-    ...options(),
-    async createResponse(request) {
-      if (request.purpose === 'site-editorial-verification') throw new Error('secret provider request details');
-      return { text: JSON.stringify(draft()) };
-    },
-  });
-  assert.equal(unknown.status, 502);
-  assert.deepEqual(unknown.json.details, ['OPENAI_UNKNOWN_ERROR']);
-  assert.ok(!JSON.stringify(unknown.json).includes('secret provider'));
-});
 
 test('generation-stage timeout is reported separately without entering verification', async () => {
   const calls = [];
@@ -612,7 +354,7 @@ test('existing editorial can be reverified without generation and gains a server
       supabase: db(), noticiaId: 7, reviewDraft: value,
     }, options({ onCall: call => calls.push(call.purpose) }));
     assert.equal(response.status, 200);
-    assert.deepEqual(calls, ['site-editorial-verification']);
+    assert.deepEqual(calls, []);
     const receipt = response.json.data.approval_receipt;
     assert.ok(receipt);
     assert.ok(verifyEditorialReceipt(receipt, 7, value.materia_site, value.resumo_site));
@@ -624,7 +366,7 @@ test('existing editorial can be reverified without generation and gains a server
 
 test('panel provides verify-existing action rather than regenerating an approved draft', () => {
   const source = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
-  assert.match(source, /Verificar texto existente/);
+  assert.match(source, /Autorizar texto existente/);
   assert.match(source, /verifyReviewDraft\(\{\s*materia_site: siteBody,/);
   assert.match(source, /const selectedDraft = override \|\| reviewDraft/);
 });

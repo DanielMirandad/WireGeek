@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyTargetedEditorialRepair, validateSiteEditorialInput } from '../lib/site-editorial.mjs';
 
-const paragraphs = Array.from({ length: 7 }, (_, i) =>
+const paragraphs = Array.from({ length: 5 }, (_, i) =>
   `Parágrafo ${i + 1}: ${'Detalhes editoriais confirmados nas fontes disponíveis. '.repeat(6)}`.trim());
 const body = paragraphs.join('\n\n');
 const excerpt = 'Resumo editorial de fatos comprovados, sem inferências e sem comparações não sustentadas pelas fontes verificadas da matéria.';

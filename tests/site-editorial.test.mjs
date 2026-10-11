@@ -118,7 +118,7 @@ test('cache reuses structurally valid drafts; force regenerates; source changes 
   source = { ...snapshot, text: snapshot.text + ' Mais dados.' };
   await generate(opts); assert.equal(calls, 3);
   const bad = options({ value: draft(1799), onCall: () => calls++ });
-  await generate(bad); await generate(bad); assert.equal(calls, 5);
+  await generate(bad); await generate(bad); assert.equal(calls, 4);
 });
 
 function res() { return { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k] = v; },

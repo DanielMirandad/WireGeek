@@ -15,7 +15,7 @@ test('automatic image review is disabled by default', () => {
 });
 test('verified first-party candidate is eligible for review, not publication', () => {
   assert.deepEqual(assessAutomaticImageReview([valid()], config), {
-    eligible: true, reason: 'TRUSTED_IMAGE_CANDIDATE',
+    eligible: true, review_status: 'AUTO_ELIGIBLE', reason: 'TRUSTED_IMAGE_CANDIDATE',
   });
 });
 test('unconfigured hosts fail closed', () => {
@@ -39,4 +39,18 @@ test('duplicate images are rejected', () => {
 });
 test('no images are rejected', () => {
   assert.equal(assessAutomaticImageReview([], config).reason, 'IMAGE_COUNT_INVALID');
+});
+
+test('automatic eligibility never assigns publication approval', () => {
+  const result = assessAutomaticImageReview([valid()], config);
+  assert.equal(result.review_status, 'AUTO_ELIGIBLE');
+  assert.equal(Object.hasOwn(result, 'status'), false);
+  assert.equal(Object.hasOwn(result, 'approved'), false);
+  assert.equal(Object.hasOwn(result, 'published'), false);
+});
+test('untrusted image remains in human review without publication approval', () => {
+  const result = assessAutomaticImageReview([{ ...valid(), url: 'https://untrusted.test/photo.jpg' }], config);
+  assert.equal(result.review_status, 'REVIEW_REQUIRED');
+  assert.equal(result.eligible, false);
+  assert.equal(Object.hasOwn(result, 'status'), false);
 });

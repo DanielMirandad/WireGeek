@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeReservedHomologation } from '../lib/paid-homologation-reserved-transport.mjs';
 const reservation = {pilotId:'00000000-0000-4000-8000-000000000001',newsId:11,arm:'sol',
- stage:'site-editorial',model:'test-model',maxInputTokens:100,maxOutputTokens:50,
+ stage:'site-editorial',model:'gpt-6-luna',maxInputTokens:100,maxOutputTokens:50,
  reserveMicroUsd:10000,idempotencyKey:'00000000-0000-4000-8000-000000000002'};
 function db() {
  const calls=[];

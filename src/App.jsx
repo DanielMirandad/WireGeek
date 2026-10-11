@@ -37,6 +37,24 @@ const CATEGORY_LABEL  = { games: "GAMES", geek: "GEEK", cinema: "CINEMA", anime:
 const CATEGORY_COLOR  = { games: "#E8002D", geek: "#7C3AED", cinema: "#D97706", anime: "#0EA5E9" };
 const CATEGORY_ORDER  = ["games", "geek", "cinema", "anime"];
 
+const RODAPE_FIXO = `---
+
+Estaremos acompanhando tudo e traremos as informações até vocês.
+
+SEGUE A GENTE, COMPARTILHA E COMENTA!
+
+LIVES TODOS OS SÁBADOS!!
+https://www.twitch.tv/bagacacast_lives
+https://youtube.com/@bagacastudios
+
+REDES SOCIAIS:
+Instagram: @bagacastudios
+Youtube: @bagacastudios
+
+SEJA VIP:
+https://linktr.ee/Bagacacast
+`;
+
 // --- HELPERS ---
 function todayKey()     { const d = new Date(); return `wire-geek:v3:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function sleep(ms)      { return new Promise(r => setTimeout(r, ms)); }
@@ -1699,7 +1717,7 @@ function DispatchCard({
               </span>
 
                          <CopyButton
-                text={`${item.titulo}\n\n${item.materia}`}
+                text={`${item.titulo}\n\n${item.materia}\n\n${RODAPE_FIXO}`}
                 label="Copiar matéria"
               />
             </div>
@@ -1715,6 +1733,13 @@ function DispatchCard({
             </div>
 
             <FormattedArticle text={item.materia} />
+
+            <div
+              className="mt-6 border-t border-wg-border pt-5"
+              style={{ fontFamily: "'Source Serif 4', Georgia, serif" }}
+            >
+              <FormattedArticle text={RODAPE_FIXO} />
+            </div>
 
             {item.fontes.length > 0 && (
               <div className="mt-5 border-t border-wg-border pt-3">

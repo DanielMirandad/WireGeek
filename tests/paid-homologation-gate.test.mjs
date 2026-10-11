@@ -38,3 +38,15 @@ test('paid transport refuses missing ledger before any outbound HTTP request', a
   for(const name of names) if(saved[name] === undefined) delete process.env[name]; else process.env[name]=saved[name];
  }
 });
+
+test('paid requests cannot run outside the isolated PR30 Preview', async () => {
+ const saved = Object.fromEntries(['WIREGEEK_PAID_HOMOLOGATION_ENABLED','VERCEL_ENV','VERCEL_GIT_COMMIT_REF'].map(k=>[k,process.env[k]]));
+ process.env.WIREGEEK_PAID_HOMOLOGATION_ENABLED='1';
+ process.env.VERCEL_ENV='production';
+ process.env.VERCEL_GIT_COMMIT_REF='main';
+ try {
+   await assert.rejects(createOpenAIResponse({model:'gpt-6-luna',purpose:'site-editorial',input:'test',maxOutputTokens:10}), /HOMOLOGATION_PREVIEW_BRANCH_REQUIRED/);
+   process.env.VERCEL_ENV='preview';
+   await assert.rejects(createOpenAIResponse({model:'gpt-6-luna',purpose:'site-editorial',input:'test',maxOutputTokens:10}), /HOMOLOGATION_PREVIEW_BRANCH_REQUIRED/);
+ } finally { for(const [k,v] of Object.entries(saved)){if(v===undefined)delete process.env[k];else process.env[k]=v;} }
+});

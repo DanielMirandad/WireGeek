@@ -2227,8 +2227,20 @@ const [edition,  setEdition]  = useState(null);
         !bannerResponse.ok ||
         !bannerData?.success
       ) {
-        const details =
-          Array.isArray(bannerData?.details)
+        const review = bannerData?.code === "CANONICAL_EDITORIAL_REVIEW_REQUIRED" &&
+          bannerData?.details && typeof bannerData.details === "object" &&
+          !Array.isArray(bannerData.details)
+            ? bannerData.details
+            : null;
+        const details = review
+          ? [
+              ...(Array.isArray(review.issues) ? review.issues : []),
+              ...(Array.isArray(review.suggested_hashtags)
+                ? ["Sugestao para revisar e salvar as hashtags: " + review.suggested_hashtags.join(" ")]
+                : []),
+              "Revise e salve a noticia antes de tentar gerar o banner. Nenhum dado foi alterado.",
+            ].join("; ")
+          : Array.isArray(bannerData?.details)
             ? bannerData.details.join("; ")
             : bannerData?.details;
 

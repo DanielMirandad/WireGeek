@@ -455,3 +455,30 @@ test('authorize-editorial issues receipt for human-edited text without paid infe
     else process.env.WIREGEEK_AUTOMATION_KEY = savedAutomation;
   }
 });
+
+
+test('source diagnosis reports capture failures without calling OpenAI or publishing', async () => {
+  const previous = process.env.WIREGEEK_AUTOMATION_KEY;
+  process.env.WIREGEEK_AUTOMATION_KEY = 'synthetic-test-key';
+  try {
+    const calls = [];
+    const response = res();
+    await handler(request({ action: 'diagnose-editorial-sources' }), response, {
+      supabase: db(), editorialOptions: options({
+        onCall: call => calls.push(call),
+        captureSource: async url => {
+          if (url === snapshot.final_url) return snapshot;
+          throw new Error('SOURCE_HTTP_403');
+        },
+      }),
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.value.data.ready, false);
+    assert.equal(response.value.data.captured, 1);
+    assert.deepEqual(response.value.data.sources.map(source => source.code), ['OK', 'SOURCE_HTTP_403']);
+    assert.deepEqual(calls, []);
+  } finally {
+    if (previous === undefined) delete process.env.WIREGEEK_AUTOMATION_KEY;
+    else process.env.WIREGEEK_AUTOMATION_KEY = previous;
+  }
+});

@@ -421,6 +421,7 @@ export default function SitePublicationPanel({
         throw new Error(
           [
             data?.error,
+            data?.diagnostics?.sources?.map(item => `Fonte ${item.source}: ${item.code}`).join("; "),
             details,
           ]
             .filter(Boolean)

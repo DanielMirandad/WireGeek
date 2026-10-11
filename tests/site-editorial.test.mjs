@@ -427,3 +427,31 @@ test('human approval does not depend on obsolete AI review and obtains a receipt
   assert.match(panel, /!editorialValidation\.valid/);
   assert.doesNotMatch(panel, /Boolean\(reviewDraft\)\s*\|\|\s*reviewing/);
 });
+
+
+test('authorize-editorial issues receipt for human-edited text without paid inference', async () => {
+  const savedKey = process.env.WIREGEEK_ACCESS_KEY;
+  const savedAutomation = process.env.WIREGEEK_AUTOMATION_KEY;
+  process.env.WIREGEEK_ACCESS_KEY = 'synthetic-approval-secret';
+  process.env.WIREGEEK_AUTOMATION_KEY = 'synthetic-test-key';
+  try {
+    const value = draft(1500, 3, 120);
+    const calls = [];
+    const response = res();
+    await handler(request({ action: 'authorize-editorial', ...value }), response, {
+      supabase: db(), editorialOptions: options({
+        onCall: call => calls.push(call),
+      }),
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(calls, []);
+    assert.equal(response.value.data.materia_site, value.materia_site);
+    assert.ok(verifyEditorialReceipt(response.value.data.approval_receipt, 7,
+      value.materia_site, value.resumo_site));
+  } finally {
+    if (savedKey === undefined) delete process.env.WIREGEEK_ACCESS_KEY;
+    else process.env.WIREGEEK_ACCESS_KEY = savedKey;
+    if (savedAutomation === undefined) delete process.env.WIREGEEK_AUTOMATION_KEY;
+    else process.env.WIREGEEK_AUTOMATION_KEY = savedAutomation;
+  }
+});

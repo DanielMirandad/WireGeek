@@ -1,3 +1,4 @@
+import { splitCanonicalVisualTitle } from "../lib/banner-canonical-title.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -859,33 +860,8 @@ async function handleBriefingGeneratedBanners(
     title_theme: "",
   };
 
-  // Prefer the exact canonical short title, splitting only at an existing
-  // colon or word boundary. Never paraphrase a title that fits two lines.
-  const canonicalShortTitle = String(briefing.titulo_curto || "").trim();
-  const colonIndex = canonicalShortTitle.indexOf(":");
-  let canonicalTitleParts = [];
-  if (colonIndex > 0) {
-    canonicalTitleParts = [
-      canonicalShortTitle.slice(0, colonIndex).trim(),
-      canonicalShortTitle.slice(colonIndex + 1).trim(),
-    ];
-  } else {
-    const words = canonicalShortTitle.split(/\s+/).filter(Boolean);
-    for (let cut = 1; cut < words.length; cut++) {
-      const left = words.slice(0, cut).join(" ");
-      const right = words.slice(cut).join(" ");
-      if (left.length <= 24 && right.length <= 32 &&
-          (!canonicalTitleParts.length || Math.abs(left.length - right.length) <
-            Math.abs(canonicalTitleParts[0].length - canonicalTitleParts[1].length))) {
-        canonicalTitleParts = [left, right];
-      }
-    }
-  }
-  const preserveCanonicalTitle = canonicalTitleParts.length === 2 &&
-    canonicalTitleParts.every(Boolean) &&
-    canonicalTitleParts[0].length <= 24 &&
-    canonicalTitleParts[1].length <= 32;
-
+  const canonicalTitleParts = splitCanonicalVisualTitle(briefing.titulo_curto);
+  const preserveCanonicalTitle = canonicalTitleParts !== null;
   try {
     visualTitle = preserveCanonicalTitle
       ? { title_main: canonicalTitleParts[0], title_theme: canonicalTitleParts[1] }

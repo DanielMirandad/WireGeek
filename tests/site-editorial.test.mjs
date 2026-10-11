@@ -8,13 +8,13 @@ import { createGenerationCache } from '../lib/generation-cache.mjs';
 import { issueEditorialReceipt, verifyEditorialReceipt } from '../lib/site-editorial-approval.mjs';
 
 // Synthetic structural fixtures only; model stubs do not prove semantic entailment.
-function draft(bodyLength = 1800, count = 6, excerptLength = 120) {
+function draft(bodyLength = 1800, count = 5, excerptLength = 120) {
   const available = bodyLength - (count - 1) * 2;
   const parts = Array.from({ length: count }, (_, i) => `Fato ${i}: ` + 'a'.repeat(Math.floor(available / count) - 8));
   parts[0] += 'a'.repeat(bodyLength - parts.join('\n\n').length);
   return { materia_site: parts.join('\n\n'), resumo_site: 'Resumo: ' + 'b'.repeat(excerptLength - 8) };
 }
-const news = { id: 7, titulo: 'Pauta sintetica', categoria: 'Games', url: 'https://example.org/source', fontes: [] };
+const news = { id: 7, titulo: 'Pauta sintetica', categoria: 'Games', url: 'https://example.org/source', fontes: [{ url: 'https://example.net/second-source' }] };
 const snapshot = { final_url: news.url, title: 'Fonte sintetica', publicado_em: '2026-10-01',
   text: 'Documento literal. Dados verificados.', source_hash: 'sha256:' + 'a'.repeat(64) };
 function db(row = news, error = null) {
@@ -31,7 +31,7 @@ function claims(value = draft()) {
     indice, cobertura_completa: true, claims: [{ claim: `Fato sintetico ${indice}`, supported: true, fonte: 0, evidencia: 0, motivo: 'Trecho confirma o fato.' }],
   })) };
 }
-function options({ value = draft(), verification = claims(value), onCall = () => {}, captureSource = async () => snapshot,
+function options({ value = draft(), verification = claims(value), onCall = () => {}, captureSource = async url => ({ ...snapshot, final_url: url, source_hash: url === snapshot.final_url ? snapshot.source_hash : 'sha256:' + 'b'.repeat(64) }),
   generationCache = newCache() } = {}) {
   return { captureSource, generationCache, async createResponse(request) {
     onCall(request);
@@ -44,17 +44,17 @@ function options({ value = draft(), verification = claims(value), onCall = () =>
 const generate = opts => generateSiteEditorialPreview({ supabase: db(), noticiaId: 7 }, opts);
 
 test('server enforces inclusive character, paragraph and excerpt boundaries', () => {
-  for (const [length, count, excerpt] of [[1800, 6, 120], [3500, 10, 280]]) {
+  for (const [length, count, excerpt] of [[1000, 3, 120], [3500, 5, 280]]) {
     const d = draft(length, count, excerpt);
     assert.equal(validateSiteEditorialInput({ materiaSite: d.materia_site, resumoSite: d.resumo_site }).valid, true);
   }
-  for (const [length, count, excerpt] of [[1799, 6, 120], [3501, 6, 120], [1800, 5, 120], [1800, 11, 120], [1800, 6, 119], [1800, 6, 281]]) {
+  for (const [length, count, excerpt] of [[999, 3, 120], [3501, 5, 120], [1800, 2, 120], [1800, 6, 120], [1800, 5, 119], [1800, 5, 281]]) {
     const d = draft(length, count, excerpt);
     assert.equal(validateSiteEditorialInput({ materiaSite: d.materia_site, resumoSite: d.resumo_site }).valid, false);
   }
   for (const value of [undefined, null, {}, 42]) assert.equal(validateSiteEditorialInput({ materiaSite: value, resumoSite: value }).valid, false);
   const d = draft();
-  assert.equal(validateSiteEditorialInput({ materiaSite: Array(6).fill(d.materia_site.split('\n\n')[0]).join('\n\n'), resumoSite: d.resumo_site }).valid, false);
+  assert.equal(validateSiteEditorialInput({ materiaSite: Array(5).fill(d.materia_site.split('\n\n')[0]).join('\n\n'), resumoSite: d.resumo_site }).valid, false);
   const crlf = d.materia_site.replaceAll('\n', '\r\n');
   assert.equal(validateSiteEditorialInput({ materiaSite: crlf, resumoSite: d.resumo_site }).body, d.materia_site);
 });
@@ -64,11 +64,11 @@ test('read-only canonical generation returns the panel contract and verifies sum
   const result = await generate(options({ onCall: r => calls.push(r) }));
   assert.equal(result.status, 200);
   assert.deepEqual(result.json.data.materia_site, draft().materia_site);
-  assert.equal(result.json.data.diagnostico.paragrafos, 6);
+  assert.equal(result.json.data.diagnostico.paragrafos, 5);
   assert.equal(calls.length, 2);
   assert.equal(calls[1].purpose, 'site-editorial-verification');
-  assert.equal(JSON.parse(calls[1].input).unidades.length, 7);
-  assert.deepEqual(result.json.data.fontes_base, [{ nome: snapshot.title, url: snapshot.final_url, publicado_em: snapshot.publicado_em }]);
+  assert.equal(JSON.parse(calls[1].input).unidades.length, 6);
+  assert.deepEqual(result.json.data.fontes_base, [{ nome: snapshot.title, url: snapshot.final_url, publicado_em: snapshot.publicado_em }, { nome: snapshot.title, url: 'https://example.net/second-source', publicado_em: snapshot.publicado_em }]);
 });
 
 test('missing news, DB failure, wrong identity and absent sources stop before inference', async () => {

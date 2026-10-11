@@ -6,6 +6,7 @@ import { WIDTH, HEIGHT, inputError, normalizeBanner, renderBanner } from "../lib
 import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canonical.mjs";
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
+import { shortenRejectedVisualTitle } from "../lib/banner-title-recovery.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 
@@ -995,7 +996,7 @@ async function handleBriefingGeneratedBanners(
         thematicTitleRegenerated = true;
 
         console.warn(
-          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; regenerando uma unica vez.",
+          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; encurtando sem nova inferencia.",
           {
             noticia_id:
               body.noticia_id ||
@@ -1006,33 +1007,12 @@ async function handleBriefingGeneratedBanners(
           }
         );
 
-        visualTitle =
-          await deriveBannerVisualTitle(
-            {
-              categoria:
-                briefing.categoria,
-
-              titulo:
-                briefing.titulo,
-
-              titulo_curto:
-                briefing.titulo_curto,
-
-              materia:
-                briefing.materia,
-            },
-            {
-              forceRegenerate: true,
-              widthFeedback: {
-                field: error.code === "TITLE_MAIN_TOO_WIDE"
-                  ? "title_main"
-                  : "title_theme",
-                previousValue: error.code === "TITLE_MAIN_TOO_WIDE"
-                  ? visualTitle.title_main
-                  : visualTitle.title_theme,
-              },
-            }
-          );
+        const recoveredTitle = shortenRejectedVisualTitle(
+          visualTitle,
+          error.code === "TITLE_MAIN_TOO_WIDE" ? "title_main" : "title_theme"
+        );
+        if (!recoveredTitle) throw error;
+        visualTitle = recoveredTitle;
 
         index--;
         continue;

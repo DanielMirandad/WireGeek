@@ -8,6 +8,7 @@ import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canon
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
 import { shortenRejectedVisualTitle } from "../lib/banner-title-recovery.mjs";
+import { shortenEditorialDisplayCopy } from "../lib/banner-copy-recovery.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 
@@ -929,7 +930,7 @@ async function handleBriefingGeneratedBanners(
 
     const rendererCopy = banner;
 
-    const normalized =
+    let normalized =
       normalizeBanner({
         categoria:
           currentCategory ||
@@ -978,87 +979,139 @@ async function handleBriefingGeneratedBanners(
       });
 
     let output;
+    let copyRecoveryAttempts = 0;
 
-    try {
-      output =
-        await renderBanner({
-          ...normalized,
+    while (true) {
+      try {
+        output =
+          await renderBanner({
+            ...normalized,
 
-          imageBuffer:
-            image.imageBuffer,
-        });
-    } catch (error) {
-      const thematicWidthError =
-        error?.code === "TITLE_MAIN_TOO_WIDE" ||
-        error?.code === "TITLE_THEME_TOO_WIDE";
+            imageBuffer:
+              image.imageBuffer,
+          });
 
-      if (
-        thematicWidthError &&
-        thematicTitleRecoveryAttempts < 4 &&
-        visualTitle.title_main &&
-        visualTitle.title_theme
-      ) {
-        const rejectedField =
-          error.code === "TITLE_MAIN_TOO_WIDE"
-            ? "title_main"
-            : "title_theme";
-
-        const currentKey =
-          `${visualTitle.title_main}\u0000${visualTitle.title_theme}`;
-
-        seenVisualTitles.add(currentKey);
-
-        const recoveredTitle =
-          preserveCanonicalTitle
-            ? recoverCanonicalVisualTitle(
-                briefing.titulo_curto,
-                visualTitle,
-                rejectedField
-              )
-            : shortenRejectedVisualTitle(
-                visualTitle,
-                rejectedField
-              );
-
-        const recoveredKey =
-          recoveredTitle
-            ? `${recoveredTitle.title_main}\u0000${recoveredTitle.title_theme}`
-            : "";
+        break;
+      } catch (error) {
+        const thematicWidthError =
+          error?.code === "TITLE_MAIN_TOO_WIDE" ||
+          error?.code === "TITLE_THEME_TOO_WIDE";
 
         if (
-          !recoveredTitle ||
-          seenVisualTitles.has(recoveredKey)
+          thematicWidthError &&
+          thematicTitleRecoveryAttempts < 4 &&
+          visualTitle.title_main &&
+          visualTitle.title_theme
         ) {
-          throw error;
+          const rejectedField =
+            error.code === "TITLE_MAIN_TOO_WIDE"
+              ? "title_main"
+              : "title_theme";
+
+          const currentKey =
+            `${visualTitle.title_main}\u0000${visualTitle.title_theme}`;
+
+          seenVisualTitles.add(currentKey);
+
+          const recoveredTitle =
+            preserveCanonicalTitle
+              ? recoverCanonicalVisualTitle(
+                  briefing.titulo_curto,
+                  visualTitle,
+                  rejectedField
+                )
+              : shortenRejectedVisualTitle(
+                  visualTitle,
+                  rejectedField
+                );
+
+          const recoveredKey =
+            recoveredTitle
+              ? `${recoveredTitle.title_main}\u0000${recoveredTitle.title_theme}`
+              : "";
+
+          if (
+            !recoveredTitle ||
+            seenVisualTitles.has(recoveredKey)
+          ) {
+            throw error;
+          }
+
+          thematicTitleRecoveryAttempts += 1;
+
+          console.warn(
+            "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; recuperando deterministicamente.",
+            {
+              noticia_id:
+                body.noticia_id ||
+                null,
+
+              error_code:
+                error.code,
+
+              tentativa:
+                thematicTitleRecoveryAttempts,
+
+              canonical:
+                preserveCanonicalTitle,
+            }
+          );
+
+          visualTitle = recoveredTitle;
+          normalized = {
+            ...normalized,
+            titleMain:
+              visualTitle.title_main,
+            titleTheme:
+              visualTitle.title_theme,
+          };
+
+          continue;
         }
 
-        thematicTitleRecoveryAttempts += 1;
+        if (
+          error?.code === "COPY_TOO_LONG" &&
+          visualTitle.title_main &&
+          visualTitle.title_theme &&
+          copyRecoveryAttempts < 6
+        ) {
+          const recoveredCopy =
+            shortenEditorialDisplayCopy(
+              normalized.editorialCopy
+            );
 
-        console.warn(
-          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; recuperando deterministicamente.",
-          {
-            noticia_id:
-              body.noticia_id ||
-              null,
-
-            error_code:
-              error.code,
-
-            tentativa:
-              thematicTitleRecoveryAttempts,
-
-            canonical:
-              preserveCanonicalTitle,
+          if (!recoveredCopy) {
+            throw error;
           }
-        );
 
-        visualTitle = recoveredTitle;
+          copyRecoveryAttempts += 1;
 
-        index--;
-        continue;
+          console.warn(
+            "WIRE/GEEK BRIEFING: copy visual excedeu a area segura; encurtando somente a copy de exibicao.",
+            {
+              noticia_id:
+                body.noticia_id ||
+                null,
+
+              banner_index:
+                index,
+
+              tentativa:
+                copyRecoveryAttempts,
+            }
+          );
+
+          normalized = {
+            ...normalized,
+            editorialCopy:
+              recoveredCopy,
+          };
+
+          continue;
+        }
+
+        throw error;
       }
-
-      throw error;
     }
 
     rendered.push({

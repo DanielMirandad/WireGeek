@@ -21,7 +21,7 @@ begin
     from public.publicacoes
     where noticia_id = p_noticia_id
       and publication_group_id is not null
-      and status in ('APROVADO','AGUARDANDO_APROVACAO','PUBLICANDO','AGENDADO')
+      and status in ('APROVADO','AGUARDANDO_APROVACAO','PUBLICANDO','AGENDADO','PUBLICADO')
   ) then
     raise exception 'ACTIVE_GROUP_ALREADY_EXISTS';
   end if;
@@ -66,6 +66,14 @@ begin
     raise exception 'GROUP_REPAIR_UNSAFE';
   end if;
 
+  perform 1
+  from public.publicacoes
+  where noticia_id = p_noticia_id
+    and publication_group_id is null
+    and status = 'APROVADO'
+  order by id
+  for update;
+
   with ordered as (
     select
       id,
@@ -74,8 +82,6 @@ begin
     where noticia_id = p_noticia_id
       and publication_group_id is null
       and status = 'APROVADO'
-    order by id
-    for update
   )
   update public.publicacoes p
      set publication_group_id = p_requested_group_id,

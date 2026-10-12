@@ -1,4 +1,4 @@
-import { splitCanonicalVisualTitle } from "../lib/banner-canonical-title.mjs";
+import { recoverCanonicalVisualTitle, splitCanonicalVisualTitle } from "../lib/banner-canonical-title.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -908,7 +908,8 @@ async function handleBriefingGeneratedBanners(
    */
 
   const rendered = [];
-  let thematicTitleRegenerated = false;
+  let thematicTitleRecoveryAttempts = 0;
+  const seenVisualTitles = new Set();
 
   for (
     let index = 0;
@@ -993,14 +994,48 @@ async function handleBriefingGeneratedBanners(
 
       if (
         thematicWidthError &&
-        !thematicTitleRegenerated &&
+        thematicTitleRecoveryAttempts < 4 &&
         visualTitle.title_main &&
         visualTitle.title_theme
       ) {
-        thematicTitleRegenerated = true;
+        const rejectedField =
+          error.code === "TITLE_MAIN_TOO_WIDE"
+            ? "title_main"
+            : "title_theme";
+
+        const currentKey =
+          `${visualTitle.title_main}\u0000${visualTitle.title_theme}`;
+
+        seenVisualTitles.add(currentKey);
+
+        const recoveredTitle =
+          preserveCanonicalTitle
+            ? recoverCanonicalVisualTitle(
+                briefing.titulo_curto,
+                visualTitle,
+                rejectedField
+              )
+            : shortenRejectedVisualTitle(
+                visualTitle,
+                rejectedField
+              );
+
+        const recoveredKey =
+          recoveredTitle
+            ? `${recoveredTitle.title_main}\u0000${recoveredTitle.title_theme}`
+            : "";
+
+        if (
+          !recoveredTitle ||
+          seenVisualTitles.has(recoveredKey)
+        ) {
+          throw error;
+        }
+
+        thematicTitleRecoveryAttempts += 1;
 
         console.warn(
-          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; encurtando sem nova inferencia.",
+          "WIRE/GEEK BRIEFING: titulo tematico excedeu a largura; recuperando deterministicamente.",
           {
             noticia_id:
               body.noticia_id ||
@@ -1008,14 +1043,15 @@ async function handleBriefingGeneratedBanners(
 
             error_code:
               error.code,
+
+            tentativa:
+              thematicTitleRecoveryAttempts,
+
+            canonical:
+              preserveCanonicalTitle,
           }
         );
 
-        const recoveredTitle = shortenRejectedVisualTitle(
-          visualTitle,
-          error.code === "TITLE_MAIN_TOO_WIDE" ? "title_main" : "title_theme"
-        );
-        if (!recoveredTitle || preserveCanonicalTitle) throw error;
         visualTitle = recoveredTitle;
 
         index--;
@@ -1465,5 +1501,4 @@ export default async function handler(req, res) {
       });
   }
 }
-
 

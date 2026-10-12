@@ -58,11 +58,11 @@ function validateSiteEditorialDraft({
   }
 
   if (
-    paragraphs.length < 6 ||
-    paragraphs.length > 10
+    paragraphs.length < 3 ||
+    paragraphs.length > 5
   ) {
     errors.push(
-      "A materia precisa ter entre 6 e 10 paragrafos."
+      "A materia precisa ter entre 3 e 5 paragrafos."
     );
   }
 
@@ -407,7 +407,13 @@ export default function SitePublicationPanel({
 
       if (!response.ok) {
         if (data?.review?.materia_site && data?.review?.resumo_site && mountedRef.current) {
-          setReviewDraft(data.review);
+          setSiteBody(String(data.review.materia_site));
+          setSiteExcerpt(String(data.review.resumo_site));
+          setReviewDraft(null);
+          setApprovalReceipt(null);
+          setSavedApproval(null);
+          setError("");
+          return;
         }
         const details =
           Array.isArray(
@@ -566,14 +572,9 @@ export default function SitePublicationPanel({
   }
 
   async function publish() {
-    if (reviewDraft) {
-      setError("Rascunho rejeitado: publicacao bloqueada ate nova verificacao.");
-      return;
-    }
     if (
       publishing ||
       generating ||
-      savingApproval ||
       !Number.isInteger(
         noticiaId
       ) ||
@@ -586,15 +587,6 @@ export default function SitePublicationPanel({
       setError(
         editorialValidation.errors[0] ||
         "Materia editorial invalida."
-      );
-
-      return;
-    }
-
-    if (!editorialApproved || !savedApproval ||
-        savedApproval.materia_site !== siteBody || savedApproval.resumo_site !== siteExcerpt) {
-      setError(
-        "Aprove a materia antes de publicar no site."
       );
 
       return;
@@ -767,7 +759,7 @@ export default function SitePublicationPanel({
             </div>
 
             <div className="mt-1 max-w-2xl font-mono text-[9px] leading-4 text-wg-muted">
-              Gere a versao expandida, revise o texto e aprove manualmente antes de publicar.
+              Gere a versao expandida e publique quando o texto estiver dentro do contrato editorial.
             </div>
           </div>
 
@@ -938,7 +930,7 @@ export default function SitePublicationPanel({
               publishing
             }
             rows={16}
-            placeholder="A materia expandida aparecera aqui para revisao."
+            placeholder="A materia expandida aparecera aqui para edicao."
             className="wg-field mt-2 resize-y font-mono leading-5"
           />
 
@@ -956,73 +948,30 @@ export default function SitePublicationPanel({
             </span>
 
             <span>
-              esperado 6-10
+              esperado 3-5
             </span>
           </div>
         </div>
 
         <div className="mt-4 border-t border-wg-border pt-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div
-                className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${
-                  editorialApproved
-                    ? "text-wg-success"
-                    : editorialValidation.valid
-                      ? "text-wg-warning"
-                      : "text-wg-muted"
-                }`}
-              >
-                {editorialApproved
-                  ? "Materia aprovada"
-                  : editorialValidation.valid
-                    ? "Pronta para aprovacao"
-                    : "Materia ainda fora do contrato"}
-              </div>
-
-              {!editorialValidation.valid &&
-                (
-                  siteBody ||
-                  siteExcerpt
-                ) && (
-                  <div className="mt-1 font-mono text-[9px] leading-4 text-wg-danger">
-                    {editorialValidation.errors[0]}
-                  </div>
-                )}
-            </div>
-
-            {!reviewDraft && editorialValidation.valid && !approvalReceipt && !editorialApproved && (
-              <button
-                type="button"
-                disabled={generating || reviewing || publishing || savingApproval}
-                onClick={() => verifyReviewDraft({
-                  materia_site: siteBody,
-                  resumo_site: siteExcerpt,
-                })}
-                className="wg-button wg-button-secondary wg-button-compact font-mono uppercase"
-              >
-                {reviewing ? "Verificando..." : "Verificar texto existente"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={
-                approveEditorial
-              }
-              disabled={
-                generating ||
-                publishing ||
-                !editorialValidation.valid ||
-                Boolean(reviewDraft) ||
-                reviewing
-              }
-              className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
-            >
-              {editorialApproved
-                ? "Materia aprovada"
-                : "Aprovar materia"}
-            </button>
+          <div
+            className={`font-mono text-[9px] font-bold uppercase tracking-[0.12em] ${
+              editorialValidation.valid
+                ? "text-wg-success"
+                : "text-wg-muted"
+            }`}
+          >
+            {editorialValidation.valid
+              ? "Materia dentro do contrato"
+              : "Materia ainda fora do contrato"}
           </div>
+
+          {!editorialValidation.valid &&
+            (siteBody || siteExcerpt) && (
+              <div className="mt-1 font-mono text-[9px] leading-4 text-wg-danger">
+                {editorialValidation.errors[0]}
+              </div>
+            )}
         </div>
       </div>
 
@@ -1094,11 +1043,7 @@ export default function SitePublicationPanel({
               loading ||
               generating ||
               publishing ||
-              !editorialApproved ||
-              !savedApproval ||
-              !editorialValidation.valid ||
-              Boolean(reviewDraft) ||
-              reviewing
+              !editorialValidation.valid
             }
             className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"
           >

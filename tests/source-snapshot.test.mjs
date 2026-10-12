@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { captureSourceSnapshot, resolveSourceURL, publicAddress, extractSource, verifyCollectedSources } from '../lib/source-snapshot.mjs';
+import { captureSourceSnapshot, resolveSourceURL, publicAddress, extractSource, verifyCollectedSources, normalizeSourceUrlInput } from '../lib/source-snapshot.mjs';
 const resolve = async () => [{ address: '93.184.216.34', family: 4 }];
 const body = '<html><head><title>Anúncio oficial</title><meta property="article:published_time" content="2026-10-04T12:00:00Z"></head><body><article>A atualização foi anunciada. ' + 'Conteúdo público verificável. '.repeat(6) + '</article><script>segredo</script><p hidden>invisível</p></body></html>';
 function transport(pages) {
@@ -334,5 +334,26 @@ test('source diagnostics preserve per-evidence failure reasons without weakening
         http_status: null,
       },
     ]
+  );
+});
+
+test('normaliza contaminacao Unicode nas bordas de URLs de fonte', async () => {
+  const contaminated =
+    'https://dengekionline.com/article/202610/90725\u2060\uFFFD';
+
+  assert.equal(
+    normalizeSourceUrlInput(contaminated),
+    'https://dengekionline.com/article/202610/90725'
+  );
+
+  const resolved =
+    await resolveSourceURL(
+      'https://example.org/noticia\u2060\uFFFD',
+      resolve
+    );
+
+  assert.equal(
+    resolved.url.href,
+    'https://example.org/noticia'
   );
 });

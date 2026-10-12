@@ -8,7 +8,7 @@ import { createGenerationCache } from '../lib/generation-cache.mjs';
 import { issueEditorialReceipt, verifyEditorialReceipt } from '../lib/site-editorial-approval.mjs';
 
 // Synthetic structural fixtures only; model stubs do not prove semantic entailment.
-function draft(bodyLength = 1800, count = 6, excerptLength = 120) {
+function draft(bodyLength = 1800, count = 4, excerptLength = 120) {
   const available = bodyLength - (count - 1) * 2;
   const parts = Array.from({ length: count }, (_, i) => `Fato ${i}: ` + 'a'.repeat(Math.floor(available / count) - 8));
   parts[0] += 'a'.repeat(bodyLength - parts.join('\n\n').length);
@@ -44,11 +44,11 @@ function options({ value = draft(), verification = claims(value), onCall = () =>
 const generate = opts => generateSiteEditorialPreview({ supabase: db(), noticiaId: 7 }, opts);
 
 test('server enforces inclusive character, paragraph and excerpt boundaries', () => {
-  for (const [length, count, excerpt] of [[1800, 6, 120], [3500, 10, 280]]) {
+  for (const [length, count, excerpt] of [[1800, 3, 120], [3500, 5, 280]]) {
     const d = draft(length, count, excerpt);
     assert.equal(validateSiteEditorialInput({ materiaSite: d.materia_site, resumoSite: d.resumo_site }).valid, true);
   }
-  for (const [length, count, excerpt] of [[1799, 6, 120], [3501, 6, 120], [1800, 5, 120], [1800, 11, 120], [1800, 6, 119], [1800, 6, 281]]) {
+  for (const [length, count, excerpt] of [[1799, 4, 120], [3501, 4, 120], [1800, 2, 120], [1800, 6, 120], [1800, 4, 119], [1800, 4, 281]]) {
     const d = draft(length, count, excerpt);
     assert.equal(validateSiteEditorialInput({ materiaSite: d.materia_site, resumoSite: d.resumo_site }).valid, false);
   }
@@ -64,10 +64,10 @@ test('read-only canonical generation returns the panel contract and verifies sum
   const result = await generate(options({ onCall: r => calls.push(r) }));
   assert.equal(result.status, 200);
   assert.deepEqual(result.json.data.materia_site, draft().materia_site);
-  assert.equal(result.json.data.diagnostico.paragrafos, 6);
+  assert.equal(result.json.data.diagnostico.paragrafos, 4);
   assert.equal(calls.length, 2);
   assert.equal(calls[1].purpose, 'site-editorial-verification');
-  assert.equal(JSON.parse(calls[1].input).unidades.length, 7);
+  assert.equal(JSON.parse(calls[1].input).unidades.length, 5);
   assert.deepEqual(result.json.data.fontes_base, [{ nome: snapshot.title, url: snapshot.final_url, publicado_em: snapshot.publicado_em }]);
 });
 
@@ -114,7 +114,7 @@ test('invalid length or artificial repeated paragraphs skip the verification cal
 test('unsupported claims, omitted units, forged literal citations and repeated claims fail closed', async () => {
   const variants = [];
   for (const mutate of [v => v.unidades.pop(), v => v.unidades[0].cobertura_completa = false,
-    v => v.unidades[6].claims[0].supported = false, v => v.unidades[0].claims[0].fonte = 99,
+    v => v.unidades[4].claims[0].supported = false, v => v.unidades[0].claims[0].fonte = 99,
     v => v.unidades[0].claims[0].evidencia = 999, v => v.unidades[0].claims = [],
     v => v.unidades[1].claims[0].claim = v.unidades[0].claims[0].claim, v => v.unidades[1].indice = 0]) {
     const v = claims(); mutate(v); variants.push(v);
@@ -235,11 +235,11 @@ test('existing status and publish flows keep canonical image and upstream confir
   try {
     globalThis.fetch = async (url, opts) => {
       assert.equal(url, process.env.BAGACA_SITE_PUBLISH_URL);
-      assert.deepEqual(JSON.parse(opts.body), { noticia_id: 7, image_url: 'https://example.org/image.png' });
+      assert.deepEqual(JSON.parse(opts.body), { noticia_id: 7, image_url: 'https://example.org/image.png', ...draft() });
       return { ok: true, status: 201, json: async () => ({ action: 'published' }) };
     };
-    const published = res(); await handler(request({ action: 'publish' }), published, { supabase });
-    assert.equal(published.statusCode, 201); assert.deepEqual(tables, ['site_editorial_approvals', 'publicacoes', 'site_news']);
+    const published = res(); await handler(request({ action: 'publish', ...draft() }), published, { supabase });
+    assert.equal(published.statusCode, 201); assert.deepEqual(tables, ['publicacoes', 'site_news']);
     assert.equal(published.value.data.site_url, 'https://example.org/noticias/pauta-sintetica');
     const status = res(); await handler({ ...request(), method: 'GET', query: { noticia_id: 7 } }, status, { supabase });
     assert.equal(status.value.published, true);
@@ -309,14 +309,11 @@ test('correction handler rejects oversize text before source reads and never use
   }
 });
 
-test('frontend review retains rejected text separately and blocks approval and publication', () => {
+test('frontend saves returned review as a draft without granting approval', () => {
   const panel = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
-  assert.match(panel, /setReviewDraft\(data\.review\)/);
-  assert.match(panel, /action: "verify-editorial"/);
-  assert.match(panel, /Boolean\(reviewDraft\)/);
-  assert.match(panel, /Rascunho rejeitado/);
+  assert.match(panel, /draft.generated\(String\(data.review.materia_site\)/);
+  assert.match(panel, /setApprovalReceipt\(null\)/);
 });
-
 
 test('verification prompt explicitly supports faithful bilingual paraphrase but rejects extrapolations', async () => {
   const calls = [];
@@ -593,12 +590,10 @@ test('approval save requires proof, stores verified editorial only, and GET rest
   }
 });
 
-test('UI stores approval through API and restores without calling site publish', () => {
+test('approval remains an explicit separate API action', () => {
   const source = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
   assert.match(source, /action: "approve-editorial"/);
-  assert.match(source, /action=approved-editorial/);
   assert.match(source, /setSavedApproval\(result.data\)/);
-  assert.match(source, /!savedApproval/);
   assert.match(source, /setApprovalReceipt\(null\)/);
 });
 
@@ -622,56 +617,28 @@ test('existing editorial can be reverified without generation and gains a server
   }
 });
 
-test('panel provides verify-existing action rather than regenerating an approved draft', () => {
+test('panel publishing depends on the editorial contract without a saved approval gate', () => {
   const source = readFileSync(new URL('../src/SitePublicationPanel.jsx', import.meta.url), 'utf8');
-  assert.match(source, /Verificar texto existente/);
-  assert.match(source, /verifyReviewDraft\(\{\s*materia_site: siteBody,/);
-  assert.match(source, /const selectedDraft = override \|\| reviewDraft/);
+  const publish = source.slice(source.indexOf('  async function publish()'), source.indexOf('  if (\n    !Number.isInteger(', source.indexOf('  async function publish()')));
+  assert.match(publish, /!editorialValidation.valid/);
+  assert.match(publish, /parsedImageUrl.protocol !== "https:"/);
+  assert.doesNotMatch(publish, /savedApproval|editorialApproved|approvalReceipt/);
 });
 
-
-test('direct publication attempts fail closed without a valid persisted approval', async () => {
-  const saved = Object.fromEntries(['WIREGEEK_AUTOMATION_KEY', 'BAGACA_SITE_PUBLISH_URL', 'BAGACA_SITE_PUBLISH_KEY'].map(k => [k, process.env[k]]));
-  const oldFetch = globalThis.fetch;
-  Object.assign(process.env, {
-    WIREGEEK_AUTOMATION_KEY: 'synthetic-test-key',
-    BAGACA_SITE_PUBLISH_URL: 'https://example.org/api/integrations/wiregeek/publish',
-    BAGACA_SITE_PUBLISH_KEY: 'synthetic-publish-key',
-  });
-  const valid = draft();
-  const approval = {
-    noticia_id: 7, materia_site: valid.materia_site, resumo_site: valid.resumo_site,
-    approved_at: '2026-10-08T12:00:00Z', source_hashes: [snapshot.source_hash],
-  };
-  const cases = [
-    ['missing approval', null, null, 409],
-    ['wrong news ID', { ...approval, noticia_id: 8 }, null, 409],
-    ['malformed editorial', { ...approval, materia_site: 'unsupported draft' }, null, 409],
-    ['missing source hashes', { ...approval, source_hashes: [] }, null, 409],
-    ['missing approval timestamp', { ...approval, approved_at: null }, null, 409],
-    ['database inaccessible', null, { message: 'db inaccessible' }, 503],
-  ];
+test('direct publication rejects incomplete drafts and invalid images before upstream', async () => {
+  const saved = process.env.WIREGEEK_AUTOMATION_KEY;
+  process.env.WIREGEEK_AUTOMATION_KEY = 'synthetic-test-key';
   try {
-    globalThis.fetch = () => assert.fail('Blocked request must not reach upstream publishing');
-    for (const [description, row, error, expected] of cases) {
-      const supabase = { from(table) {
-        assert.equal(table, 'site_editorial_approvals', description);
-        return { select() { return this; }, eq(field, id) {
-          assert.equal(field, 'noticia_id');
-          assert.equal(id, 7); return this;
-        }, async maybeSingle() { return { data: row, error }; } };
-      } };
-      const result = res();
-      await handler(request({ action: 'publish' }), result, { supabase });
-      assert.equal(result.statusCode, expected, description);
-      assert.equal(result.value.success, false, description);
-      assert.equal(result.value.code, expected === 503 ?
-        'EDITORIAL_APPROVAL_STORAGE_UNAVAILABLE' : 'EDITORIAL_APPROVAL_REQUIRED', description);
+    for (const body of [{}, { ...draft(), image_url: '' }, { ...draft(), image_url: 'http://example.org/image.png' },
+      { ...draft(), image_url: 'https://user:password@example.org/image.png' }]) {
+      const response = res();
+      await handler(request({ action: 'publish', ...body }), response, {
+        supabase: { from() { assert.fail('Invalid input must not access database'); } },
+      });
+      assert.equal(response.statusCode, 422);
     }
   } finally {
-    globalThis.fetch = oldFetch;
-    for (const [key, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
+    if (saved === undefined) delete process.env.WIREGEEK_AUTOMATION_KEY;
+    else process.env.WIREGEEK_AUTOMATION_KEY = saved;
   }
 });

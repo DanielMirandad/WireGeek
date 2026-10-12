@@ -3002,7 +3002,44 @@ const [edition,  setEdition]  = useState(null);
         setAuthError("Sua sessão expirou. Entre novamente para gerar notícias.");
       }
       if (!response.ok || data.success !== true) {
-        throw new Error(data.details || data.error || `Apuração respondeu com HTTP ${response.status}.`);
+        const diagnostics =
+          Array.isArray(data?.source_diagnostics)
+            ? data.source_diagnostics
+            : [];
+
+        const diagnosticText =
+          diagnostics.length
+            ? "\n" +
+              diagnostics
+                .map((item, index) => {
+                  const source =
+                    item?.fonte ||
+                    "Fonte sem título";
+
+                  const reason =
+                    item?.error_code ||
+                    item?.status ||
+                    "falha desconhecida";
+
+                  const http =
+                    item?.http_status
+                      ? ` HTTP ${item.http_status}`
+                      : "";
+
+                  const url =
+                    item?.final_url ||
+                    item?.url ||
+                    "";
+
+                  return `${index + 1}. ${source}: ${reason}${http}${url ? ` · ${url}` : ""}`;
+                })
+                .join("\n")
+            : "";
+
+        throw new Error(
+          (data.details || data.error || `Apuração respondeu com HTTP ${response.status}.`) +
+          diagnosticText
+        );
       }
       appliedSnapshotRef.current = undefined;
       setFollowingLatest(true);

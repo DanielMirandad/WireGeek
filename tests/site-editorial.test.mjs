@@ -41,6 +41,7 @@ function options({ value = draft(), verification = claims(value), onCall = () =>
     return { text: JSON.stringify(request.purpose === 'site-editorial' ? value : verification) };
   } };
 }
+const verify = opts => generateSiteEditorialPreview({ supabase: db(), noticiaId: 7, reviewDraft: draft() }, opts);
 const generate = opts => generateSiteEditorialPreview({ supabase: db(), noticiaId: 7 }, opts);
 
 test('server enforces inclusive character, paragraph and excerpt boundaries', () => {
@@ -59,15 +60,15 @@ test('server enforces inclusive character, paragraph and excerpt boundaries', ()
   assert.equal(validateSiteEditorialInput({ materiaSite: crlf, resumoSite: d.resumo_site }).body, d.materia_site);
 });
 
-test('read-only canonical generation returns the panel contract and verifies summary independently', async () => {
+test('canonical generation returns locally validated panel contract with exactly one OpenAI call', async () => {
   const calls = [];
   const result = await generate(options({ onCall: r => calls.push(r) }));
   assert.equal(result.status, 200);
   assert.deepEqual(result.json.data.materia_site, draft().materia_site);
   assert.equal(result.json.data.diagnostico.paragrafos, 4);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].purpose, 'site-editorial-verification');
-  assert.equal(JSON.parse(calls[1].input).unidades.length, 5);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls.map(call => call.purpose), ['site-editorial']);
+  assert.equal(result.json.data.approval_receipt, undefined);
   assert.deepEqual(result.json.data.fontes_base, [{ nome: snapshot.title, url: snapshot.final_url, publicado_em: snapshot.publicado_em }]);
 });
 
@@ -126,7 +127,7 @@ test('unsupported claims, omitted units, forged literal citations and repeated c
     'EDITORIAL_REPEATED_CLAIMS', 'EDITORIAL_VERIFICATION_INCOMPLETE',
   ];
   for (const [index, verification] of variants.entries()) {
-    const result = await generate(options({ verification }));
+    const result = await verify(options({ verification }));
     assert.equal(result.status, 422);
     assert.equal(result.json.code, expected[index]);
     assert.equal(result.json.data, undefined);
@@ -135,23 +136,23 @@ test('unsupported claims, omitted units, forged literal citations and repeated c
   }
 });
 
-test('malformed JSON, provider failure and unavailable verification never return a draft', async () => {
+test('malformed generation JSON and provider failure stop generation; unavailable optional verification does not', async () => {
   for (const response of [async () => { throw new Error('SECRET_PROVIDER_ERROR'); }, async () => ({ text: 'not json' })]) {
     const result = await generate({ ...options(), createResponse: response });
     assert.equal(result.status, 502); assert.ok(!JSON.stringify(result).includes('SECRET_PROVIDER_ERROR'));
   }
   const result = await generate({ ...options(), createResponse: async request => {
-    if (request.purpose.endsWith('verification')) throw new Error('unavailable');
+    if (request.purpose.endsWith('verification')) throw new Error('OPENAI_TIMEOUT');
     return { text: JSON.stringify(draft()) };
   } });
-  assert.equal(result.status, 502);
-  assert.equal(result.json.code, 'EDITORIAL_VERIFICATION_API_FAILED');
-  assert.equal(result.json.data, undefined);
+  assert.equal(result.status, 200);
+  assert.equal(result.json.success, true);
+  assert.equal(result.json.data.materia_site, draft().materia_site);
   assert.ok(!JSON.stringify(result.json).includes('unavailable'));
 });
 
 test('invalid verification JSON fails separately without leaking provider output', async () => {
-  const response = await generate({
+  const response = await verify({
     ...options(), createResponse: async request => request.purpose === 'site-editorial'
       ? { text: JSON.stringify(draft()) }
       : { text: 'PROVIDER_SECRET_NOT_JSON' },
@@ -162,15 +163,15 @@ test('invalid verification JSON fails separately without leaking provider output
   assert.equal(response.json.data, undefined);
 });
 
-test('cache reuses only verified drafts; force regenerates; source changes invalidate', async () => {
+test('cache reuses only locally valid drafts; force regenerates; source changes invalidate', async () => {
   let calls = 0, source = snapshot;
   const opts = options({ onCall: () => calls++, captureSource: async () => source });
-  await generate(opts); await generate(opts); assert.equal(calls, 2);
-  await generateSiteEditorialPreview({ supabase: db(), noticiaId: 7, forceRegenerate: true }, opts); assert.equal(calls, 4);
+  await generate(opts); await generate(opts); assert.equal(calls, 1);
+  await generateSiteEditorialPreview({ supabase: db(), noticiaId: 7, forceRegenerate: true }, opts); assert.equal(calls, 2);
   source = { ...snapshot, text: snapshot.text + ' Mais dados.' };
-  await generate(opts); assert.equal(calls, 6);
+  await generate(opts); assert.equal(calls, 3);
   const bad = options({ value: draft(1799), onCall: () => calls++ });
-  await generate(bad); await generate(bad); assert.equal(calls, 8);
+  await generate(bad); await generate(bad); assert.equal(calls, 5);
 });
 
 function res() { return { statusCode: 0, headers: {}, setHeader(k, v) { this.headers[k] = v; },
@@ -254,7 +255,7 @@ test('existing status and publish flows keep canonical image and upstream confir
 test('rejected draft is returned only for transient review and identifies unsupported claim', async () => {
   const verification = claims();
   verification.unidades[1].claims[0] = { claim: 'Fabricante confirmou produto inexistente', supported: false, fonte: 0, evidencia: 0, motivo: 'Detalhe sem suporte documental.' };
-  const result = await generate(options({ verification }));
+  const result = await verify(options({ verification }));
   assert.equal(result.status, 422);
   assert.equal(result.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
   assert.equal(result.json.review.materia_site, draft().materia_site);
@@ -317,7 +318,7 @@ test('frontend saves returned review as a draft without granting approval', () =
 
 test('verification prompt explicitly supports faithful bilingual paraphrase but rejects extrapolations', async () => {
   const calls = [];
-  const response = await generate(options({ onCall: request => calls.push(request) }));
+  const response = await verify(options({ onCall: request => calls.push(request) }));
   assert.equal(response.status, 200);
   const verification = calls.find(call => call.purpose === 'site-editorial-verification');
   assert.ok(verification);
@@ -340,7 +341,7 @@ test('translation guidance never overrides a model rejection or an invalid evide
     claim: 'O Bose Gen 3 recebeu firmware 10.12.13 em 27 de setembro.',
     supported: false, fonte: 0, evidencia: 0, motivo: 'Modelo e versao divergem.',
   };
-  const unsupported = await generate(options({ verification: falseClaim }));
+  const unsupported = await verify(options({ verification: falseClaim }));
   assert.equal(unsupported.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
   assert.equal(unsupported.status, 422);
 
@@ -350,7 +351,7 @@ test('translation guidance never overrides a model rejection or an invalid evide
     supported: true, fonte: 0,
     evidencia: 999, motivo: 'Referencia invalida.',
   };
-  const invalidQuote = await generate(options({ verification: falseQuote }));
+  const invalidQuote = await verify(options({ verification: falseQuote }));
   assert.equal(invalidQuote.json.code, 'EDITORIAL_EVIDENCE_INVALID');
   assert.equal(invalidQuote.status, 422);
 });
@@ -366,12 +367,12 @@ test('Bose bilingual grounding: evidence may confirm a faithful paraphrase but n
     evidencia: 0,
     motivo: 'A evidencia cita o modelo, os recursos e o status beta.',
   };
-  const ok = await generate(options({ verification: verified, captureSource: async () => newsSource }));
+  const ok = await verify(options({ verification: verified, captureSource: async () => newsSource }));
   assert.equal(ok.status, 200);
   const rejected = structuredClone(verified);
   rejected.unidades[0].claims[0].supported = false;
   rejected.unidades[0].claims[0].motivo = 'O verificador discorda do suporte a data e firmware.';
-  const blocked = await generate(options({ verification: rejected, captureSource: async () => newsSource }));
+  const blocked = await verify(options({ verification: rejected, captureSource: async () => newsSource }));
   assert.equal(blocked.status, 422);
   assert.equal(blocked.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
   assert.match(blocked.json.review.issue.reason, /firmware/);
@@ -390,7 +391,7 @@ test('Bose regression: incorrect firmware, product model and precise date remain
     verification.unidades[0].claims[0] = {
       claim: claimText, supported: false, fonte: 0, evidencia: 0, motivo: reason,
     };
-    const response = await generate(options({ verification }));
+    const response = await verify(options({ verification }));
     assert.equal(response.status, 422);
     assert.equal(response.json.code, 'EDITORIAL_UNSUPPORTED_CLAIM');
     assert.equal(response.json.review.issue.reason, reason);
@@ -400,7 +401,7 @@ test('Bose regression: incorrect firmware, product model and precise date remain
 
 test('verification request demands specific factual reasons for every supported and unsupported claim', async () => {
   const calls = [];
-  const response = await generate(options({ onCall: request => calls.push(request) }));
+  const response = await verify(options({ onCall: request => calls.push(request) }));
   assert.equal(response.status, 200);
   const request = calls.find(call => call.purpose === 'site-editorial-verification');
   assert.ok(request);
@@ -420,7 +421,7 @@ test('Bose byline and firmware are never stitched into invented evidence', async
     claim: 'O firmware vinha sendo distribuido discretamente nas ultimas semanas',
     supported: true, fonte: 0, evidencia: 0, motivo: 'A fonte confirma a distribuicao gradual.',
   };
-  const response = await generate(options({
+  const response = await verify(options({
     verification, captureSource: async () => ({ ...snapshot, text: sourceText }),
     onCall: request => requests.push(request),
   }));
@@ -434,7 +435,7 @@ test('Bose byline and firmware are never stitched into invented evidence', async
 test('Bose version with periods stays intact in server-selected evidence', async () => {
   const sourceText = 'The firmware update, labeled 10.12.12, has been quietly rolling out the past few weeks. Documento literal. Dados verificados.';
   const requests = [];
-  const response = await generate(options({
+  const response = await verify(options({
     captureSource: async () => ({ ...snapshot, text: sourceText }),
     onCall: request => requests.push(request),
   }));
@@ -446,7 +447,7 @@ test('Bose version with periods stays intact in server-selected evidence', async
 test('model cannot fabricate source evidence index even if marking claim supported', async () => {
   const verification = claims();
   verification.unidades[1].claims[0].evidencia = 999;
-  const result = await generate(options({ verification }));
+  const result = await verify(options({ verification }));
   assert.equal(result.status, 422);
   assert.equal(result.json.code, 'EDITORIAL_EVIDENCE_INVALID');
   assert.equal(result.json.data, undefined);
@@ -454,7 +455,7 @@ test('model cannot fabricate source evidence index even if marking claim support
 
 test('verification selects server-extracted indexed evidence instead of model-written quotes', async () => {
   const requests = [];
-  await generate(options({ onCall: request => requests.push(request) }));
+  await verify(options({ onCall: request => requests.push(request) }));
   const verification = requests.find(request => request.purpose === 'site-editorial-verification');
   assert.ok(verification);
   assert.match(verification.instructions, /selecione somente um indice fornecido/);
@@ -472,7 +473,7 @@ test('OpenAI failures identify the stage and safe upstream category without expo
     ['OPENAI_AUTH_ERROR', 502],
     ['OPENAI_UPSTREAM_ERROR', 502],
   ]) {
-    const response = await generate({
+    const response = await verify({
       ...options(),
       async createResponse(request) {
         if (request.purpose === 'site-editorial-verification') throw new Error(message);
@@ -485,7 +486,7 @@ test('OpenAI failures identify the stage and safe upstream category without expo
     assert.equal(response.json.data, undefined);
     assert.equal(response.json.review, undefined);
   }
-  const unknown = await generate({
+  const unknown = await verify({
     ...options(),
     async createResponse(request) {
       if (request.purpose === 'site-editorial-verification') throw new Error('secret provider request details');

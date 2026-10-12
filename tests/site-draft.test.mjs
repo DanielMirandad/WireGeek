@@ -229,3 +229,71 @@ test('publish accepts valid text and explicit HTTPS image without requiring appr
     for (const [key, val] of saved) { if (val === undefined) delete process.env[key]; else process.env[key] = val; }
   }
 });
+
+
+test('generation autosaves with one inference; optional verification timeout preserves persisted draft and publication', async () => {
+  const env = Object.fromEntries(['WIREGEEK_AUTOMATION_KEY', 'BAGACA_SITE_PUBLISH_URL', 'BAGACA_SITE_PUBLISH_KEY'].map(k => [k, process.env[k]]));
+  const originalFetch = globalThis.fetch;
+  Object.assign(process.env, { WIREGEEK_AUTOMATION_KEY: 'draft-test', BAGACA_SITE_PUBLISH_URL: 'https://example.org/api/integrations/wiregeek/publish', BAGACA_SITE_PUBLISH_KEY: 'synthetic-key' });
+  const stored = memoryDb(), calls = [];
+  const valid = { materia_site: Array.from({ length: 4 }, (_, i) => 'Fato ' + i + ': ' + 'a'.repeat(450)).join('\n\n'), resumo_site: 'Resumo: ' + 'b'.repeat(130) };
+  const supabase = { from(table) {
+    if (table === 'site_editorial_drafts') return stored.from(table);
+    assert.equal(table, 'noticias', 'Verification must never access approval/publication tables');
+    return { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({ data: { id: 7, titulo: 'Fixture', categoria: 'Games', url: 'https://example.org/source', fontes: [] } }) };
+  } };
+  const editorialOptions = {
+    generationCache: { run: async (_, execute) => execute() },
+    captureSource: async () => ({ text: 'Source fixture with literal independently captured evidence.', final_url: 'https://example.org/source', source_hash: 'sha256:' + 'a'.repeat(64) }),
+    createResponse: async req => {
+      calls.push(req.purpose);
+      if (req.purpose === 'site-editorial-verification') throw new Error('OPENAI_TIMEOUT');
+      return { text: JSON.stringify(valid) };
+    },
+  };
+  try {
+    const generated = response();
+    await handler(request({ action: 'generate-editorial' }), generated, { supabase, editorialOptions });
+    assert.equal(generated.code, 200);
+    assert.deepEqual(calls, ['site-editorial']);
+    const saver = createDraftAutosave({ save: async fields => {
+      const saved = response();
+      await handler(request(fields), saved, { supabase });
+      assert.equal(saved.code, 200);
+    } });
+    saver.update({ ...generated.data.data, image_url: value.image_url });
+    await saver.flush();
+    const before = structuredClone(stored.rows.get(7));
+    const timeout = response();
+    await handler(request({ action: 'verify-editorial', ...valid }), timeout, { supabase, editorialOptions });
+    assert.equal(timeout.code, 504);
+    assert.equal(timeout.data.code, 'EDITORIAL_VERIFICATION_API_FAILED');
+    assert.deepEqual(timeout.data.details, ['OPENAI_TIMEOUT']);
+    assert.deepEqual(stored.rows.get(7), before);
+    const loaded = response();
+    await handler({ ...request(), method: 'GET', query: { action: 'draft', noticia_id: 7 } }, loaded, { supabase });
+    assert.deepEqual(loaded.data.data, before);
+    // Edits and autosave continue after the optional failure.
+    saver.update({ ...valid, resumo_site: valid.resumo_site + ' Editado.', image_url: value.image_url });
+    await saver.flush();
+    assert.equal(stored.rows.get(7).resumo_site, valid.resumo_site + ' Editado.');
+    await saver.dispose();
+    globalThis.fetch = async (_, options) => {
+      assert.deepEqual(JSON.parse(options.body), { noticia_id: 7, ...valid, resumo_site: valid.resumo_site + ' Editado.', image_url: value.image_url });
+      return { ok: true, status: 201, json: async () => ({ action: 'published' }) };
+    };
+    const publication = response();
+    const publicationDb = { from(table) {
+      assert.equal(table, 'site_news', 'Publishing must not require optional verification or approval');
+      const chain = { then(resolve) { resolve({ data: [{ slug: 'fixture' }] }); } };
+      for (const method of ['select', 'eq', 'order', 'limit']) chain[method] = () => chain;
+      return chain;
+    } };
+    await handler(request({ action: 'publish', ...stored.rows.get(7) }), publication, { supabase: publicationDb });
+    assert.equal(publication.code, 201);
+    assert.deepEqual(calls, ['site-editorial', 'site-editorial-verification']);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});

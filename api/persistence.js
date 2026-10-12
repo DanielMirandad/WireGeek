@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 
 import { validateCanonicalShape } from "../lib/wiregeek-contract.mjs";
 import { normalizeWireGeekCategory } from "../lib/wiregeek-categories.mjs";
+import { normalizeSourceUrlInput } from "../lib/source-snapshot.mjs";
 import { loadEditorialHistory, selectUnseenNews, compareEditorialStories, editorialEventSignature, primarySourceKey } from "../lib/editorial-dedup.mjs";
 
 function digest(value) {
@@ -73,7 +74,7 @@ function prepareNewsItem(item, index) {
     fontes: Array.isArray(item?.fontes)
       ? item.fontes.map((source) => ({
           titulo: normalizeText(source?.titulo),
-          url: normalizeText(source?.url),
+          url: normalizeSourceUrlInput(source?.url),
           publicado_em: normalizeText(source?.publicado_em),
         }))
       : [],
@@ -246,7 +247,7 @@ async function persistEdition({
       normalizeText(primarySource?.titulo);
 
     const sourceUrl =
-      normalizeText(primarySource?.url);
+      normalizeSourceUrlInput(primarySource?.url);
 
     const { data: noticia, error: noticiaError, duplicate, previousId } =
       await insertUnseenNews(supabase, {
@@ -300,7 +301,7 @@ async function persistEdition({
       .insert(item.fontes.map((source) => ({
         noticia_id: noticiaId,
         nome: source.titulo,
-        url: source.url,
+        url: normalizeSourceUrlInput(source.url),
         publicado_em:
           source.publicado_em || normalizeText(item.publicado_em) || null,
       })));

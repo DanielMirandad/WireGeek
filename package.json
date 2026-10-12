@@ -7,7 +7,7 @@
                     "dev":  "vite",
                     "build":  "vite build",
                     "preview":  "vite preview",
-                    "test":  "node --test tests/site-editorial.test.mjs tests/hashtag-policy.test.mjs tests/banner-preview.test.mjs tests/banner-thematic-layout.test.mjs tests/generation-cache.test.mjs tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs tests/publication-editorial-count.test.mjs tests/manual-reel-correction.test.mjs tests/instagram-profiles.test.mjs tests/youtube-core.test.mjs tests/latest-edition.test.mjs tests/briefing-import.test.mjs tests/codex-research-export.test.mjs tests/briefing-research.test.mjs tests/source-snapshot.test.mjs tests/canonical-hashtag-repair.test.mjs tests/banner-title-recovery.test.mjs"
+                    "test":  "node --test tests/site-editorial.test.mjs tests/hashtag-policy.test.mjs tests/banner-preview.test.mjs tests/banner-thematic-layout.test.mjs tests/generation-cache.test.mjs tests/wiregeek-contract.test.mjs tests/banner-images-briefing.test.mjs tests/publication-editorial-count.test.mjs tests/manual-reel-correction.test.mjs tests/instagram-profiles.test.mjs tests/youtube-core.test.mjs tests/latest-edition.test.mjs tests/briefing-import.test.mjs tests/codex-research-export.test.mjs tests/briefing-research.test.mjs tests/source-snapshot.test.mjs tests/canonical-hashtag-repair.test.mjs tests/banner-title-recovery.test.mjs tests/site-draft.test.mjs"
                 },
     "dependencies":  {
                          "@supabase/supabase-js":  "^2.112.4",
@@ -29,6 +29,8 @@
                          "vite":  "latest"
                      },
     "devDependencies":  {
+                            "@electric-sql/pglite":  "0.5.8",
+                            "react-test-renderer":  "19.2.8",
                             "vercel":  "^59.1.3"
                         },
     "overrides":  {

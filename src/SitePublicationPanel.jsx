@@ -1,3 +1,4 @@
+import useSiteDraft from './useSiteDraft.js';
 import {
   useCallback,
   useEffect,
@@ -136,11 +137,6 @@ export default function SitePublicationPanel({
   ] =
     useState("");
 
-  const [
-    manualImageUrl,
-    setImageUrl,
-  ] =
-    useState(null);
 
   const approvedImageUrl = publications
     .filter((row) =>
@@ -159,7 +155,16 @@ export default function SitePublicationPanel({
     }) || "";
 
   // An explicit manual edit, including clearing the field, wins over hydration.
-  const imageUrl = manualImageUrl ?? (publication?.image_url || approvedImageUrl);
+  const draft = useSiteDraft(noticiaId, publication?.image_url || approvedImageUrl);
+  const siteBody = draft.fields.materia_site;
+  const siteExcerpt = draft.fields.resumo_site;
+  const setSiteBody = draft.setBody;
+  const setSiteExcerpt = draft.setExcerpt;
+  const setImageUrl = draft.setImage;
+  const imageUrl = draft.fields.image_url ?? (publication?.image_url || approvedImageUrl);
+  const selectionRef = useRef({ id: noticiaId });
+  if (selectionRef.current.id !== noticiaId) selectionRef.current = { id: noticiaId };
+  const selection = selectionRef.current;
 
   const [
     generating,
@@ -167,17 +172,7 @@ export default function SitePublicationPanel({
   ] =
     useState(false);
 
-  const [
-    siteExcerpt,
-    setSiteExcerpt,
-  ] =
-    useState("");
 
-  const [
-    siteBody,
-    setSiteBody,
-  ] =
-    useState("");
 
   const [
     editorialApproved,
@@ -185,7 +180,7 @@ export default function SitePublicationPanel({
   ] =
     useState(false);
 
-  // Rejected drafts exist only in React memory; never persisted.
+  // Draft persistence never grants editorial approval.
   const [reviewDraft, setReviewDraft] = useState(null);
   const [reviewing, setReviewing] = useState(false);
   const [approvalReceipt, setApprovalReceipt] = useState(null);
@@ -236,7 +231,7 @@ export default function SitePublicationPanel({
             );
           }
 
-          if (!mountedRef.current) {
+          if (!mountedRef.current || selectionRef.current !== selection) {
             return null;
           }
 
@@ -249,26 +244,10 @@ export default function SitePublicationPanel({
             current
           );
 
-          if (current?.excerpt) {
-            setSiteExcerpt(
-              (currentValue) =>
-                currentValue ||
-                current.excerpt
-            );
-          }
-
-          if (current?.body) {
-            setSiteBody(
-              (currentValue) =>
-                currentValue ||
-                current.body
-            );
-          }
-
           return current;
         } catch (err) {
           if (
-            mountedRef.current &&
+            mountedRef.current && selectionRef.current === selection &&
             !silent
           ) {
             setError(
@@ -280,7 +259,7 @@ export default function SitePublicationPanel({
           return null;
         } finally {
           if (
-            mountedRef.current &&
+            mountedRef.current && selectionRef.current === selection &&
             !silent
           ) {
             setLoading(false);
@@ -293,10 +272,11 @@ export default function SitePublicationPanel({
     );
 
   useEffect(() => {
-    setImageUrl(null);
     setPublication(null);
-    setSiteExcerpt("");
-    setSiteBody("");
+    setGenerating(false);
+    setPublishing(false);
+    setReviewing(false);
+    setSavingApproval(false);
     setEditorialApproved(false);
     setReviewDraft(null);
     setApprovalReceipt(null);
@@ -320,29 +300,6 @@ export default function SitePublicationPanel({
     loadStatus,
   ]);
 
-  useEffect(() => {
-    if (!Number.isSafeInteger(noticiaId) || noticiaId <= 0) return;
-    let cancelled = false;
-    const loadApproved = async () => {
-      try {
-        const response = await fetch(
-          `/api/publicacoes?mode=site-publish&action=approved-editorial&noticia_id=${encodeURIComponent(noticiaId)}`,
-          { credentials: "include" }
-        );
-        if (!response.ok) return;
-        const result = await response.json();
-        if (cancelled || !result?.data) return;
-        setSiteBody(result.data.materia_site || "");
-        setSiteExcerpt(result.data.resumo_site || "");
-        setSavedApproval(result.data);
-        setEditorialApproved(true);
-      } catch {
-        // Storage must not authorize anything on failure.
-      }
-    };
-    loadApproved();
-    return () => { cancelled = true; };
-  }, [noticiaId]);
 
   const editorialValidation =
     validateSiteEditorialDraft({
@@ -355,6 +312,7 @@ export default function SitePublicationPanel({
 
   async function generateEditorial() {
     if (
+      draft.blocked ||
       generating ||
       publishing ||
       loading ||
@@ -406,9 +364,8 @@ export default function SitePublicationPanel({
           .catch(() => ({}));
 
       if (!response.ok) {
-        if (data?.review?.materia_site && data?.review?.resumo_site && mountedRef.current) {
-          setSiteBody(String(data.review.materia_site));
-          setSiteExcerpt(String(data.review.resumo_site));
+        if (data?.review?.materia_site && data?.review?.resumo_site && mountedRef.current && selectionRef.current === selection) {
+          draft.generated(String(data.review.materia_site), String(data.review.resumo_site));
           setReviewDraft(null);
           setApprovalReceipt(null);
           setSavedApproval(null);
@@ -458,33 +415,27 @@ export default function SitePublicationPanel({
         );
       }
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || selectionRef.current !== selection) {
         return;
       }
 
       setReviewDraft(null);
       setApprovalReceipt(data?.data?.approval_receipt || null);
 
-      setSiteBody(
-        generatedBody
-      );
-
-      setSiteExcerpt(
-        generatedExcerpt
-      );
+      draft.generated(generatedBody, generatedExcerpt);
 
       setEditorialApproved(
         false
       );
     } catch (err) {
-      if (mountedRef.current) {
+      if (mountedRef.current && selectionRef.current === selection) {
         setError(
           err?.message ||
           "Nao foi possivel gerar a materia do site."
         );
       }
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && selectionRef.current === selection) {
         setGenerating(false);
       }
     }
@@ -510,24 +461,23 @@ export default function SitePublicationPanel({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        if (data?.review && mountedRef.current) setReviewDraft(data.review);
+        if (data?.review && mountedRef.current && selectionRef.current === selection) setReviewDraft(data.review);
         const details = Array.isArray(data?.details) ? data.details.join(" ") : "";
         throw new Error([data?.error, details].filter(Boolean).join(" ") || "Falha verificando revisao.");
       }
       if (!data?.data?.materia_site || !data?.data?.resumo_site) {
         throw new Error("Resposta de verificacao incompleta.");
       }
-      if (mountedRef.current) {
-        setSiteBody(data.data.materia_site);
-        setSiteExcerpt(data.data.resumo_site);
+      if (mountedRef.current && selectionRef.current === selection) {
+        draft.generated(data.data.materia_site, data.data.resumo_site);
         setReviewDraft(null);
         setApprovalReceipt(data.data.approval_receipt || null);
         setSavedApproval(null);
       }
     } catch (err) {
-      if (mountedRef.current) setError(err?.message || "Falha verificando revisao.");
+      if (mountedRef.current && selectionRef.current === selection) setError(err?.message || "Falha verificando revisao.");
     } finally {
-      if (mountedRef.current) setReviewing(false);
+      if (mountedRef.current && selectionRef.current === selection) setReviewing(false);
     }
   }
 
@@ -557,22 +507,23 @@ export default function SitePublicationPanel({
       if (!response.ok || !result?.data) {
         throw new Error(result?.error || "Nao foi possivel salvar a aprovacao.");
       }
-      if (mountedRef.current) {
+      if (mountedRef.current && selectionRef.current === selection) {
         setSavedApproval(result.data);
         setEditorialApproved(true);
       }
     } catch (err) {
-      if (mountedRef.current) {
+      if (mountedRef.current && selectionRef.current === selection) {
         setEditorialApproved(false);
         setError(err?.message || "Falha ao salvar aprovacao editorial.");
       }
     } finally {
-      if (mountedRef.current) setSavingApproval(false);
+      if (mountedRef.current && selectionRef.current === selection) setSavingApproval(false);
     }
   }
 
   async function publish() {
     if (
+      draft.blocked ||
       publishing ||
       generating ||
       !Number.isInteger(
@@ -684,7 +635,7 @@ export default function SitePublicationPanel({
 
         if (confirmed) {
           if (
-            mountedRef.current
+            mountedRef.current && selectionRef.current === selection
           ) {
             setPublication(
               confirmed
@@ -701,7 +652,7 @@ export default function SitePublicationPanel({
       }
 
       if (
-        mountedRef.current
+        mountedRef.current && selectionRef.current === selection
       ) {
         setPublication(
           data?.data || null
@@ -709,7 +660,7 @@ export default function SitePublicationPanel({
       }
     } catch (err) {
       if (
-        mountedRef.current
+        mountedRef.current && selectionRef.current === selection
       ) {
         setError(
           err?.message ||
@@ -718,7 +669,7 @@ export default function SitePublicationPanel({
       }
     } finally {
       if (
-        mountedRef.current
+        mountedRef.current && selectionRef.current === selection
       ) {
         setPublishing(false);
       }
@@ -769,6 +720,7 @@ export default function SitePublicationPanel({
               generateEditorial
             }
             disabled={
+              draft.blocked ||
               loading ||
               generating ||
               publishing
@@ -882,6 +834,7 @@ export default function SitePublicationPanel({
               );
             }}
             disabled={
+              draft.blocked ||
               generating ||
               publishing
             }
@@ -926,6 +879,7 @@ export default function SitePublicationPanel({
               );
             }}
             disabled={
+              draft.blocked ||
               generating ||
               publishing
             }
@@ -993,6 +947,7 @@ export default function SitePublicationPanel({
             )
           }
           disabled={
+              draft.blocked ||
             publishing ||
             generating
           }
@@ -1027,6 +982,7 @@ export default function SitePublicationPanel({
               loadStatus()
             }
             disabled={
+              draft.blocked ||
               loading ||
               generating ||
               publishing
@@ -1040,6 +996,7 @@ export default function SitePublicationPanel({
             type="button"
             onClick={publish}
             disabled={
+              draft.blocked ||
               loading ||
               generating ||
               publishing ||
@@ -1071,6 +1028,14 @@ export default function SitePublicationPanel({
             </a>
           </div>
         )}
+
+      <div role="status" className="mt-2 font-mono text-[10px] text-wg-muted">
+        {({ loading: 'Carregando rascunho...', pending: 'Alteracoes aguardando salvamento...',
+          saving: 'Salvando rascunho...', saved: 'Rascunho salvo', idle: 'Rascunho editorial',
+          error: 'Rascunho nao salvo', 'load-error': 'Rascunho indisponivel; recarregue para tentar novamente.' })[draft.status]}
+        {draft.error && <span role="alert"> {draft.error}</span>}
+        {draft.status === 'error' && <button type="button" onClick={draft.retry}>Tentar salvar novamente</button>}
+      </div>
 
       {error && (
         <div className="mt-3 border border-wg-danger bg-wg-danger-soft px-3 py-2 font-mono text-[10px] leading-5 text-wg-danger">

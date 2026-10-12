@@ -8,6 +8,7 @@ import { canonicalNewsId, loadCanonicalBannerRequest } from "../lib/banner-canon
 import { resolveBriefingBannerImages } from "../lib/banner-images-briefing.mjs";
 import { deriveBannerVisualTitle } from "../lib/banner-title-briefing.mjs";
 import { shortenRejectedVisualTitle } from "../lib/banner-title-recovery.mjs";
+import { shortenEditorialDisplayCopy } from "../lib/banner-copy-recovery.mjs";
 import { renderCtaBanner } from "../lib/banner-cta-renderer.mjs";
 
 
@@ -929,7 +930,7 @@ async function handleBriefingGeneratedBanners(
 
     const rendererCopy = banner;
 
-    const normalized =
+    let normalized =
       normalizeBanner({
         categoria:
           currentCategory ||
@@ -978,7 +979,9 @@ async function handleBriefingGeneratedBanners(
       });
 
     let output;
+    let copyRecoveryAttempts = 0;
 
+    while (true) {
     try {
       output =
         await renderBanner({
@@ -1058,7 +1061,50 @@ async function handleBriefingGeneratedBanners(
         continue;
       }
 
+      if (
+        error?.code === "COPY_TOO_LONG" &&
+        visualTitle.title_main &&
+        visualTitle.title_theme &&
+        copyRecoveryAttempts < 6
+      ) {
+        const recoveredCopy =
+          shortenEditorialDisplayCopy(
+            normalized.editorialCopy
+          );
+
+        if (!recoveredCopy) {
+          throw error;
+        }
+
+        copyRecoveryAttempts += 1;
+
+        console.warn(
+          "WIRE/GEEK BRIEFING: copy visual excedeu a area segura; encurtando somente a copy de exibicao.",
+          {
+            noticia_id:
+              body.noticia_id ||
+              null,
+
+            banner_index:
+              index,
+
+            tentativa:
+              copyRecoveryAttempts,
+          }
+        );
+
+        normalized = {
+          ...normalized,
+          editorialCopy:
+            recoveredCopy,
+        };
+
+        continue;
+      }
+
       throw error;
+    }
+    break;
     }
 
     rendered.push({
@@ -1501,4 +1547,3 @@ export default async function handler(req, res) {
       });
   }
 }
-

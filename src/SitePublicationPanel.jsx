@@ -58,11 +58,11 @@ function validateSiteEditorialDraft({
   }
 
   if (
-    paragraphs.length < 6 ||
-    paragraphs.length > 10
+    paragraphs.length < 3 ||
+    paragraphs.length > 5
   ) {
     errors.push(
-      "A materia precisa ter entre 6 e 10 paragrafos."
+      "A materia precisa ter entre 3 e 5 paragrafos."
     );
   }
 
@@ -480,13 +480,7 @@ export default function SitePublicationPanel({
       return;
     }
 
-    if (!editorialApproved) {
-      setError(
-        "Aprove a materia antes de publicar no site."
-      );
 
-      return;
-    }
 
     const officialImageUrl =
       String(
@@ -655,7 +649,7 @@ export default function SitePublicationPanel({
             </div>
 
             <div className="mt-1 max-w-2xl font-mono text-[9px] leading-4 text-wg-muted">
-              Gere a versao expandida, revise o texto e aprove manualmente antes de publicar.
+              Gere a versao expandida. A revisao manual e opcional; a publicacao depende do contrato editorial.
             </div>
           </div>
 
@@ -748,7 +742,7 @@ export default function SitePublicationPanel({
               publishing
             }
             rows={16}
-            placeholder="A materia expandida aparecera aqui para revisao."
+            placeholder="A materia expandida aparecera aqui para edicao."
             className="wg-field mt-2 resize-y font-mono leading-5"
           />
 
@@ -766,7 +760,7 @@ export default function SitePublicationPanel({
             </span>
 
             <span>
-              esperado 6-10
+              esperado 3-5
             </span>
           </div>
         </div>
@@ -815,7 +809,7 @@ export default function SitePublicationPanel({
             >
               {editorialApproved
                 ? "Materia aprovada"
-                : "Aprovar materia"}
+                : "Marcar como revisada (opcional)"}
             </button>
           </div>
         </div>
@@ -889,7 +883,7 @@ export default function SitePublicationPanel({
               loading ||
               generating ||
               publishing ||
-              !editorialApproved ||
+
               !editorialValidation.valid
             }
             className="wg-button wg-button-primary wg-button-compact font-mono uppercase tracking-[0.12em]"

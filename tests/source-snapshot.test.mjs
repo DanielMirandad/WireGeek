@@ -263,3 +263,76 @@ test('all unverified candidates still block the editorial run', async () => {
     evidencias: [{ fato: 'Unverified', fonte: 'None', url: 'https://blocked.example', trecho: 'not found' }],
   }] }, { captureSource: async () => { throw new Error('SOURCE_HTTP_403'); } }), /SOURCE_NO_VERIFIED_CANDIDATES/);
 });
+
+test('source diagnostics preserve per-evidence failure reasons without weakening fail-closed verification', async () => {
+  const diagnostics = [];
+  const collected = {
+    candidatos: [
+      {
+        evidencias: [
+          {
+            fato: 'Fato A',
+            fonte: 'Fonte bloqueada',
+            url: 'https://blocked.example/a',
+            trecho: 'texto literal',
+          },
+          {
+            fato: 'Fato B',
+            fonte: 'Fonte divergente',
+            url: 'https://mismatch.example/b',
+            trecho: 'trecho que nao existe',
+          },
+        ],
+      },
+    ],
+  };
+
+  await assert.rejects(
+    verifyCollectedSources(
+      collected,
+      {
+        captureSource: async url => {
+          if (url.includes('blocked')) {
+            throw new Error('SOURCE_HTTP_403');
+          }
+
+          return {
+            final_url: url,
+            text: 'Outro texto verificavel publicado na pagina.',
+            publicado_em: '2026-10-12',
+            source_hash: 'sha256:' + 'f'.repeat(64),
+          };
+        },
+        onDiagnostic: diagnostic => diagnostics.push(diagnostic),
+      }
+    ),
+    error => {
+      assert.equal(error.message, 'SOURCE_NO_VERIFIED_CANDIDATES');
+      assert.equal(error.sourceDiagnostics.length, 2);
+      return true;
+    }
+  );
+
+  assert.deepEqual(
+    diagnostics.map(item => ({
+      fonte: item.fonte,
+      status: item.status,
+      error_code: item.error_code,
+      http_status: item.http_status,
+    })),
+    [
+      {
+        fonte: 'Fonte bloqueada',
+        status: 'capture_failed',
+        error_code: 'SOURCE_HTTP_403',
+        http_status: 403,
+      },
+      {
+        fonte: 'Fonte divergente',
+        status: 'literal_mismatch',
+        error_code: 'SOURCE_LITERAL_MISMATCH',
+        http_status: null,
+      },
+    ]
+  );
+});

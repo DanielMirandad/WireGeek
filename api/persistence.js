@@ -301,7 +301,7 @@ async function persistEdition({
       .insert(item.fontes.map((source) => ({
         noticia_id: noticiaId,
         nome: source.titulo,
-        url: source.url,
+        url: normalizeSourceUrlInput(source.url),
         publicado_em:
           source.publicado_em || normalizeText(item.publicado_em) || null,
       })));
@@ -359,3 +359,46 @@ async function persistEdition({
     const imageUrl = normalizeText(
       item.image_url ||
         item.imagem ||
+        item.image
+    );
+
+    if (imageUrl) {
+      const { error: imageError } =
+        await supabase
+          .from("imagens")
+          .insert({
+            noticia_id: noticiaId,
+            tipo: "url",
+            url: imageUrl,
+            caminho: null,
+            alt_text:
+              normalizeText(item.titulo),
+          });
+
+      if (imageError) {
+        throw new Error(
+          `Erro ao inserir imagem "${item.titulo}": ${imageError.message}`
+        );
+      }
+    }
+  }
+
+  console.log(
+    "WIRE/GEEK: edicao persistida no Supabase:",
+    editionId
+  );
+
+  deduplication.retainedIndexes = retainedIndexes;
+  console.log("WIRE/GEEK: resultado da deduplicaÃ§Ã£o", {
+    persistidas: noticiaIds.length,
+    duplicadas: deduplication.duplicates.length,
+  });
+  return { editionId, noticiaIds, retainedIndexes, deduplication };
+}
+
+export {
+  persistEdition,
+  loadRecentPublishedNews,
+};
+
+

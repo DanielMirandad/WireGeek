@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 
 import { validateCanonicalShape } from "../lib/wiregeek-contract.mjs";
 import { normalizeWireGeekCategory } from "../lib/wiregeek-categories.mjs";
+import { normalizeSourceUrlInput } from "../lib/source-snapshot.mjs";
 import { loadEditorialHistory, selectUnseenNews, compareEditorialStories, editorialEventSignature, primarySourceKey } from "../lib/editorial-dedup.mjs";
 
 function digest(value) {
@@ -73,7 +74,7 @@ function prepareNewsItem(item, index) {
     fontes: Array.isArray(item?.fontes)
       ? item.fontes.map((source) => ({
           titulo: normalizeText(source?.titulo),
-          url: normalizeText(source?.url),
+          url: normalizeSourceUrlInput(source?.url),
           publicado_em: normalizeText(source?.publicado_em),
         }))
       : [],
@@ -246,7 +247,7 @@ async function persistEdition({
       normalizeText(primarySource?.titulo);
 
     const sourceUrl =
-      normalizeText(primarySource?.url);
+      normalizeSourceUrlInput(primarySource?.url);
 
     const { data: noticia, error: noticiaError, duplicate, previousId } =
       await insertUnseenNews(supabase, {
@@ -358,46 +359,3 @@ async function persistEdition({
     const imageUrl = normalizeText(
       item.image_url ||
         item.imagem ||
-        item.image
-    );
-
-    if (imageUrl) {
-      const { error: imageError } =
-        await supabase
-          .from("imagens")
-          .insert({
-            noticia_id: noticiaId,
-            tipo: "url",
-            url: imageUrl,
-            caminho: null,
-            alt_text:
-              normalizeText(item.titulo),
-          });
-
-      if (imageError) {
-        throw new Error(
-          `Erro ao inserir imagem "${item.titulo}": ${imageError.message}`
-        );
-      }
-    }
-  }
-
-  console.log(
-    "WIRE/GEEK: edicao persistida no Supabase:",
-    editionId
-  );
-
-  deduplication.retainedIndexes = retainedIndexes;
-  console.log("WIRE/GEEK: resultado da deduplicaÃ§Ã£o", {
-    persistidas: noticiaIds.length,
-    duplicadas: deduplication.duplicates.length,
-  });
-  return { editionId, noticiaIds, retainedIndexes, deduplication };
-}
-
-export {
-  persistEdition,
-  loadRecentPublishedNews,
-};
-
-

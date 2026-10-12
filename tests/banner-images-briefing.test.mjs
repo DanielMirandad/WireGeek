@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  filterImageSourceUrls,
+  rankExternalImageCandidates,
   resolveBriefingBannerImages,
   searchQueries,
 } from "../lib/banner-images-briefing.mjs";
@@ -907,4 +909,53 @@ test('busca de imagens prioriza o nome canônico da obra sem concatenar manchete
  request.banners[0].image_query=request.titulo;
  assert.equal(searchQueries(request,request.banners[0])[0],'The Relic: First Guardian');
  assert.ok(searchQueries(request,request.banners[0]).every(query=>query.length < 130));
+});
+
+test("fontes IGN e Omelete continuam editoriais, mas nao entram na coleta de imagens", () => {
+  const result = filterImageSourceUrls([
+    "https://www.ign.com/articles/example",
+    "https://www.omelete.com.br/games/example",
+    "https://news.xbox.com/en-us/example",
+  ]);
+
+  assert.deepEqual(result, [
+    "https://news.xbox.com/en-us/example",
+  ]);
+});
+
+test("busca externa prioriza press kit oficial sobre resultados genericos", () => {
+  const generic = {
+    url: "https://cdn.example.com/image.jpg",
+    source_url: "https://example.com/story",
+  };
+  const official = {
+    url: "https://assets.example.com/official.jpg",
+    source_url: "https://news.xbox.com/en-us/official",
+  };
+
+  assert.deepEqual(
+    rankExternalImageCandidates([generic, official]),
+    [official, generic]
+  );
+});
+
+test("Getty sem licenca editorial verificavel e rejeitado", () => {
+  const unlicensed = {
+    url: "https://media.gettyimages.com/id/123/photo.jpg",
+    source_url: "https://www.gettyimages.com/detail/news-photo/123",
+  };
+  const licensed = {
+    ...unlicensed,
+    url: "https://media.gettyimages.com/id/456/photo.jpg",
+    editorial_license_verified: true,
+  };
+  const generic = {
+    url: "https://cdn.example.com/image.jpg",
+    source_url: "https://example.com/story",
+  };
+
+  assert.deepEqual(
+    rankExternalImageCandidates([unlicensed, generic, licensed]),
+    [licensed, generic]
+  );
 });

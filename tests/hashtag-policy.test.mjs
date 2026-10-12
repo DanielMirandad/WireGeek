@@ -2,10 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { validateHashtags, WIREGEEK_PROMPT, NEWS_SCHEMA } from '../lib/wiregeek-contract.mjs';
-import { buildInstagramReelCaption, buildGroupInstagramReelCaption, normalizeInstagramHashtags, INSTAGRAM_REEL_CAPTION_FOOTER } from '../lib/instagram-reel.mjs';
+import { buildInstagramReelCaption, buildGroupInstagramReelCaption, buildBagacaSocialCaptionFromArticle, normalizeInstagramHashtags, INSTAGRAM_REEL_CAPTION_FOOTER } from '../lib/instagram-reel.mjs';
 import { selectInstagramProfiles, selectInstagramProfilesV1 } from '../lib/instagram-profiles.mjs';
 
 const article = 'Nintendo anuncia novidades para games e Nintendo Switch 2.';
+const socialArticle = [
+  'O jogo apresenta uma nova aventura em um mundo marcado por conflitos e criaturas perigosas.',
+  'A proposta combina exploração, combates intensos e encontros contra inimigos de diferentes estilos.',
+  'O sistema permite ao jogador experimentar abordagens variadas durante confrontos e momentos de exploração.',
+  'A ambientação aposta em cenários sombrios e elementos de fantasia durante toda a jornada.',
+  'Os detalhes apresentados mostram uma experiência voltada para jogadores que gostam de desafios e progressão.',
+  'O projeto também destaca batalhas contra chefes e diferentes possibilidades de combate ao longo da campanha.'
+].join(' ');
 const oldTags = ['#Cinema', '#trailer', '#estreia', '#filme', '#WireGeek'];
 
 test('prompt e schema compartilhados orientam cinco hashtags e a marca obrigatoria', () => {
@@ -82,12 +90,66 @@ test('containers antes e depois do PR #25 mantem legenda e hash para nenhum perf
 test('grupo sem container aplica a nova regra e preserva registros antigos', () => {
   const group = [{ hashtags: oldTags, instagram_parent_container_id: null }];
   const before = structuredClone(group);
-  const result = buildGroupInstagramReelCaption({ article, hashtags: oldTags, group });
+  const result = buildGroupInstagramReelCaption({ title: 'Nintendo apresenta nova aventura', article: socialArticle, hashtags: oldTags, group });
   assert.deepEqual(validateHashtags(result.hashtags), []);
   assert.deepEqual(group, before);
   // Preparing a new container does not rewrite the old publication tags.
   const prepared = [{ ...group[0], instagram_parent_container_id: 'new', instagram_caption_sha256: result.caption_sha256 }];
-  const readback = buildGroupInstagramReelCaption({ article, hashtags: oldTags, group: prepared });
+  const readback = buildGroupInstagramReelCaption({ title: 'Nintendo apresenta nova aventura', article: socialArticle, hashtags: oldTags, group: prepared });
   assert.equal(readback.caption, result.caption);
   assert.equal(readback.caption_sha256, result.caption_sha256);
+});
+
+test('modelo social global segue o padrão Bagaça Studios', () => {
+  const result =
+    buildBagacaSocialCaptionFromArticle({
+      title:
+        'The Relic: First Guardian aposta em fantasia sombria',
+
+      article:
+        socialArticle,
+
+      hashtags: [
+        '#therelicfirstguardian',
+        '#games',
+        '#rpg',
+        '#culturageek',
+        '#bagacastudios',
+      ],
+    });
+
+  assert.match(
+    result.caption,
+    /^THE RELIC: FIRST GUARDIAN APOSTA EM FANTASIA SOMBRIA/
+  );
+
+  assert.match(
+    result.caption,
+    /Leia a matéria completa no nosso site\.\nLink na bio\./
+  );
+
+  assert.match(
+    result.caption,
+    /Podcast • Notícias • Cultura Pop/
+  );
+
+  assert.match(
+    result.caption,
+    /Conta pra gente nos comentários!/
+  );
+
+  assert.equal(
+    result.hashtags.length,
+    5
+  );
+
+  assert.equal(
+    result.hashtags.at(-1),
+    '#bagacastudios'
+  );
+
+  assert.doesNotMatch(
+    result.caption,
+    /#wiregeek/i
+  );
 });

@@ -880,7 +880,7 @@ async function loadInstagramReelPayload(
   } =
     await supabase
       .from("noticias")
-      .select("id,artigo")
+      .select("id,titulo,artigo")
       .eq(
         "id",
         noticiaIds[0]
@@ -934,6 +934,10 @@ async function loadInstagramReelPayload(
   const captionInfo =
     buildGroupInstagramReelCaption({
       group,
+
+      title:
+        noticia.titulo,
+
       article:
         noticia.artigo,
 
@@ -1528,7 +1532,7 @@ export default async function handler(req, res) {
       } =
         await supabase
           .from("noticias")
-          .select("id,artigo")
+          .select("id,titulo,artigo")
           .eq(
             "id",
             noticiaIds[0]
@@ -1607,13 +1611,17 @@ export default async function handler(req, res) {
 
       const captionInfo =
         buildGroupInstagramReelCaption({
-          group,
-          article:
-            noticia.artigo,
+      group,
 
-          hashtags:
-            hashtagSets[0],
-        });
+      title:
+        noticia.titulo,
+
+      article:
+        noticia.artigo,
+
+      hashtags:
+        hashtagSets[0],
+    });
 
       const bannerUrls = groupBannerUrls(group);
 

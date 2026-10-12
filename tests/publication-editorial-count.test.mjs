@@ -31,7 +31,17 @@ function harness(rows, { incompleteRestore = false } = {}) {
         select() { return query; }, eq() { return query; }, is() { return query; },
         update() { update = true; calls.push('restore'); return query; },
         maybeSingle: async () => ({ data: table === 'noticias'
-          ? { id: 10, artigo: 'Artigo completo confirmado para teste.' }
+          ? {
+              id: 10,
+              titulo: 'Nintendo apresenta nova aventura',
+              artigo:
+                'O jogo apresenta uma nova aventura em um mundo marcado por conflitos e criaturas perigosas. ' +
+                'A proposta combina exploração, combates intensos e encontros contra inimigos de diferentes estilos. ' +
+                'O sistema permite ao jogador experimentar abordagens variadas durante confrontos e momentos de exploração. ' +
+                'A ambientação aposta em cenários sombrios e elementos de fantasia durante toda a jornada. ' +
+                'Os detalhes apresentados mostram uma experiência voltada para jogadores que gostam de desafios e progressão. ' +
+                'O projeto também destaca batalhas contra chefes e diferentes possibilidades de combate ao longo da campanha.'
+            }
           : { id: 1, publication_group_id: 'group' }, error: null }),
         order: async () => ({ data: rows, error: null }),
         then(resolve) { return Promise.resolve({ data: update && incompleteRestore

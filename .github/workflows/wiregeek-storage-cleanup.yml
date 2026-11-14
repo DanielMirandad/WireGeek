@@ -1,0 +1,34 @@
+name: WireGeek limpeza do Storage
+
+# O Supabase gratuito tem 1 GB de armazenamento; o bucket wiregeek-banners passou disso.
+# Roda todo dia e pode ser rodado na mão (Actions → este workflow → Run workflow; "dry_run" só conta).
+on:
+  schedule:
+    - cron: "41 7 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Só contar, sem apagar"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apagar banners e vídeos antigos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STORAGE_RETENTION_DAYS: ${{ vars.STORAGE_RETENTION_DAYS }}
+        run: node scripts/cleanup-storage.mjs ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '--dry-run' || '' }}
